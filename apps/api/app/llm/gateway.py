@@ -23,9 +23,9 @@ class Message(BaseModel):
 
 class Route(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider: Literal["vertex", "bedrock", "openrouter"]
+    provider: Literal["vertex", "bedrock", "openrouter", "deepseek", "gemini"]
     model: str = Field(min_length=1)
-    family: Literal["gemini", "claude"]
+    family: Literal["gemini", "claude", "deepseek"]
 
 
 class Routing(BaseModel):
@@ -38,6 +38,7 @@ class ProviderReply:
     text: str
     input_tokens: int = 0
     output_tokens: int = 0
+    thoughts_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -61,14 +62,19 @@ class Attempt:
     status: Literal["success", "validation_error", "provider_error", "timeout", "cancelled"]
     input_tokens: int
     output_tokens: int
+    thoughts_tokens: int = 0
+    error_code: str | None = None
 
 
 class ProviderError(Exception):
     """Sanitized provider failure; raw HTTP responses must not reach logs."""
 
-    def __init__(self, code: str, *, retryable: bool = False) -> None:
+    def __init__(
+        self, code: str, *, retryable: bool = False, reply: ProviderReply | None = None
+    ) -> None:
         super().__init__(code)
         self.retryable = retryable
+        self.reply = reply
 
 
 class GatewayError(Exception):
@@ -85,14 +91,27 @@ class Adapter(Protocol):
     ) -> ProviderReply: ...
 
 
+@dataclass(frozen=True)
+class GenerationLimits:
+    max_tokens: int = 4096
+    thinking_budget: int = 1024
+
+
+_limits: ContextVar[GenerationLimits | None] = ContextVar("generation_limits", default=None)
+
+
+def generation_limits() -> GenerationLimits:
+    return _limits.get() or GenerationLimits()
+
+
 _excluded_family: ContextVar[str | None] = ContextVar("generator_family", default=None)
 
 
 @contextmanager
 def verification_scope(generator_family: str) -> Iterator[None]:
     """P4 supplies Completion.route.family from the actual generator response."""
-    if generator_family.casefold() not in {"gemini", "claude"}:
-        raise ValueError("The actual generator family must be gemini or claude")
+    if generator_family.casefold() not in {"gemini", "claude", "deepseek"}:
+        raise ValueError("The actual generator family must be gemini, claude or deepseek")
     token = _excluded_family.set(generator_family.casefold())
     try:
         yield
@@ -116,6 +135,7 @@ class Gateway:
         total_timeout: float = 100,
         observe: Callable[[Completion], Awaitable[None]] | None = None,
         observe_attempt: Callable[[Attempt], None] | None = None,
+        task_limits: Mapping[str, GenerationLimits] | None = None,
     ) -> None:
         if attempts_per_model < 1 or request_timeout <= 0 or total_timeout <= 0:
             raise ValueError("Invalid gateway limits")
@@ -126,6 +146,13 @@ class Gateway:
         self.total_timeout = total_timeout
         self.observe = observe
         self.observe_attempt = observe_attempt
+        self.task_limits = {"graph": GenerationLimits(16384), "verify": GenerationLimits(8192)}
+        self.task_limits.update(task_limits or {})
+        if any(
+            v.max_tokens < 1 or not 0 <= v.thinking_budget < v.max_tokens
+            for v in self.task_limits.values()
+        ):
+            raise ValueError("Invalid generation limits")
 
     async def complete_with_metadata(
         self,
@@ -164,14 +191,23 @@ class Gateway:
                         failures.append(f"{route.provider}:adapter_missing")
                         continue
                     for attempt in range(self.attempts):
+                        if attempt:
+                            await asyncio.sleep(0.2 * 2 ** (attempt - 1))
                         attempt_started = monotonic()
+                        error_code: str | None = None
                         reply: ProviderReply | None = None
                         status: Literal[
                             "success", "validation_error", "provider_error", "timeout", "cancelled"
                         ] = "cancelled"
                         try:
                             async with asyncio.timeout(self.request_timeout):
-                                reply = await adapter.generate(route, system, parsed, schema)
+                                limits_token = _limits.set(
+                                    self.task_limits.get(task, GenerationLimits())
+                                )
+                                try:
+                                    reply = await adapter.generate(route, system, parsed, schema)
+                                finally:
+                                    _limits.reset(limits_token)
                             if not reply.text.strip():
                                 raise ProviderError("empty_response", retryable=True)
                             value = schema.model_validate_json(reply.text) if schema else reply.text
@@ -191,11 +227,12 @@ class Gateway:
                                 if isinstance(exc, TimeoutError)
                                 else "provider_error"
                             )
+                            if isinstance(exc, ProviderError):
+                                reply = exc.reply or reply
+                                error_code = str(exc)
                             failures.append(f"{route.provider}:{type(exc).__name__}")
                             if isinstance(exc, ProviderError) and not exc.retryable:
                                 break
-                            if attempt + 1 < self.attempts:
-                                await asyncio.sleep(0.2 * 2**attempt)
                             continue
                         finally:
                             if self.observe_attempt:
@@ -209,6 +246,8 @@ class Gateway:
                                         status,
                                         reply.input_tokens if reply else 0,
                                         reply.output_tokens if reply else 0,
+                                        reply.thoughts_tokens if reply else 0,
+                                        error_code,
                                     )
                                 )
                         if self.observe:
