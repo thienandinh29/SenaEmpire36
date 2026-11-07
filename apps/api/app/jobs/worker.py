@@ -133,7 +133,8 @@ def main() -> None:
                         job,
                         retriever=retriever,
                         retrieval_subject=retrieval_subject,
-                        retrieval_k=retrieval_k,
+                        retrieval_k=min(retrieval_k, 6),
+                        max_concepts=3,
                     )
                 )
 
@@ -159,7 +160,7 @@ def loop(
             ):
                 time.sleep(1)
         except Exception:
-            logger.exception("worker database failure")
+            logger.exception("worker job processing failed")
             time.sleep(2)
 
 

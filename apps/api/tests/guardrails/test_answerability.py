@@ -1,5 +1,6 @@
 import asyncio
 import json
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -97,6 +98,34 @@ def test_fabricated_evidence_cannot_verify() -> None:
         ]
     }
     assert asyncio.run(verify_item(fake.item, fake.chunks, fake)).status == "needs_review"
+
+
+@pytest.mark.parametrize("repairable", [True, False])
+def test_quote_correction_is_blind_bounded_and_keeps_exact_evidence_gate(repairable: bool) -> None:
+    class Quotes(FakeGateway):
+        checks = 0
+
+        async def generate(self, **kwargs: Any) -> ModelReply:
+            assert set(kwargs["payload"]) == {"question", "options", "chunks"}
+            reply = await super().generate(**kwargs)
+            self.checks += 1
+            if self.checks == 1 or not repairable:
+                cast(dict[str, Any], reply.content)["evidence"][0]["quote"] = (
+                    "Table quotation rewritten by model"
+                )
+            return reply
+
+    fake = Quotes()
+    result = asyncio.run(verify_item(fake.item, fake.chunks, fake))
+    assert fake.checks == 2
+    assert result.status == ("verified" if repairable else "needs_review")
+
+
+def test_answer_mismatch_does_not_get_a_quote_correction_retry() -> None:
+    fake = FakeGateway()
+    fake.overrides = {"selected_option_id": "choice-999", "evidence": []}
+    result = asyncio.run(verify_item(fake.item, fake.chunks, fake))
+    assert result.status == "needs_review" and len(fake.calls) == 1
 
 
 def test_learner_release_and_content_changes_invalidate_audit() -> None:

@@ -124,7 +124,7 @@ class Repository:
         with self.transaction() as conn:
             conn.execute(
                 "insert into subjects(id,slug,name_vi,name_en) values(%s,%s,%s,%s) "
-                "on conflict(slug) do nothing",
+                "on conflict do nothing",
                 (stable_id("subject", subject), subject, subject, subject),
             )
             sid = self._subject(conn, subject)
@@ -196,6 +196,8 @@ class Repository:
                     "source_uri,p4_metadata) values(%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                     "on conflict(id) do update set content=excluded.content,section=ex"
                     "cluded.section,"
+                    "embedding=case when chunks.content is distinct from excluded.content "
+                    "then null else chunks.embedding end,"
                     "page=excluded.page,source_uri=excluded.source_uri,p4_metadata=exc"
                     "luded.p4_metadata "
                     "where (chunks.content,chunks.section,chunks.page,chunks.source_ur"
@@ -348,6 +350,19 @@ class Repository:
         except ValueError:
             return None
 
+    def misconception_descriptions(
+        self, conn: Connection, subject: str
+    ) -> dict[tuple[str, str], str]:
+        return {
+            (concept, slug): description
+            for concept, slug, description in conn.execute(
+                "select c.slug,m.slug,m.description_vi from misconceptions m "
+                "join concepts c on c.id=m.concept_id join subjects s on s.id=c.subject_id "
+                "where s.slug=%s",
+                (subject,),
+            )
+        }
+
     def current(self, conn: Connection, external_id: str) -> StoredItem | None:
         try:
             bundle = self.load_item(conn, external_id)
@@ -395,9 +410,7 @@ class Repository:
                     conn.execute(
                         "insert into misconceptions(id,concept_id,slug,description_vi) val"
                         "ues(%s,%s,%s,%s) "
-                        "on conflict(concept_id,slug) do update set description_vi=exclude"
-                        "d.description_vi where misconceptions.description_vi "
-                        "is distinct from excluded.description_vi",
+                        "on conflict(concept_id,slug) do nothing",
                         (
                             stable_id("misconception", str(cid[0]), misconception.slug),
                             cid[0],

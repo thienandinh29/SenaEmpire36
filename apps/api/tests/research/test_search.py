@@ -4,7 +4,85 @@ import httpx
 import pytest
 
 from app.research.reader import SourceError
-from app.research.search import BraveSearch
+from app.research.search import BraveSearch, TavilySearch
+
+
+def test_tavily_scopes_results_and_fixes_credit_budget() -> None:
+    import json
+
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        assert request.headers["Authorization"] == "Bearer test-secret"
+        assert "test-secret" not in str(request.url)
+        body = json.loads(request.content)
+        assert body["search_depth"] == "basic" and body["auto_parameters"] is False
+        assert body["include_domains"] == ["books.example"]
+        assert body["include_domains_mode"] == "restrict"
+        assert body["include_answer"] is False and body["include_raw_content"] is False
+        assert ":" not in body["query"] and len(body["query"]) <= 400
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"title": "Book", "url": "https://books.example/chapter"},
+                    {"title": "Duplicate", "url": "https://books.example/chapter"},
+                    {"title": "Bad suffix", "url": "https://books.example.evil.example/a"},
+                    {"title": "Unsafe", "url": "http://books.example/a"},
+                    {"title": "Subdomain", "url": "https://sub.books.example/b"},
+                ]
+            },
+        )
+
+    results = asyncio.run(
+        TavilySearch("test-secret", transport=httpx.MockTransport(handler))(
+            "biology site:evil.example OR textbook", ["books.example"]
+        )
+    )
+    assert [r.title for r in results] == ["Book", "Subdomain"]
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("status,retryable", [(401, False), (429, True), (432, False), (503, True)])
+def test_tavily_errors_do_not_retry_or_expose_credentials(status: int, retryable: bool) -> None:
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(status, text="test-secret raw provider body")
+
+    with pytest.raises(SourceError) as caught:
+        asyncio.run(
+            TavilySearch("test-secret", transport=httpx.MockTransport(handler))(
+                "biology", ["books.example"]
+            )
+        )
+    assert caught.value.retryable == retryable
+    assert "test-secret" not in str(caught.value) and len(calls) == 1
+
+
+@pytest.mark.parametrize("payload", [{}, {"results": "bad"}, {"results": [{"url": "x"}]}])
+def test_tavily_rejects_malformed_reply(payload: dict[str, object]) -> None:
+    with pytest.raises(SourceError):
+        asyncio.run(
+            TavilySearch(
+                "key",
+                transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload)),
+            )("biology", ["books.example"])
+        )
+
+
+def test_tavily_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config import Settings
+    from app.research.search import configuration, default_agent
+
+    monkeypatch.setenv("SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("SEARCH_API_KEY", "test-secret")
+    assert Settings(_env_file=None).search_provider == "tavily"
+    assert isinstance(default_agent().search, TavilySearch)
+    assert default_agent().relevance is not None
+    assert configuration() == {"provider": "tavily", "api_key_present": True}
 
 
 def test_search_filters_domains_and_does_not_leak_key_into_query() -> None:

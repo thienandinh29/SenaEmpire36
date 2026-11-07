@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -38,7 +38,10 @@ class MemoryRepository(Repository):
         if query.startswith("update topic_jobs set status="):
             if params[0] == "ready":
                 assert len(self.saved) >= 6
-                assert all(is_currently_verified(item, self.chunks) for item in self.saved.values())
+                assert (
+                    sum(is_currently_verified(item, self.chunks) for item in self.saved.values())
+                    >= 6
+                )
             self.progress.append(params)
         return self
 
@@ -93,6 +96,13 @@ class MemoryRepository(Repository):
             raise ContentUnavailable("Simulated SQL transaction failure")
         self.saved.update({item.id: item for item in items})
 
+    def misconception_descriptions(self, conn: Any, subject: str) -> dict[tuple[str, str], str]:
+        return {
+            (i.concept, m.slug): m.description_vi
+            for i in self.saved.values()
+            for m in i.misconceptions
+        }
+
 
 class Model(FakeGateway):
     def __init__(self) -> None:
@@ -114,6 +124,8 @@ class Model(FakeGateway):
         if task in {"extract_graph", "generate_items"}:
             if task == "extract_graph":
                 data: object = graph.model_dump(mode="json", by_alias=True)
+                if "learning_goal" in payload:
+                    data = {"relevant_to_goal": True, "graph": data, "reason_vi": "Test only"}
             else:
                 self.generate_count += 1
                 selected = [items[i] for i in [0, 3, 6, 9, 12, 1]]
@@ -214,3 +226,152 @@ class Retrieval:
             )
             for c in self.repo.chunks[:k]
         ]
+
+
+@pytest.mark.parametrize("chosen", ["python-conditions", None, "not-in-catalog"])
+def test_auto_library_selection_validates_catalog_and_never_falls_back(chosen: str | None) -> None:
+    from app.content.ports import ContentPorts
+
+    class Selector(FakeGateway):
+        async def generate(self, **kwargs: object) -> ModelReply:
+            assert kwargs["task"] == "select_library"
+            assert kwargs["payload"]["learning_goal"] == "Requested subject"  # type: ignore[index]
+            return ModelReply(
+                content={"subject": chosen, "reason_vi": "Test only"}, identity=self.item.generator
+            )
+
+    ports = ContentPorts(MemoryRepository(), Selector(), "new-topic", library_subject="auto")
+    if chosen == "python-conditions":
+        assert asyncio.run(ports.quick_sources("Requested subject"))
+        assert ports.library_subject == chosen
+    else:
+        with pytest.raises(SourceError):
+            asyncio.run(ports.quick_sources("Requested subject"))
+        assert ports.library_subject == "auto"
+
+
+def test_one_content_repair_fills_missing_concept_without_overwriting_good_items() -> None:
+    class RepairModel(Model):
+        async def generate(self, **kwargs: Any) -> ModelReply:
+            payload = kwargs["payload"]
+            _, _, _, items = topic()
+            if kwargs["task"] == "generate_items" and payload["count"] != 6:
+                self.generate_count += 1
+                targets = {c["slug"] for c in payload["graph"]["concepts"]}
+                candidates = [i for i in items if i.concept in targets][: payload["count"]]
+                return ModelReply(
+                    content={
+                        "items": [
+                            i.model_dump(
+                                mode="json",
+                                exclude={
+                                    "kind",
+                                    "status",
+                                    "generator",
+                                    "verification",
+                                    "verification_history",
+                                    "human_review",
+                                },
+                            )
+                            for i in candidates
+                        ]
+                    },
+                    identity=items[0].generator,
+                )
+            reply = await super().generate(**kwargs)
+            if kwargs["task"] == "verify_item" and self.generate_count == 1:
+                original = next(i for i in items if i.prompt_vi == payload["question"])
+                if original.concept == "elif-order":
+                    reply = reply.model_copy(
+                        update={
+                            "content": {**cast(dict[str, Any], reply.content), "supported": False}
+                        }
+                    )
+            return reply
+
+    repo, models = MemoryRepository(), RepairModel()
+    asyncio.run(
+        process_claimed_job(
+            repo,
+            models,
+            {"id": uuid4(), "goal_vi": "Python", "tier": "free", "mode": "quick"},
+            retriever=Retrieval(repo),
+            retrieval_subject="python",
+        )
+    )
+    assert models.generate_count == 2
+    assert repo.progress[-1][0] == "ready"
+    assert len(repo.saved) == 8
+    verified = [i for i in repo.saved.values() if is_currently_verified(i, repo.chunks)]
+    assert len(verified) == 7
+    assert {i.concept for i in verified} == {c.slug for c in repo.kg.concepts}
+
+
+@pytest.mark.parametrize("always_invalid", [False, True])
+def test_provenance_failure_uses_only_one_repair_and_never_publishes_invalid_items(
+    always_invalid: bool,
+) -> None:
+    class InvalidProvenance(Model):
+        async def generate(self, **kwargs: Any) -> ModelReply:
+            if kwargs["task"] == "generate_items" and self.generate_count == 1:
+                assert "source_ids must exactly" in kwargs["payload"]["repair_feedback"]
+            reply = await super().generate(**kwargs)
+            if kwargs["task"] == "generate_items" and (always_invalid or self.generate_count == 1):
+                cast(dict[str, Any], reply.content)["items"][0]["source_ids"] = ["invented-source"]
+            return reply
+
+    repo, models = MemoryRepository(), InvalidProvenance()
+    work = process_claimed_job(
+        repo,
+        models,
+        {"id": uuid4(), "goal_vi": "Python", "tier": "free", "mode": "quick"},
+        retriever=Retrieval(repo),
+        retrieval_subject="python",
+    )
+    if always_invalid:
+        with pytest.raises(SourceError, match="cấu trúc"):
+            asyncio.run(work)
+        assert repo.progress[-1][0] == "failed" and not repo.saved
+    else:
+        asyncio.run(work)
+        assert repo.progress[-1][0] == "ready"
+        assert all(is_currently_verified(i, repo.chunks) for i in repo.saved.values())
+    assert models.generate_count == 2
+
+
+@pytest.mark.parametrize("checkpoint", [False, True])
+def test_limited_first_lesson_keeps_six_verified_questions_for_three_concepts(
+    checkpoint: bool,
+) -> None:
+    class SmallLesson(Model):
+        async def generate(self, **kwargs: Any) -> ModelReply:
+            reply = await super().generate(**kwargs)
+            if kwargs["task"] == "generate_items":
+                targets = {c["slug"] for c in kwargs["payload"]["graph"]["concepts"]}
+                candidates = [
+                    i
+                    for i in cast(dict[str, Any], reply.content)["items"]
+                    if i["concept"] in targets
+                ]
+                cast(dict[str, Any], reply.content)["items"] = [
+                    {**candidates[n % len(candidates)], "id": f"draft-{n}"}
+                    for n in range(kwargs["payload"]["count"])
+                ]
+            return reply
+
+    repo = MemoryRepository()
+    repo.graph_saved = checkpoint
+    asyncio.run(
+        process_claimed_job(
+            repo,
+            SmallLesson(),
+            {"id": uuid4(), "goal_vi": "Python", "tier": "free", "mode": "quick"},
+            retriever=Retrieval(repo),
+            retrieval_subject="python",
+            max_concepts=3,
+        )
+    )
+    assert repo.progress[-1][0] == "ready" and len(repo.kg.concepts) == 3
+    assert len(repo.saved) == 6
+    assert {i.concept for i in repo.saved.values()} == {c.slug for c in repo.kg.concepts}
+    assert all(is_currently_verified(i, repo.chunks) for i in repo.saved.values())

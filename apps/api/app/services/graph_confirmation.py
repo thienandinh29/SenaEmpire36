@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from app.content.learning import graph_revision
 from app.content.models import Graph
+from app.services.topic_readiness import require_published_topic
 
 
 class GraphConfirmations:
@@ -38,6 +39,7 @@ class GraphConfirmations:
         ).fetchone()
         if row is None:
             raise HTTPException(404, "Không tìm thấy chủ đề.")
+        require_published_topic(conn, subject)
         if row[1] is None:
             raise HTTPException(503, "Bản đồ kiến thức chưa sẵn sàng.")
         try:

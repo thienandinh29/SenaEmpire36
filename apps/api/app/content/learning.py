@@ -15,6 +15,25 @@ from app.tutor.hints import Citation
 GraphConfirmation = Callable[[str, str, str], bool]
 
 
+def first_lesson_graph(graph: Graph, limit: int) -> Graph:
+    """Keep a small prerequisite-closed lesson, rather than an entire subject map."""
+    if limit < 1:
+        raise ValueError("lesson concept limit must be positive")
+    selected: list[str] = []
+    while len(selected) < min(limit, len(graph.concepts)):
+        next_concept = next(
+            c
+            for c in graph.concepts
+            if c.slug not in selected
+            and all(e.prerequisite in selected for e in graph.edges if e.to == c.slug)
+        )
+        selected.append(next_concept.slug)
+    return Graph(
+        concepts=[c for c in graph.concepts if c.slug in selected],
+        edges=[e for e in graph.edges if e.prerequisite in selected and e.to in selected],
+    )
+
+
 def graph_revision(graph: Graph) -> str:
     return digest(graph.model_dump(mode="json", by_alias=True))
 

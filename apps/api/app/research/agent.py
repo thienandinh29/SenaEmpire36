@@ -7,7 +7,11 @@ import re
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from time import monotonic
+from typing import TYPE_CHECKING
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
+
+if TYPE_CHECKING:
+    from app.research.relevance import ResearchRelevance
 
 from app.research.reader import Allowlist, SafeReader, SourceError, load_allowlist
 from app.uploads.reader import read_link
@@ -17,6 +21,7 @@ from app.uploads.reader import read_link
 class SearchResult:
     title: str
     url: str
+    snippet: str = ""
 
 
 @dataclass(frozen=True)
@@ -102,6 +107,7 @@ class ResearchAgent:
         max_searches: int = 15,
         max_reads: int = 12,
         deadline_seconds: float = 480,
+        relevance: "ResearchRelevance | None" = None,
     ) -> None:
         if not (1 <= max_searches <= 15 and 1 <= max_reads <= 12 and 0 < deadline_seconds <= 480):
             raise ValueError("Research limits exceed the contract")
@@ -110,6 +116,7 @@ class ResearchAgent:
             raise ValueError("Research reader must enforce the same allowlist")
         self.reader = reader or SafeReader(allowlist=self.allowlist)
         self.search = search
+        self.relevance = relevance
         self.max_searches, self.max_reads, self.deadline = max_searches, max_reads, deadline_seconds
 
     async def research(self, goal: str, on_event: OnEvent) -> list[ChosenSource]:
@@ -136,6 +143,13 @@ class ResearchAgent:
 
         try:
             async with asyncio.timeout(self.deadline):
+                search_goal = goal.strip()
+                alternate_query = ""
+                if self.relevance is not None:
+                    plan = await self.relevance.plan(goal)
+                    search_goal = plan.query
+                    alternate_query = plan.alternate_query
+                    await event("search", "Phạm vi tìm tài liệu: " + plan.scope_vi)
                 for publisher in self.allowlist.publishers:
                     if (
                         publisher.fallback_only
@@ -144,10 +158,34 @@ class ResearchAgent:
                     ):
                         continue
                     searches += 1
-                    query = f"{goal.strip()} textbook site:{publisher.domains[0]}"
+                    # Adapters receive the domain scope separately. Do not turn site:
+                    # operators into stray query words when sanitizing model queries.
+                    query = (
+                        search_goal
+                        if self.relevance
+                        else (f"{search_goal} textbook site:{publisher.domains[0]}")
+                    )
                     await event("search", f"Đang tìm giáo trình tại {publisher.name}…")
                     try:
                         results = await self.search(query, publisher.domains)
+                        if self.relevance:
+                            if (
+                                alternate_query
+                                and alternate_query != query
+                                and searches < self.max_searches
+                            ):
+                                searches += 1
+                                alternatives = await self.search(alternate_query, publisher.domains)
+                                results = list(results[:6]) + list(alternatives[:6])
+                            results = await self.relevance.rank(goal, results)
+                            # Prefer individual HTML lessons over whole-book downloads.
+                            results = sorted(
+                                results,
+                                key=lambda r: (
+                                    urlsplit(r.url).path.lower().endswith(".pdf")
+                                    or "/open/download" in r.url
+                                ),
+                            )
                     except SourceError as exc:
                         if exc.retryable:
                             continue
@@ -156,7 +194,12 @@ class ResearchAgent:
                     for result in results:
                         if (
                             reads >= self.max_reads
-                            or publisher_reads >= per_publisher_reads
+                            or publisher_reads
+                            >= (
+                                max(3, per_publisher_reads)
+                                if self.relevance
+                                else per_publisher_reads
+                            )
                             or publisher_selected >= 2
                         ):
                             break
@@ -183,15 +226,23 @@ class ResearchAgent:
                             license_name = detect_license(text)
                         except SourceError:
                             continue
-                        sources.append(
-                            ChosenSource(
-                                result.title,
-                                actual.name,
-                                document.source_uri,
-                                license_name,
-                                text,
-                            )
+                        candidate = ChosenSource(
+                            result.title,
+                            actual.name,
+                            document.source_uri,
+                            license_name,
+                            text,
                         )
+                        if self.relevance is not None and not await self.relevance.supports(
+                            goal, candidate
+                        ):
+                            await event(
+                                "read",
+                                "Bỏ qua nguồn không có bài học đúng mục tiêu: " + result.title,
+                                document.source_uri,
+                            )
+                            continue
+                        sources.append(candidate)
                         selected_urls.add(final_url)
                         publisher_selected += 1
                         publishers.add(actual.name)

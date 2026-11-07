@@ -78,7 +78,7 @@ def test_quick_upload_pipeline_never_searches_and_publishes_only_after_persisten
 
     async def progress(value: Progress) -> None:
         if value.graph_ready:
-            assert ports.graph_saved
+            assert ports.graph_saved and ports.items_saved
         if value.items_ready:
             assert ports.items_saved
         states.append(value)
@@ -125,6 +125,7 @@ def test_pipeline_does_not_publish_invalid_items_or_graph(failure: str) -> None:
             )
         )
     assert states[-1].status == "failed" and not ports.items_saved
+    assert all(not state.graph_ready for state in states)
     assert all(not state.items_ready for state in states)
 
 

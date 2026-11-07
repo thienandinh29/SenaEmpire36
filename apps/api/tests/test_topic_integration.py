@@ -25,7 +25,8 @@ def test_worker_calls_pipeline_and_persists_partial_failure(database_url: str) -
         state = snapshot(conn, topic_id)
         assert state is not None
         assert state["status"] == "failed"
-        assert state["graph_ready"] and not state["items_ready"]
+        assert not state["graph_ready"] and not state["items_ready"]
+        assert ports.graph_saved  # private checkpoint, not a published learner graph
         assert state["subject_slug"] == "biology"
         assert state["sources"][0]["publisher"] == "Publisher"
         assert "text" not in state["sources"][0]

@@ -1,7 +1,9 @@
 import asyncio
+from typing import Any, cast
 
 import pytest
 
+from app.content.gateway import ModelReply
 from app.content.models import Item, ModelIdentity
 from app.guardrails.answerability import verify_item
 from app.tutor.hints import HintDraft, hint, release_hint, verify_hint
@@ -95,3 +97,42 @@ def test_hint_same_family_and_changed_history_block_release() -> None:
     assert (
         release_hint(attempt, item, fake.chunks, sources, level=2, history=["Gợi ý trước"]) is None
     )
+
+
+@pytest.mark.parametrize("repairable", [True, False])
+def test_hint_quote_correction_is_bounded_and_still_requires_exact_evidence(
+    repairable: bool,
+) -> None:
+    fake, item = prepared()
+
+    class Quotes(FakeGateway):
+        checks = 0
+
+        async def generate(self, **kwargs: Any) -> ModelReply:
+            reply = await super().generate(**kwargs)
+            if kwargs["task"] == "verify_hint":
+                self.checks += 1
+                if self.checks == 1 or not repairable:
+                    cast(dict[str, Any], reply.content)["evidence"][0]["quote"] = (
+                        "Invented quotation, absent from source"
+                    )
+                if self.checks == 2:
+                    assert "evidence_feedback" in kwargs["payload"]
+            return reply
+
+    models = Quotes()
+    models.item, models.chunks = item, fake.chunks
+    draft = HintDraft(hint_vi="Hãy xác định phép toán trong đề.", chunk_ids=item.chunk_ids)
+    result = asyncio.run(verify_hint(item, draft, fake.chunks, item.generator, models, level=1))
+    assert models.checks == 2
+    assert result.verification.status == ("verified" if repairable else "needs_review")
+
+
+def test_hint_negative_rubric_does_not_trigger_quote_retry() -> None:
+    fake, item = prepared()
+    fake.overrides = {"no_answer_leak": False}
+    before = len(fake.calls)
+    draft = HintDraft(hint_vi="Hãy xác định phép toán trong đề.", chunk_ids=item.chunk_ids)
+    result = asyncio.run(verify_hint(item, draft, fake.chunks, item.generator, fake, level=1))
+    assert result.verification.status == "needs_review"
+    assert len(fake.calls) == before + 1

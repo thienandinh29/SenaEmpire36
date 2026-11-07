@@ -238,13 +238,13 @@ class TopicPipeline:
                 ):
                     raise SourceError("Sơ đồ tham chiếu nguồn ngoài nội dung đã truy xuất.")
                 await self.ports.save_graph(graph)
-                graph_ready, subject_slug = True, graph.subject_slug
+                subject_slug = graph.subject_slug
                 await progress(
                     Progress(
                         "graph",
-                        "Đã có sơ đồ kiến thức.",
+                        "Đang kiểm chứng câu hỏi cho bản đồ nháp.",
                         60,
-                        True,
+                        False,
                         False,
                         subject_slug,
                     )
@@ -282,7 +282,7 @@ class TopicPipeline:
                 if len(verified) < self.first_items:
                     raise SourceError("Chưa đủ câu hỏi đã kiểm chứng để bắt đầu đánh giá.")
                 await self.ports.save_items(subject_slug, verified)
-                items_ready = True
+                graph_ready = items_ready = True
                 await progress(
                     Progress(
                         "items",
