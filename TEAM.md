@@ -48,8 +48,8 @@ retrieval, migrations `0003`–`0004`. Details and open contract decisions: `spe
    `⏳ waiting on P_: <what> (ready/<tag>, since H_)`. Pick the tag from the table under Git workflow, or propose one.
    Keep working on fixtures, golden topics, stubs or mock JSON meanwhile (rule 3); do not stop.
 3. **Finished something others wait on?** Merge it (CI green), then **tag it `ready/<what>`** (see Git workflow) and tick
-   your row (`[x]`). That tag is the signal: the waiting lane's agent sees it, deletes its `⏳` line, rebases and
-   continues, with nobody asking anybody.
+   your row (`[x]`). That tag is the signal (or, if tags cannot be pushed from your environment, your ticked row on
+   `main`): the waiting lane's agent sees it, deletes its `⏳` line, rebases and continues, with nobody asking anybody.
 4. **Update it yourself, no approval needed.** Each lane edits only its own row (the one exception to lane-owned paths,
    like the reserved migrations) on its lane branch and opens a small PR titled `[P_] board: ...` that touches **only
    that row**. Nobody reviews it: merge your own once CI is green. Never edit another lane's row or any contract text:
@@ -345,7 +345,12 @@ P3 watches the VM and merges green PRs.
   `main` `ready/<what>` and push the tag (`git tag -a ready/<what> -m "..." && git push origin ready/<what>`), and tick your
   board row. A waiting agent runs `git fetch --tags` and `git tag -l "ready/*"`; when its tag exists it deletes its `⏳`
   line, rebases onto it and continues. Whoever merged the work (or its owner) tags it; a wrong tag is replaced by
-  `ready/<what>-2`, never moved. Expected tags (add rows as needs appear):
+  `ready/<what>-2`, never moved.
+  **If a tag push is refused** (an agent sandbox or proxy can answer HTTP 403; a refusal is policy, so do not retry or
+  work around it), the signal is the board instead: once your tick of the row is merged to `main`, a waiting agent treats
+  it as equal to the tag, so it continues when **either** the tag exists **or** the owner's matching item is `[x]` on
+  `main`. Tell the contact, who creates the tag from a terminal or on GitHub (Releases → new tag). The same goes for
+  `checkpoint-h*`. Expected tags (add rows as needs appear):
 
 | Tag | Tagged by | Waiting on it | When |
 |---|---|---|---|
