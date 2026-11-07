@@ -47,10 +47,16 @@ retrieval, migrations `0003`–`0004`. Details and open contract decisions: `spe
 2. **Waiting on another lane?** Add one line to **your own row**: `⏳ waiting on P_: <what> (since H_)`, and tell that
    person. Keep working on fixtures, golden topics, stubs or mock JSON meanwhile (rule 3); do not stop.
 3. **Finished something others wait on?** Tick it in your row (`[x]`) and say so; the person waiting deletes their
-   `⏳` line. A blocker open for more than ~1 hour is raised at the next checkpoint, or to P2 while P1 sleeps.
-4. **Update it yourself.** Each lane edits only its own row (the one exception to lane-owned paths, like the reserved
-   migrations), commits on its lane branch and opens a small PR titled `[P_] board: ...`; P2 merges these as routine.
-   Never edit another lane's row or any contract text: ask the owner.
+   `⏳` line.
+4. **Update it yourself, no approval needed.** Each lane edits only its own row (the one exception to lane-owned paths,
+   like the reserved migrations) on its lane branch and opens a small PR titled `[P_] board: ...` that touches **only
+   that row**. Nobody reviews it: merge your own once CI is green. Never edit another lane's row or any contract text:
+   ask the owner.
+
+**The contact: P1 (P2 while P1 sleeps).** Their one job is that **nobody waits on another lane's work.** They read the
+board at every checkpoint and whenever a `⏳` line appears. For each one they find who owns the work and make it
+happen, or remove the wait: reorder the work, give the waiting lane a fixture, stub or mock to build on, or take the
+task over. A `⏳` older than ~1 hour is treated as a problem to fix now, not a note to leave.
 
 Known gap, not a blocker: placement finds the exact gap in ~56–64% of runs with noisy (slip/guess) answers, against a
 90% target; it is exact with clean answers and always finishes in ≤ 6 questions (`specs/engine/spec.md`). P1 decides
