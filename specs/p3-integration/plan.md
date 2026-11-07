@@ -27,3 +27,11 @@ User additionally approved python-multipart for the published file-upload contra
 
 Checks: ruff lint/format, mypy, pytest; isolated offline tests first, full suite afterward.
 Report missing DB/cloud prerequisites honestly. Coordinate MAP updates with P1.
+
+
+Follow-up execution: pin P1's pushed contract revision for offline regression,
+update P3 boundary fields and eliminate answer-label translation, retain lane
+ownership. Extend audited library export with P1's two-file format; validate both
+sample exports and actual cached library against P1. Add explicit Brave smoke CLI;
+record only process presence/config booleans. Refresh OpenAPI/runtime receipts and
+hand P2 exact engine/transaction/retrieval calls through contract-review.md.

@@ -1,5 +1,8 @@
 """Brave Web Search adapter; provider filtering plus independent local domain checks."""
 
+import argparse
+import asyncio
+import json
 import os
 import re
 from collections.abc import Sequence
@@ -100,3 +103,41 @@ def default_agent() -> ResearchAgent:
     if not key:
         raise SourceError("Dịch vụ tìm kiếm chưa được cấu hình.")
     return ResearchAgent(BraveSearch(key))
+
+
+def configuration() -> dict[str, str | bool]:
+    """Process configuration only; never read credential files or expose key values."""
+    provider = os.environ.get("SEARCH_PROVIDER", "brave")
+    return {
+        "provider": "brave" if provider == "brave" else "unsupported",
+        "api_key_present": bool(os.environ.get("SEARCH_API_KEY")),
+    }
+
+
+async def probe(search: BraveSearch) -> dict[str, str | int]:
+    results = await search("biology cells textbook", ["bio.libretexts.org"])
+    if not results:
+        raise SourceError("Search probe returned no allowed results")
+    return {"provider": "brave", "status": "ok", "allowed_results": len(results)}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Brave check; no network without --live")
+    parser.add_argument("--live", action="store_true")
+    args = parser.parse_args()
+    config = configuration()
+    if not args.live:
+        print(json.dumps({"live": False, **config}))
+        return
+    if config["provider"] != "brave" or not config["api_key_present"]:
+        print(json.dumps({"live": False, "status": "unconfigured"}))
+        raise SystemExit(1)
+    try:
+        print(json.dumps(asyncio.run(probe(BraveSearch(os.environ["SEARCH_API_KEY"])))))
+    except SourceError:
+        print(json.dumps({"provider": "brave", "status": "failed"}))
+        raise SystemExit(1) from None
+
+
+if __name__ == "__main__":
+    main()

@@ -3,27 +3,28 @@
 from typing import Literal, Protocol
 
 from fastapi import APIRouter, HTTPException
-from pydantic import Field, HttpUrl
+from pydantic import Field
 
 from app.api.learn import Input, Output
 
 
 class Citation(Output):
     title: str = Field(min_length=1)
-    section: str
-    url: HttpUrl
+    section: str | None = None
+    url: str = Field(min_length=1)
+    page: int | None = Field(default=None, ge=1)
 
 
 class HintInput(Input):
     learner_id: str = Field(min_length=1, max_length=200)
     item_id: str = Field(min_length=1, max_length=200)
-    level: int = Field(ge=0, strict=True)
-    last_answer: str | None = Field(default=None, max_length=4000)
+    level: int = Field(ge=1, le=4, strict=True)
+    last_answer: int | None = Field(default=None, ge=0, strict=True)
     tier: Literal["free", "pro"]
 
 
 class AskInput(Input):
-    question: str = Field(min_length=1, max_length=4000)
+    question: str = Field(min_length=1, max_length=1000)
     subject: str = Field(min_length=1, max_length=200)
     tier: Literal["free", "pro"]
 
