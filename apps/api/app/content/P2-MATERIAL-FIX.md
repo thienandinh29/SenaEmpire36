@@ -11,7 +11,12 @@ chapter provenance survives canonical book mapping. No constraint was removed.
 Regression DB coverage: `tests/content/test_material_database.py` tests shared book
 mapping, stable UUID/index/provenance on reordered replay, new chunks, concurrent
 replay, transaction rollback and successful retry. These are real PostgreSQL tests,
-not simulated evidence; pending CI/P2 execution. Local commands use `--no-db` only.
+not simulated evidence. PostgreSQL CI for code commit b2f8190 passed:
+https://github.com/thienandinh29/SenaEmpire36/actions/runs/42386105551
+API job's full `uv run pytest -q`, Ruff/format and web job all succeeded. No exact
+CI test-count is inferred from job status. P2's own import run remains pending.
+Local full checks:1303 passed,116 DB tests skipped by explicit `--no-db`; Ruff,
+format and strict mypy passed. Local skips are not counted as DB passes.
 
 ## P2: import golden material twice without overwriting item verification
 

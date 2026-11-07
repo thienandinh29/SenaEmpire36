@@ -24,7 +24,9 @@ The DB tests now use an explicit per-test approval registry and confirm the actu
 learner/topic/current stored revision after creating the learner. Only the tests
 whose setup requires confirmed learning receive that fixture. Offline guard tests
 retain unconfirmed =>409 and cover wrong learner/topic/old version for both learning
-and tutor. They use simulated repository ports; DB tests remain subject to CI.
+and tutor. They use simulated repository ports. The PostgreSQL-backed full API CI
+for b2f8190 passed: https://github.com/thienandinh29/SenaEmpire36/actions/runs/42386105551.
+P2's real application/import/verification acceptance remains pending.
 
 End-to-end run sheet: create learner/topic, inspect source-backed graph, explicitly
 confirm that version through the agreed integration, perform placement/practice,
