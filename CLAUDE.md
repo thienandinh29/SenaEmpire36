@@ -33,11 +33,13 @@ Rules that always apply, even without reading `TEAM.md`:
 - **Handoff board** (`TEAM.md`): read it at session start and before waiting on another lane. If you are blocked, add
   `⏳ waiting on P_: <what> (ready/<tag>)` to *your own row* and push it yourself: a small PR `[P_] board: …` touching
   only that row, merged by you once CI is green (no review needed). **Do not wait idle:** keep working on fixtures and
-  stubs, and check `git fetch --tags && git tag -l "ready/*"`; when your tag exists, delete the `⏳` line, rebase and
-  continue. When you finish something others wait on, merge it, push the tag `ready/<what>` and tick your row. After
-  each checkpoint tag (`checkpoint-h3`, `-h8`, `-h12`) rebase your lane branch onto it and run tests. P1 (P2 while P1
-  sleeps) is the contact whose job is that nobody waits on another lane. Your own board row is the one thing outside
-  your lane's paths you may edit; never touch another lane's row.
+  stubs, and check `git fetch --tags && git tag -l "ready/*"`; when your tag exists **or the owner's row is ticked on
+  `main`**, delete the `⏳` line, rebase and continue. When you finish something others wait on, merge it, push the tag
+  `ready/<what>` and tick your row; if the tag push is refused (HTTP 403), do not retry or work around it: tick your
+  row and tell the contact, who creates the tag. After each checkpoint tag (`checkpoint-h3`, `-h8`, `-h12`) rebase
+  your lane branch onto it and run tests. P1 (P2 while P1 sleeps) is the contact whose job is that nobody waits on
+  another lane. Your own board row is the one thing outside your lane's paths you may edit; never touch another
+  lane's row.
 - Never push to `main`, never force push, never read `.env`.
 - Migrations use the reserved numbers in `TEAM.md`; additive only except `0003`.
 - Feature freeze at H18: after that, bug fixes only.
