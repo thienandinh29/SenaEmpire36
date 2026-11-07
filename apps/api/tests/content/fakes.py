@@ -44,7 +44,9 @@ class FakeGateway:
         if task == "verify_item":
             content = {
                 "supported": True,
-                "selected_option_id": self.item.answer_id,
+                "selected_option_id": next(
+                    f"choice-{i}" for i, o in enumerate(self.item.options) if o.correct
+                ),
                 "unique_answer": True,
                 "ambiguous": False,
                 "multiple_correct": False,

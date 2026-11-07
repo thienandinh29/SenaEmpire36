@@ -23,7 +23,7 @@ from app.content.models import (
 )
 from app.guardrails.answerability import blind_request, evidence_valid, is_currently_verified
 
-PROMPT_VERSION = "p4-hint-v1"
+PROMPT_VERSION = "p4-hint-v2"
 LEVELS = {
     1: "Nhắc khái niệm liên quan mà không nêu kết luận của bài.",
     2: "Đặt câu hỏi dẫn dắt hoặc gợi quy trình suy luận; chưa thực hiện bước cuối.",
@@ -112,6 +112,8 @@ def obvious_leak(item: Item, draft: HintDraft) -> bool:
     if re.search(r"\b(?:đáp án|chọn|phương án)\s*(?:là|:)\s*[a-d1-4]\b", text):
         return True
     if any(re.search(rf"\b{re.escape(o.id.casefold())}\b", text) for o in item.options):
+        return True
+    if re.search(r"\bchoice-\d+\b", text):
         return True
     # This conservative check may reject harmless literal overlap; never skip model review.
     return bool(label and re.search(rf"(?<!\w){re.escape(label)}(?!\w)", text))
@@ -256,7 +258,7 @@ def release_hint(
         return None
 
 
-async def hint(
+async def generate_hint_attempt(
     item: Item,
     level: int,
     last_answer: str | None,
@@ -267,12 +269,15 @@ async def hint(
     sources: list[Source],
     history: list[str] | None = None,
     timeout_seconds: float = 30,
-) -> Hint | None:
-    """Returns safe learner payload or None. The route owns a neutral localized message."""
+) -> HintAttempt | None:
+    """Internal result for durable audit/cache; never return this object to learners."""
     history = history or []
     if level not in LEVELS or not is_currently_verified(item, chunks):
         return None
     try:
+        from app.content.pipeline import require_model_permission
+
+        require_model_permission(sources)
         payload = blind_request(item, chunks).model_dump(mode="json")
         payload.update(
             {"level_instruction": LEVELS[level], "last_answer": last_answer, "history": history}
@@ -300,8 +305,36 @@ async def hint(
             tier=tier,
             timeout_seconds=timeout_seconds,
         )
-        return release_hint(
-            attempt, item, chunks, sources, level=level, last_answer=last_answer, history=history
-        )
+        return attempt
     except Exception:
         return None
+
+
+async def hint(
+    item: Item,
+    level: int,
+    last_answer: str | None,
+    chunks: list[Chunk],
+    tier: str,
+    *,
+    gateway: Gateway,
+    sources: list[Source],
+    history: list[str] | None = None,
+    timeout_seconds: float = 30,
+) -> Hint | None:
+    attempt = await generate_hint_attempt(
+        item,
+        level,
+        last_answer,
+        chunks,
+        tier,
+        gateway=gateway,
+        sources=sources,
+        history=history,
+        timeout_seconds=timeout_seconds,
+    )
+    if attempt is None:
+        return None
+    return release_hint(
+        attempt, item, chunks, sources, level=level, last_answer=last_answer, history=history
+    )

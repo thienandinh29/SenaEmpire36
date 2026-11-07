@@ -48,7 +48,9 @@ def test_p3_actual_completion_metadata_and_family_scope_drive_p4_gate() -> None:
         json.dumps(
             {
                 "supported": True,
-                "selected_option_id": item.answer_id,
+                "selected_option_id": next(
+                    f"choice-{i}" for i, o in enumerate(item.options) if o.correct
+                ),
                 "unique_answer": True,
                 "ambiguous": False,
                 "multiple_correct": False,

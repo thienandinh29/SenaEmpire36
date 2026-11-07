@@ -1,4 +1,112 @@
-# P4 handoff
+# P4 handoff — runtime completion
+
+Checkout confirmed: integration/p1-p5, base HEAD 2128cb2. This session's changes
+remain uncommitted. No merge, push, reset, shared migration or real model call.
+No applicable AGENTS.md found; TEAM/P4/contracts/integration/gateway read.
+
+## Current implementation
+
+- repository.py: P2 pool/transactions/tables; durable chunks, graph, choices,
+  misconceptions, stable external IDs, audits, revision checks and hint cache.
+- ports.py: P3 PipelinePorts and TopicPipeline; P1 chunker; actual P3Gateway;
+  existing topic_jobs progress/trail. Same-job retries reuse stable slots. Pending
+  outcomes persist, but ready requires six current verified questions and save.
+- backends.py: existing learning/topics/tutor protocols, P1 placement/BKT/path/
+  remediation/FSRS, P2 persistence, sessions and decision traces. Stale and
+  non-pending attempts fail. Regular learning selects unattempted items.
+- runtime.py: explicit factory binds adapters into P2's existing app/pool/routes.
+  Default app.main is unchanged. Worker --pipeline invokes these P4/P3 ports
+  after claim commits. The small worker hook needs P2 review.
+- answerability.py: opaque choice-N aliases and strict blind whitelist; actual
+  post-fallback model family; prompt v2; audit history retained on invalidation.
+- hints.py: Vietnamese levels1–3, answer/misconception/history, independent
+  verifier, disclosure checks, source citations, audit/cache. Only released hint
+  and citations reach learner. Failures503; stale context409. Level4 withheld.
+- pipeline.py: source permission checked even with existing graph; bounded
+  verification concurrency; deterministic namespaced item IDs.
+- demo.py: environment report, disposable-local DB preparation, pending golden
+  import and actual gateway golden verification. No manual verified switch.
+
+For topic-* subjects, learner selection/get-item/attempt/tutor require current
+verification AND a ready job with items_ready; partial/failed batches are hidden.
+
+## Database proposal — not applied
+
+Historical0005 is unchanged. Migrations0001–0007 already exist. Candidate
+[sql/0008_p4_runtime.sql](sql/0008_p4_runtime.sql) stays OUTSIDE automatic migration
+discovery for P2 review/promotion and numbering check. It adds missing unique
+external_id/misconceptions.slug, option position, job mode/upload_id, metadata,
+revision, audit/cache/session tables and transactional invalidation triggers for
+item/option/chunk/source/concept-citation/misconception changes. Old audits survive.
+New private tables use RLS without browser policies; backend needs privileged access.
+
+This SQL has NOT executed on PostgreSQL. Trigger behavior, extension compatibility,
+locking and migration rollback still require P2's disposable-DB review. Tests create
+and drop isolated nodetrail_test_* databases only. Deployment rollback must accompany
+P2's promotion; historical0005 rollback remains rollback_0005.sql.
+
+## Actual runtime and blockers
+
+Real-model verified questions: **0**. No real pipeline generation, DB import,
+migration, learner/API/tutor end-to-end run or live gateway smoke call occurred.
+The runnable offline tests use fake models, including the actual P3 orchestration.
+
+DATABASE_URL is absent; local127.0.0.1:54322 timed out inside and outside sandbox.
+No Docker/pg_ctl/psql found; WSL reports not installed. No DB was created.
+P3 configuration reports zero configured model routes. Credentials are absent;
+root .env was not read and no secret values were printed.
+
+| Owner | Still required |
+|---|---|
+| P2 | Local PostgreSQL with vector extension; review/promote/test0008 and worker hook; migration rollout/rollback and job reclaim/requeue |
+| P3 | Model IDs/credentials and live gateway tests including fallback identity; search credentials for Deep |
+| P2/P3 | Private Storage for uploaded file bytes and explicit upload model-use permission port |
+| P5 | API-mode configuration against runtime factory, then desktop/mobile browser flow; default frontend remains mock |
+| P1/P4/team | Live evaluation, retrieval labels, human review and source permission resolution |
+
+Minimal Free OpenRouter path requires OPENROUTER_API_KEY,
+OPENROUTER_FREE_MODEL (Gemini), OPENROUTER_VERIFY_MODEL (Claude). Use real IDs whose
+family agrees with P3 routing. Vertex alternatively needs GOOGLE_CLOUD_PROJECT,
+ADC/GOOGLE_APPLICATION_CREDENTIALS and VERTEX_*_MODEL; Bedrock needs AWS_REGION,
+credentials/profile and BEDROCK_*_MODEL. Pro Claude tutor needs an independent Gemini
+verifier route. Different provider/model names alone do not establish independence.
+
+Linked document metadata persists; uploaded file bytes return503 until P2 Storage
+exists. Worker upload processing currently blocks because explicit consent has no
+port (default false). This does not block Quick Python from indexed golden sources.
+Deep code ports exist but have no live search validation. exam-plan and tutor/ask
+remain503, outside the requested P4 hint path. Automatic job retry/reclaim stays P2's.
+
+## Data and remaining P4 evaluation
+
+Existing3 topics ×15 MCQs =45; 15 chunks. Python can be processed independently.
+OpenStax fractions/cell-basics retain model_ingestion_allowed=false; obtain
+permission or replace sources. Existing agent review is recorded in review.md;
+this session does not claim fresh source review or any human approval.
+Human reviewer/time fields stay blank. All45 on-disk golden questions remain pending.
+
+Existing evaluation:50 item cases (44 originals +6 planted variants),20 candidate
+hints, agent expectations and70 pending human-label templates. No human quality
+metric or18/20 tutor acceptance result. TEAM deliverables still pending:20 held-out
+cases based on truly verified items (10 flipped,10 untouched), >=36 planted cases,
+>=20 Vietnamese retrieval judgments and metrics-runner alignment with P1 evalkit.
+Do not treat six planted variants as36 or agent expectations as human labels.
+
+## Fresh verification and reproduction
+
+Exact fresh counts/environment/errors are in runtime-validation.json; older
+validation.json and the notes below are historical. Focused tests cover worker
+orchestration/retry, blindness/fallback, pending/stale gates, audit/cache, hint
+release, metrics and golden structure. Real DB tests are explicitly separate.
+
+See [runtime-demo.md](runtime-demo.md) for setup, pending-item check, golden
+verification, wrong answer/hint and worker generation commands. Import+verify golden
+and pipeline generation are distinct modes. H7 acceptance is still blocked.
+
+---
+
+## Historical pre-runtime handoff (superseded above)
+
 
 Integration update: the original notes below describe the pre-merge P4 checkpoint.
 P1/P2/P3/P5 are now present on integration/p1-p5; P3 routers are mounted, and the P4

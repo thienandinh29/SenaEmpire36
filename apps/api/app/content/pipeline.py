@@ -1,5 +1,7 @@
 """Source -> validated graph -> draft items -> independent verification."""
 
+import asyncio
+
 from pydantic import Field
 
 from app.content.gateway import Gateway, parse_reply
@@ -76,7 +78,6 @@ async def generate_graph(
     )
     graph = parse_reply(reply, Graph)
     validate_references(chunks, sources, graph)
-    require_model_permission(sources)
     return graph
 
 
@@ -88,10 +89,12 @@ async def generate_items(
     *,
     tier: str = "pro",
     count: int = 15,
+    id_namespace: str | None = None,
 ) -> list[Item]:
     if count < 1 or count > 50:
         raise ValueError("count must be 1..50")
     validate_references(chunks, sources, graph)
+    require_model_permission(sources)
     reply = await gateway.generate(
         task="generate_items",
         tier=tier,
@@ -111,11 +114,18 @@ async def generate_items(
         Item.model_validate(
             {
                 **draft.model_dump(mode="json"),
+                "id": f"{id_namespace}:item-{index + 1:03d}" if id_namespace else draft.id,
                 "generator": reply.identity.model_dump(mode="json"),
                 "status": "needs_review",
             }
         )
-        for draft in batch.items
+        for index, draft in enumerate(batch.items)
     ]
     validate_items(items, chunks, sources, graph)
-    return [await verify_item(item, chunks, gateway, tier=tier) for item in items]
+    limit = asyncio.Semaphore(3)
+
+    async def checked(item: Item) -> Item:
+        async with limit:
+            return await verify_item(item, chunks, gateway, tier=tier)
+
+    return list(await asyncio.gather(*(checked(item) for item in items)))

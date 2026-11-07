@@ -43,7 +43,38 @@ P5 now reads P1's real fixture files in contract tests. Trace prior/posterior ca
 null, and nullable evidence is treated as absent; the UI displays 'Không áp dụng'
 rather than inventing zero mastery. Existing mock demonstrations remain labelled.
 
-## What is still missing for a real H7 flow
+## Current P4 runtime completion (uncommitted working tree)
+
+The adapters previously missing below now exist in app/content/repository.py,
+ports.py, backends.py and runtime.py. They reuse P2's pool/queue/persistence, P1's
+engine/chunker and P3's gateway/TopicPipeline/routes. Worker --pipeline connects the
+committed claim to P4 ports. Start app.content.runtime:create_app --factory to bind
+the existing dependency ports; default app.main still intentionally has no adapters.
+
+Candidate app/content/sql/0008_p4_runtime.sql supplies the required additive schema
+and transactional invalidation/cache/audit triggers. It is outside the migration
+glob and NOT applied. Historical0005 remains unchanged. P2 must review/promote it,
+confirm numbering and run isolated DB/rollback checks.
+
+The learner adapter excludes pending/stale items and partial/failed topic jobs;
+tutor releases only independently verified hints with actual citations. See
+[the current handoff](../../apps/api/app/content/HANDOFF.md),
+[demo commands](../../apps/api/app/content/runtime-demo.md) and
+[fresh validation](../../apps/api/app/content/runtime-validation.json).
+
+H7 is still NOT demonstrated: real-model verified count0; no real generation,
+DB import/migration or live learning/tutor run. DATABASE_URL and all model routes/
+credentials are absent. PostgreSQL127.0.0.1:54322 times out, including outside
+sandbox. No local Docker/pg_ctl/psql available; WSL not installed. File upload
+Storage/consent remains P2/P3 work; Free Python indexed-source path is independent.
+OpenStax sources remain blocked. P5 remains mock by default; API browser tests await
+services/configuration. exam-plan/tutor-ask are explicitly unavailable.
+
+## Historical pre-runtime missing-pieces report
+
+The following records the earlier integration checkpoint; the current adapters
+above supersede its missing-code statements. Environment blockers remain.
+
 
 P2's branch provides save_attempt/save_mastery/save_review and queue primitives, but
 does not implement/register concrete LearningBackend, TopicsBackend or TutorBackend.

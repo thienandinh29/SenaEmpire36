@@ -19,7 +19,7 @@ class Source(Record):
     author: str
     publisher: str
     version: str
-    url: str = Field(pattern=r"^https://")
+    url: str = Field(pattern=r"^(https://|storage://|supabase://)")
     section: str
     license: str
     accessed_at: str
@@ -155,6 +155,7 @@ class Item(Record):
     status: Literal["verified", "needs_review"] = "needs_review"
     generator: ModelIdentity
     verification: Verification | None = None
+    verification_history: list[Verification] = Field(default_factory=list)
     human_review: HumanReview = Field(default_factory=HumanReview)
 
     @model_validator(mode="after")
@@ -216,7 +217,8 @@ def item_hash(item: Item, chunks: list[Chunk]) -> str:
     return digest(
         {
             "item": item.model_dump(
-                mode="json", exclude={"status", "verification", "human_review"}
+                mode="json",
+                exclude={"status", "verification", "verification_history", "human_review"},
             ),
             "chunks": [c.model_dump(mode="json") for c in cited_chunks(item, chunks)],
         }

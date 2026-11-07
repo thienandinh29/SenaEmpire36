@@ -40,7 +40,14 @@ def test_pipeline_generates_validated_drafts_then_calls_independent_gate() -> No
                     "items": [
                         items[0].model_dump(
                             mode="json",
-                            exclude={"kind", "status", "generator", "verification", "human_review"},
+                            exclude={
+                                "kind",
+                                "status",
+                                "generator",
+                                "verification",
+                                "verification_history",
+                                "human_review",
+                            },
                         )
                     ]
                 }
