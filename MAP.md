@@ -73,15 +73,15 @@ with one upstream Starlette/httpx deprecation warning. No web app is included.
 | `apps/api/app/engine/remediation.py` | Remediation rules after a wrong answer (`remediate`: weakest prerequisite, repeated misconception, practise again) and `resume`; traced |
 | `apps/api/app/engine/placement.py` | Graph-walk placement: `next_question`, `gap`, `seed_mastery`; stateless, traced; `verify` re-check on by default |
 | `apps/api/app/graders/` | Deterministic MCQ grading (`mcq.py`) |
-| `apps/api/app/tutor/` _(planned, P4)_ | Socratic hint ladder |
+| `apps/api/app/tutor/` | P4 three-level Socratic hints with independent verification and safe release |
 | `apps/api/app/research/` | Deep Research agent, allowlisted search/readers, library acquisition and pipeline |
 | `apps/api/app/uploads/` | PDF/DOCX/link readers and upload metadata validation |
-| `apps/api/app/content/` _(planned, P4)_ | Sources → Knowledge Graph → MCQs with misconception per wrong option |
-| `apps/api/app/guardrails/` _(planned, P4)_ | `answerability.py` (items and tutor hints must be supported by cited chunks), `metrics.py` (error rate on the labelled set) |
-| `data/guardrails/` _(planned, P4)_ | Human-labelled sample: ~50 generated items + ~20 tutor hints marked correct/wrong |
+| `apps/api/app/content/` | P4 schemas, generation, P3 gateway adapter, canonical conversions and runtime repositories/ports |
+| `apps/api/app/guardrails/` | Blind verification, current-hash release gate, human-label metrics; live model acceptance pending |
+| `data/guardrails/` | 50 evaluation questions + 20 hints and human annotation templates; human labels pending |
 | `data/eval/` | Labelled retrieval question sets (Vietnamese question → answer passage) + format README; scored by `app/rag/evaluate.py` |
-| `data/golden/` _(planned, P4)_ | 2–3 hand-checked golden topics (chunks, graph, items): test data, labelled sample, demo fallback |
-| `apps/api/app/jobs/` | Postgres topic-job queue and background worker; P3 pipeline wiring pending |
+| `data/golden/` | Three agent-reviewed topics, 45 pending MCQs and 15 chunks; model/human approval pending |
+| `apps/api/app/jobs/` | Committed Postgres queue, durable progress/trail, configurable P3 pipeline factory and P4 runtime processor |
 | `apps/api/app/observability/` | Logging setup; structlog/Langfuse integration planned |
 | `apps/api/app/rag/` | `notebook.py` (ipynb → chunks), `store.py` (`build_vector_index` after bulk load), `embed.py` (`TeiEmbedder` sync + async, local bge-m3, `make_embedder`; managed-API fallback planned), `chunker.py` (`ParsedDocument` → size-safe `Chunk`s), `library.py` (index every book folder), `retrieve.py` (`Retriever.search` → `Citation`s), `evaluate.py` (retrieval metrics on a labelled question set), `ingest.py` CLI (`--embedder tei|local`, `--build-index`); optional `rerank.py` planned (P1) |
 | `data/raw/thinkpython/` | Downloaded Think Python 3e notebooks + `SOURCE_SHA` (git-ignored; re-download to rebuild) |

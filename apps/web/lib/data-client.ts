@@ -192,6 +192,7 @@ export function createLearningClient(config: WebConfig): LearningClient {
       if (!node) throw new DataError("contract");
       const correct = answer === 1;
       const trace = fixtureTrace(slug, node.p_known, correct);
+      if (trace.posterior === null) throw new DataError("contract");
       node.p_known = trace.posterior;
       node.mastered = node.p_known >= 0.85;
       if (correct) reviews.add(slug);

@@ -13,9 +13,11 @@ describe("mock learning boundary", () => {
     const correct = mockAttempt(1);
     expect(wrong.correct).toBe(false);
     expect(wrong.trace.evidence.misconception).toBeTruthy();
-    expect(wrong.trace.posterior).toBeLessThan(wrong.trace.prior);
+    expect(wrong.trace.prior).not.toBeNull();
+    expect(wrong.trace.posterior).toBeLessThan(wrong.trace.prior!);
     expect(correct.correct).toBe(true);
-    expect(correct.trace.posterior).toBeGreaterThan(correct.trace.prior);
+    expect(correct.trace.prior).not.toBeNull();
+    expect(correct.trace.posterior).toBeGreaterThan(correct.trace.prior!);
     expect(correct.trace.evidence.misconception).toBeUndefined();
   });
   it("references existing concepts in every prerequisite and trace", () => {

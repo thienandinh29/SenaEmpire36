@@ -6,6 +6,7 @@ import importlib
 import logging
 import time
 from collections.abc import Callable
+from typing import Any
 
 import psycopg
 
@@ -25,6 +26,7 @@ def run_once(
     allow_fixture: bool = False,
     pipeline: TopicPipeline | None = None,
     pipeline_factory: Callable[[str], TopicPipeline] | None = None,
+    processor: Callable[[dict[str, Any]], None] | None = None,
 ) -> bool:
     with psycopg.connect(database_url) as conn:
         job = claim(conn)
@@ -33,6 +35,10 @@ def run_once(
     if job["fixture"]:
         with psycopg.connect(database_url) as conn:
             finish(conn, job["id"], fixture=allow_fixture)
+        return True
+    if processor is not None:
+        # The claim commits before P3/P4 starts long model work.
+        processor(job)
         return True
 
     async def progress(value: Progress) -> None:
@@ -91,7 +97,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", action="store_true")
     parser.add_argument("--pipeline-factory", help="P4 adapter factory: package.module:function")
+    parser.add_argument(
+        "--pipeline", action="store_true", help="Use configured P4/P3 content ports"
+    )
     args = parser.parse_args()
+    if args.pipeline and args.pipeline_factory:
+        parser.error("choose --pipeline or --pipeline-factory")
     configure_logging()
     settings = get_settings()
     settings.export_worker_environment()
@@ -100,10 +111,39 @@ def main() -> None:
     if args.pipeline_factory:
         module, function = args.pipeline_factory.split(":", 1)
         pipeline_factory = getattr(importlib.import_module(module), function)
+    if args.pipeline:
+        from app.content.gateway import P3Gateway
+        from app.content.ports import process_claimed_job
+        from app.content.repository import Repository
+        from app.db import create_pool
+
+        with create_pool(database_url) as pool:
+            repository = Repository(lambda: pool)
+            repository.require_schema()
+            gateway = P3Gateway()
+
+            def process(job: dict[str, Any]) -> None:
+                asyncio.run(process_claimed_job(repository, gateway, job))
+
+            loop(database_url, allow_fixture=args.fixture, processor=process)
+        return
+    loop(database_url, allow_fixture=args.fixture, pipeline_factory=pipeline_factory)
+
+
+def loop(
+    database_url: str,
+    *,
+    allow_fixture: bool,
+    pipeline_factory: Callable[[str], TopicPipeline] | None = None,
+    processor: Callable[[dict[str, Any]], None] | None = None,
+) -> None:
     while True:
         try:
             if not run_once(
-                database_url, allow_fixture=args.fixture, pipeline_factory=pipeline_factory
+                database_url,
+                allow_fixture=allow_fixture,
+                pipeline_factory=pipeline_factory,
+                processor=processor,
             ):
                 time.sleep(1)
         except Exception:
