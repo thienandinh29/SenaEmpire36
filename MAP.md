@@ -67,20 +67,22 @@ with one upstream Starlette/httpx deprecation warning. No web app is included.
 | `apps/api/app/evalkit/model_checks.py` | Offline H8 G1–G4 screening against P1 contracts; mandatory review remains explicit (`specs/model-test/offline-checks.md`) |
 | `apps/api/app/evalkit/model_metrics.py` | H8 receipt scoring: verifier catches/false alarms with intervals, p95 latency, task and combined topic cost; missing evidence remains explicit (`specs/model-test/receipts.md`) |
 | `specs/contracts/p1-h7-review.md` | P1 source review, H7 engine acceptance sequence, library issues and placement limitation |
+| `specs/contracts/h7-run-sheet.md` | P1's run sheet for the H7 end-to-end run: go/no-go list, 12 steps with expected results, what to record, a blank result table |
+| `specs/model-test/run-procedure.md` | P1's run procedure for the H8 model test: US$2.00 run cap and US$0.50 per-topic cap (proposals), settings, order, evidence to keep, stop rules |
 | `apps/api/tests/engine/test_learning_flow.py` | JSON-replayed placement/remediation/mastery/review flow; optional P3 real grader on an integration checkout; no live DB/worker claim |
 | `apps/api/app/engine/path.py` | The next step when nothing just went wrong (`next_step`: resume, overdue review, continue, learn, confirm, done) with a target difficulty; traced |
 | `apps/api/app/engine/remediation.py` | Remediation rules after a wrong answer (`remediate`: weakest prerequisite, repeated misconception, practise again) and `resume`; traced |
 | `apps/api/app/engine/placement.py` | Graph-walk placement: `next_question`, `gap`, `seed_mastery`; stateless, traced; `verify` re-check on by default |
 | `apps/api/app/graders/` | Deterministic MCQ grading (`mcq.py`) |
-| `apps/api/app/tutor/` _(planned, P4)_ | Socratic hint ladder |
+| `apps/api/app/tutor/` | P4 three-level Socratic hints with independent verification and safe release |
 | `apps/api/app/research/` | Deep Research agent, allowlisted search/readers, library acquisition and pipeline |
 | `apps/api/app/uploads/` | PDF/DOCX/link readers and upload metadata validation |
-| `apps/api/app/content/` _(planned, P4)_ | Sources → Knowledge Graph → MCQs with misconception per wrong option |
-| `apps/api/app/guardrails/` _(planned, P4)_ | `answerability.py` (items and tutor hints must be supported by cited chunks), `metrics.py` (error rate on the labelled set) |
-| `data/guardrails/` _(planned, P4)_ | Human-labelled sample: ~50 generated items + ~20 tutor hints marked correct/wrong |
+| `apps/api/app/content/` | P4 schemas, generation, P3 gateway adapter, canonical conversions and runtime repositories/ports |
+| `apps/api/app/guardrails/` | Blind verification, current-hash release gate, human-label metrics; live model acceptance pending |
+| `data/guardrails/` | 50 evaluation questions + 20 hints and human annotation templates; human labels pending |
 | `data/eval/` | Labelled retrieval question sets (Vietnamese question → answer passage) + format README; scored by `app/rag/evaluate.py` |
-| `data/golden/` _(planned, P4)_ | 2–3 hand-checked golden topics (chunks, graph, items): test data, labelled sample, demo fallback |
-| `apps/api/app/jobs/` | Postgres topic-job queue and background worker; P3 pipeline wiring pending |
+| `data/golden/` | Three agent-reviewed topics, 45 pending MCQs and 15 chunks; model/human approval pending |
+| `apps/api/app/jobs/` | Committed Postgres queue, durable progress/trail, configurable P3 pipeline factory and P4 runtime processor |
 | `apps/api/app/observability/` | Logging setup; structlog/Langfuse integration planned |
 | `apps/api/app/rag/` | `notebook.py` (ipynb → chunks), `store.py` (`build_vector_index` after bulk load), `embed.py` (`TeiEmbedder` sync + async, local bge-m3, `make_embedder`; managed-API fallback planned), `chunker.py` (`ParsedDocument` → size-safe `Chunk`s), `library.py` (index every book folder), `retrieve.py` (`Retriever.search` → `Citation`s), `evaluate.py` (retrieval metrics on a labelled question set), `ingest.py` CLI (`--embedder tei|local`, `--build-index`); optional `rerank.py` planned (P1) |
 | `data/raw/thinkpython/` | Downloaded Think Python 3e notebooks + `SOURCE_SHA` (git-ignored; re-download to rebuild) |
@@ -96,3 +98,8 @@ with one upstream Starlette/httpx deprecation warning. No web app is included.
 
 | `apps/api/app/research/smoke.py` | Explicit live canonical graph/items and blind verification route smoke; preflight reads a small public book chapter without model calls |
 | `specs/p3-integration/p3-follow-up.md` | P3 follow-up, validated checks, live blockers and P2/P4 integration instructions |
+
+| `specs/p3-integration/h7-results.md` | Current P3 H7 results after main/P4 integration; audited clean library, mandatory worker retrieval, canonical schemas, model configuration, live prerequisites |
+| `data/sources/p3-python-library-audit.json`, `data/sources/p3-h7-readiness.json` | Reproducible local export audit and honest environment/model-call readiness receipts |
+
+| `data/sources/p3-python-query-label-audit.json` | Confirms all 10 P1 query label snippets in the intended book sections, with exact page URLs; no ranked retrieval or held-out tuning |

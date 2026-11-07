@@ -207,3 +207,16 @@ included in total output usage. See [Gemini thinking](https://ai.google.dev/gemi
 `Completion.latency_ms` includes the whole request. `Attempt.latency_ms` excludes
 retry backoff: use the successful attempt for per-model latency and count all attempts
 for token totals. Neither token counts nor route smoke constitute H8 quality acceptance.
+
+
+## Current H7 integration
+
+See [H7 results](../../../../specs/p3-integration/h7-results.md) for the current
+post-merge status. Free and Pro settings are distinct; oversize DeepSeek input is
+rejected before HTTP with schema/framing/output reserved. The conservative context
+and output limits were checked against the official model table on 2026-11-07.
+`uv run python -m app.llm.smoke --live --output ../../outputs/gateway-live.json`
+now defaults to the agreed generator/verifier pair. It records each Attempt and
+successful-attempt latency. Rotate the exposed keys locally before running live.
+`app.research.smoke --live` uses normal app settings and canonical P1 schemas.
+This session's k=12 receipt is preflight only, with no real model metrics.

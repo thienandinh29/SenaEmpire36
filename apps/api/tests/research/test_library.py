@@ -1,6 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -112,3 +113,111 @@ def test_export_keeps_numeric_chapters_and_sections_in_reading_order(tmp_path: P
         "2:_Chapter/10:_Section",
         "10:_Chapter",
     ]
+
+
+def test_manifest_has_explicit_translated_subject_labels() -> None:
+    from app.research.library import load_manifest
+
+    manifest = load_manifest(Path(__file__).resolve().parents[4] / "data/sources/library.yaml")
+    assert len(manifest.books) == 8
+    for book in manifest.books:
+        assert book.subject_slug == book.slug
+        assert book.subject_name_vi and book.subject_name_vi != book.slug
+        assert book.subject_name_en
+
+
+def test_content_changes_invalidate_export_version(tmp_path: Path) -> None:
+    from app.research.library import _export_p1
+
+    book = Book(
+        slug="book",
+        title="Book",
+        publisher="Publisher",
+        start_url="https://books.example/book",
+        license_url="https://books.example/license",
+        page_prefix="https://books.example/book",
+    )
+    record = {"source_uri": book.start_url, "text": "Old", "license": "CC BY 4.0", "sha256": "raw"}
+    _export_p1(book, tmp_path, [record])
+    before = json.loads((tmp_path / "source.json").read_text())["version"]
+    record["text"] = "New extraction from unchanged raw HTML"
+    _export_p1(book, tmp_path, [record])
+    assert json.loads((tmp_path / "source.json").read_text())["version"] != before
+
+
+def test_pre_index_audit_reports_real_chunk_sizes_and_source_retention(tmp_path: Path) -> None:
+    from app.research.library import _export_p1, audit_export
+
+    book = Book(
+        slug="book",
+        title="Book",
+        publisher="Publisher",
+        subject_slug="book",
+        subject_name_vi="Sách",
+        subject_name_en="Book",
+        start_url="https://books.example/book",
+        license_url="https://books.example/license",
+        page_prefix="https://books.example/book",
+    )
+    folder = tmp_path / book.slug
+    folder.mkdir()
+    _export_p1(
+        book,
+        folder,
+        [
+            {
+                "source_uri": book.start_url,
+                "text": "Reading content. " * 300,
+                "license": "CC BY 4.0",
+                "sha256": "raw",
+            }
+        ],
+    )
+    report = audit_export(book, tmp_path)
+    assert report["status"] == "pass" and report["source_pages"] == 1
+    assert report["chunks"] == 3
+    document = json.loads((folder / "document.json").read_text())
+    document["blocks"][0]["text"] += " Skip to main content"
+    (folder / "document.json").write_text(json.dumps(document), encoding="utf-8")
+    assert audit_export(book, tmp_path)["status"] == "fail"
+
+
+def test_p1_label_audit_requires_matching_text_and_page(tmp_path: Path) -> None:
+    from app.research.library import _export_p1, audit_query_labels
+
+    book = Book(
+        slug="book",
+        title="Book",
+        publisher="Publisher",
+        start_url="https://books.example/book",
+        license_url="https://books.example/license",
+        page_prefix="https://books.example/book",
+    )
+    _export_p1(
+        book,
+        tmp_path,
+        [
+            {
+                "source_uri": book.start_url,
+                "text": "A boolean expression.",
+                "license": "CC BY 4.0",
+                "sha256": "raw",
+            }
+        ],
+    )
+    queries = tmp_path / "queries.yaml"
+    data: dict[str, Any] = {
+        "subject": "book",
+        "questions": [
+            {
+                "id": "q01",
+                "question_vi": "Boolean?",
+                "relevant": [{"contains": "BOOLEAN expression", "source_uri": book.start_url}],
+            }
+        ],
+    }
+    queries.write_text(json.dumps(data), encoding="utf-8")
+    assert audit_query_labels(tmp_path, queries)["all_snippets_present"]
+    data["questions"][0]["relevant"][0]["source_uri"] = "https://books.example/wrong"
+    queries.write_text(json.dumps(data), encoding="utf-8")
+    assert not audit_query_labels(tmp_path, queries)["all_snippets_present"]

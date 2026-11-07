@@ -69,3 +69,36 @@ def test_worker_environment_forwarding(monkeypatch: pytest.MonkeyPatch) -> None:
     assert os.environ["VERTEX_LOCATION"] == "shell-location"
     assert "private-search" not in repr(settings)
     assert "private-provider" not in repr(settings)
+
+
+def test_deepseek_settings_forwarding_and_secret_masking(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    for name in ("DEEPSEEK_API_KEY", "DEEPSEEK_FREE_MODEL", "DEEPSEEK_PRO_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret-deepseek-test")
+    monkeypatch.setenv("DEEPSEEK_FREE_MODEL", "deepseek-flash")
+    monkeypatch.setenv("DEEPSEEK_PRO_MODEL", "deepseek-v4-pro")
+    settings = Settings(_env_file=None)
+    assert "secret-deepseek-test" not in repr(settings)
+    monkeypatch.delenv("DEEPSEEK_API_KEY")
+    monkeypatch.delenv("DEEPSEEK_FREE_MODEL")
+    monkeypatch.delenv("DEEPSEEK_PRO_MODEL")
+    settings.export_worker_environment()
+    assert os.environ["DEEPSEEK_API_KEY"] == "secret-deepseek-test"
+    assert os.environ["DEEPSEEK_FREE_MODEL"] == "deepseek-flash"
+    assert os.environ["DEEPSEEK_PRO_MODEL"] == "deepseek-v4-pro"
+
+
+def test_gemini_secret_export_and_shell_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    monkeypatch.setenv("GEMINI_API_KEY", "private-gemini-test")
+    monkeypatch.setenv("GEMINI_VERIFY_MODEL", "gemini-test")
+    settings = Settings(_env_file=None)
+    assert "private-gemini-test" not in repr(settings)
+    monkeypatch.delenv("GEMINI_API_KEY")
+    monkeypatch.setenv("GEMINI_VERIFY_MODEL", "gemini-shell-test")
+    settings.export_worker_environment()
+    assert os.environ["GEMINI_API_KEY"] == "private-gemini-test"
+    assert os.environ["GEMINI_VERIFY_MODEL"] == "gemini-shell-test"

@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     # Default points at the local Docker database from docker-compose.yml.
     database_url: str = "postgresql://postgres:postgres@localhost:54322/nodetrail"
     api_key: str = ""
+    allow_unauthenticated_local_dev: bool = False
+    demo_uploads_enabled: bool = False
     cors_origins: str = "http://localhost:3000"
     supabase_url: str = ""
     supabase_service_role_key: SecretStr = SecretStr("")
@@ -38,6 +40,11 @@ class Settings(BaseSettings):
     aws_region: str = "ap-southeast-1"
     aws_profile: str = ""
     openrouter_api_key: SecretStr = SecretStr("")
+    deepseek_api_key: SecretStr = SecretStr("")
+    gemini_api_key: SecretStr = SecretStr("")
+    gemini_verify_model: str = ""
+    deepseek_free_model: str = ""
+    deepseek_pro_model: str = ""
     vertex_free_model: str = ""
     vertex_graph_model: str = ""
     vertex_verify_model: str = ""
@@ -60,6 +67,11 @@ class Settings(BaseSettings):
             "aws_region",
             "aws_profile",
             "openrouter_api_key",
+            "deepseek_api_key",
+            "gemini_api_key",
+            "gemini_verify_model",
+            "deepseek_free_model",
+            "deepseek_pro_model",
             "vertex_free_model",
             "vertex_graph_model",
             "vertex_verify_model",

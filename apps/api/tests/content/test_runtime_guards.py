@@ -138,7 +138,11 @@ def test_runtime_factory_binds_existing_p3_routes_without_preview(
             pass
 
     monkeypatch.setattr("app.main.create_pool", lambda url: Pool())
-    app = create_app(Settings(_env_file=None), repository=Store(), gateway=FakeGateway())  # type: ignore[arg-type]
+    app = create_app(
+        Settings(allow_unauthenticated_local_dev=True, _env_file=None),
+        repository=Store(),  # type: ignore[arg-type]
+        gateway=FakeGateway(),
+    )
     with TestClient(app) as client:
         schema = client.get("/openapi.json").json()
         assert "/tutor/hint" in schema["paths"] and "/topics" in schema["paths"]

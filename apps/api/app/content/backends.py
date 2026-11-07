@@ -21,6 +21,7 @@ from app.graders.mcq import Grade, grade
 from app.graders.mcq import Item as GraderItem
 from app.jobs.queue import enqueue
 from app.schemas import KnowledgeGraph
+from app.services.attempts import remember, replay
 from app.services.learning import save_attempt, save_mastery, save_review
 from app.tutor.hints import HintAttempt, generate_hint_attempt, release_hint
 from app.uploads.metadata import prepare_metadata
@@ -109,10 +110,12 @@ class LearningBackend:
         allow_attempted: bool = False,
     ) -> StoredItem | None:
         candidates = []
-        attempted = {
-            r[0]
-            for r in conn.execute("select item_id from attempts where learner_id=%s", (learner,))
-        }
+        attempted = dict(
+            conn.execute(
+                "select item_id,max(created_at) from attempts where learner_id=%s group by item_id",
+                (learner,),
+            ).fetchall()
+        )
         for key in self.repo.item_ids(conn, subject):
             bundle = self.repo.servable(conn, key)
             if (
@@ -123,7 +126,12 @@ class LearningBackend:
                 candidates.append(bundle)
         return min(
             candidates,
-            key=lambda b: (b.db_id in attempted, abs(b.item.difficulty - difficulty), b.item.id),
+            key=lambda b: (
+                b.db_id in attempted,
+                attempted.get(b.db_id, datetime.min.replace(tzinfo=UTC)),
+                abs(b.item.difficulty - difficulty),
+                b.item.id,
+            ),
             default=None,
         )
 
@@ -225,12 +233,18 @@ class LearningBackend:
                         (lid, sid),
                     ).fetchall()
                 )
+                available = {
+                    bundle.item.concept
+                    for key in self.repo.item_ids(conn, subject)
+                    if (bundle := self.repo.servable(conn, key)) is not None
+                }
                 step, trace = path.next_step(
                     graph,
                     mastery,
                     now=datetime.now(UTC),
                     resume_origin=session[0] if session else None,
                     due_reviews=due,
+                    available_concepts=available,
                 )
                 if step.concept_slug is None:
                     return None
@@ -240,7 +254,7 @@ class LearningBackend:
                     step.concept_slug,
                     lid,
                     step.target_difficulty,
-                    allow_attempted=step.kind == "review",
+                    allow_attempted=True,
                 )
                 if bundle is None:
                     raise HTTPException(503, "Chưa có câu hỏi đã kiểm chứng phù hợp.")
@@ -278,15 +292,33 @@ class LearningBackend:
             raise ValueError("Invalid option index")
         return answer
 
+    async def replay_attempt(self, request: learn.AttemptInput) -> learn.AttemptResponse | None:
+        if request.client_attempt_id is None:
+            return None
+
+        def load() -> learn.AttemptResponse | None:
+            with self.repo.transaction() as conn:
+                if not conn.execute(
+                    "select id from learners where id=%s for update",
+                    (uid(request.learner_id),),
+                ).fetchone():
+                    raise HTTPException(404, "Không tìm thấy người học.")
+                return replay(conn, request)
+
+        return await asyncio.to_thread(load)
+
     async def apply_attempt(
         self, request: learn.AttemptInput, item: GraderItem, result: Grade
-    ) -> learn.AttemptUpdate:
-        def run() -> learn.AttemptUpdate:
+    ) -> learn.AttemptUpdate | learn.AttemptResponse:
+        def run() -> learn.AttemptUpdate | learn.AttemptResponse:
             with self.repo.transaction() as conn:
                 # Use the same learner -> item lock order as selection.
                 conn.execute(
                     "select id from learners where id=%s for update", (uid(request.learner_id),)
                 ).fetchone()
+                cached = replay(conn, request)
+                if cached is not None:
+                    return cached
                 bundle = self.repo.servable(conn, item.id)
                 if not bundle or contract_item(bundle.item).model_dump() != item.model_dump():
                     raise HTTPException(409, "Câu hỏi đã thay đổi; hãy tải lại.")
@@ -348,7 +380,7 @@ class LearningBackend:
                 mastery[item_concept] = p
                 traces = [trace]
                 plan = None
-                if not result.correct:
+                if not result.correct and session[0] != "placement":
                     decision, rtrace = remediation.remediate(
                         graph,
                         mastery,
@@ -391,7 +423,7 @@ class LearningBackend:
                     "d=%s and subject_id=%s",
                     (lid, sid),
                 )
-                return learn.AttemptUpdate(
+                update = learn.AttemptUpdate(
                     p_known=p,
                     mastered=bkt.is_mastered(p),
                     misconception_vi=mid[1] if mid else None,
@@ -400,6 +432,8 @@ class LearningBackend:
                     else None,
                     traces=[trace_dto(t) for t in traces],
                 )
+                remember(conn, request, update, correct=result.correct)
+                return update
 
         return await asyncio.to_thread(run)
 
@@ -446,7 +480,12 @@ class TopicsBackend:
         return await asyncio.to_thread(run)
 
     async def persist_upload(
-        self, document: Document, body: bytes | None, filename: str | None
+        self,
+        document: Document,
+        body: bytes | None,
+        filename: str | None,
+        *,
+        demo_consent: bool = False,
     ) -> str:
         # P2 owns private object storage. Linked documents already have canonical provenance.
         if body is not None or not document.source_uri.startswith("https://"):
@@ -463,8 +502,8 @@ class TopicsBackend:
             with self.repo.transaction() as conn:
                 conn.execute(
                     "insert into uploads(id,source_uri,filename,media_type,byte_size,s"
-                    "ha256,page_count,text_ok,pages) "
-                    "values(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "ha256,page_count,text_ok,pages,demo_consent_at) "
+                    "values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         record.id,
                         record.source_uri,
@@ -475,6 +514,7 @@ class TopicsBackend:
                         record.page_count,
                         record.text_ok,
                         Jsonb([p.model_dump() for p in record.pages]),
+                        datetime.now(UTC) if demo_consent else None,
                     ),
                 )
             return str(record.id)
@@ -488,9 +528,12 @@ class TutorBackend:
         repository: Repository,
         gateway: Gateway,
         confirmation: GraphConfirmation | None = None,
+        *,
+        demo_uploads_enabled: bool = False,
     ) -> None:
         self.repo, self.gateway = repository, gateway
         self.confirmation = confirmation
+        self.demo_uploads_enabled = demo_uploads_enabled
 
     async def hint(self, request: tutor.HintInput) -> tutor.VerifiedText:
         learner = uid(request.learner_id)
@@ -507,6 +550,23 @@ class TutorBackend:
                     self.confirmation, request.learner_id, bundle.subject, graph
                 ):
                     raise HTTPException(409, "Hãy xác nhận bản đồ kiến thức trước khi xin gợi ý.")
+                upload_uris = {
+                    source.url for source in bundle.sources if source.version == "uploaded document"
+                }
+                if upload_uris:
+                    if not self.demo_uploads_enabled:
+                        raise HTTPException(403, "Tài liệu tải lên chỉ được dùng trong bản demo.")
+                    consented = {
+                        row[0]
+                        for row in conn.execute(
+                            "select source_uri from uploads where source_uri=any(%s) "
+                            "and demo_consent_at is not null",
+                            (list(upload_uris),),
+                        )
+                    }
+                    if not upload_uris <= consented:
+                        raise HTTPException(403, "Tài liệu chưa có đồng ý sử dụng cho bản demo.")
+
                 require_model_permission(bundle.sources)
                 last = request.last_answer
                 if last is None:

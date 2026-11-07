@@ -71,7 +71,8 @@ class Repository:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 "select c.*,s.p4_metadata as source_metadata,s.title as source_title,"
-                "s.url as source_url,s.license as source_license,s.author as source_author "
+                "s.url as source_url,s.license as source_license,s.author as source_author,"
+                "s.version as source_version "
                 "from chunks c join sources s on s.id=c.source_id where c.id=any(%s)",
                 (ids,),
             )
@@ -82,6 +83,17 @@ class Repository:
         chunks = {}
         for row in rows:
             meta = dict(row["source_metadata"])
+            if not meta:
+                from app.research.runtime import indexed_library_source
+
+                meta = indexed_library_source(
+                    row["source_id"],
+                    row["source_title"],
+                    row["source_author"],
+                    row["source_url"],
+                    row["source_license"],
+                    row["source_version"],
+                )
             meta.update(
                 title=row["source_title"],
                 url=row["source_url"],
@@ -237,7 +249,8 @@ class Repository:
     def load_item(self, conn: Connection, external_id: str) -> StoredItem | None:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "select i.*,c.slug as concept_slug,s.slug as subject_slug from items i "
+                "select i.*,i.difficulty::double precision as difficulty,"
+                "c.slug as concept_slug,s.slug as subject_slug from items i "
                 "join concepts c on c.id=i.concept_id join subjects s on s.id=c.subject_id "
                 "where i.external_id=%s for update of i",
                 (external_id,),
@@ -279,7 +292,7 @@ class Repository:
         )
         # Postgres REAL is float32; preserve the authored value only when its
         # stored float32 representation still matches the actual relational row.
-        if struct.unpack("f", struct.pack("f", original.difficulty))[0] != row["difficulty"]:
+        if struct.pack("f", original.difficulty) != struct.pack("f", row["difficulty"]):
             data["difficulty"] = row["difficulty"]
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(

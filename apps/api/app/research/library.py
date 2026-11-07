@@ -15,7 +15,7 @@ import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.research.agent import canonical_url, detect_license, normalized_path
-from app.research.reader import Download, SafeReader, SourceError, html_text
+from app.research.reader import Download, SafeReader, SourceError, html_content, html_text
 
 
 class Book(BaseModel):
@@ -128,7 +128,14 @@ def _export_p1(book: Book, directory: Path, records: list[dict[str, str]]) -> No
         ),
     )
     version = hashlib.sha256(
-        "\n".join(record["source_uri"] + " " + record["sha256"] for record in ordered).encode()
+        "\n".join(
+            record["source_uri"]
+            + " "
+            + record["sha256"]
+            + " "
+            + hashlib.sha256(record["text"].encode()).hexdigest()
+            for record in ordered
+        ).encode()
     ).hexdigest()
     source = {
         "subject_slug": book.subject_slug or book.slug,
@@ -160,6 +167,158 @@ def _export_p1(book: Book, directory: Path, records: list[dict[str, str]]) -> No
         temporary.replace(directory / filename)
 
 
+def audit_export(book: Book, root: Path) -> dict[str, object]:
+    """Inspect P1's real chunker output, never embed or write a database."""
+    from app.rag.library import load_book
+    from app.rag.notebook import MAX_CHARS
+    from app.schemas import ParsedDocument
+
+    folder = root / book.slug
+    loaded = load_book(folder)
+    document = ParsedDocument.model_validate_json((folder / "document.json").read_text("utf-8"))
+    chunks = loaded.chunks
+    lengths = sorted(len(chunk.content) for chunk in chunks)
+    uris = list(dict.fromkeys(block.source_uri for block in document.blocks))
+    expected_uris = sorted(
+        uris,
+        key=lambda uri: re.sub(r"\d+", lambda match: f"{int(match.group()):012d}", unquote(uri)),
+    )
+    before = re.sub(r"\s+", "", "".join(block.text for block in document.blocks))
+    after = re.sub(r"\s+", "", "".join(chunk.content for chunk in chunks))
+    chrome = ("Skip to main content", "Table of Contents menu", "Request Instructor Account")
+    checks = {
+        "translated_label": loaded.info.subject_name_vi == book.subject_name_vi
+        and bool(book.subject_name_vi),
+        "subject_slug": loaded.info.subject_slug == (book.subject_slug or book.slug),
+        "natural_page_order": uris == expected_uris,
+        "non_whitespace_content_retained": before == after,
+        "source_uris_retained": set(uris) == {chunk.source_uri for chunk in chunks},
+        "source_scope": all(within_book(uri, book.page_prefix) for uri in uris),
+        "chunk_size_bound": all(0 < length <= MAX_CHARS for length in lengths),
+        "html_pages_have_no_invented_pdf_number": all(chunk.page is None for chunk in chunks),
+        "no_site_chrome": not any(
+            marker in block.text for marker in chrome for block in document.blocks
+        ),
+    }
+    indexes = sorted({0, len(chunks) // 4, len(chunks) // 2, len(chunks) * 3 // 4, len(chunks) - 1})
+    return {
+        "book": book.slug,
+        "subject_name_vi": loaded.info.subject_name_vi,
+        "status": "pass" if all(checks.values()) else "fail",
+        "checks": checks,
+        "blocks": len(document.blocks),
+        "source_pages": len(uris),
+        "chunks": len(chunks),
+        "chunk_characters": {
+            "min": lengths[0],
+            "median": lengths[len(lengths) // 2],
+            "p95": lengths[(len(lengths) - 1) * 95 // 100],
+            "max": lengths[-1],
+            "limit": MAX_CHARS,
+            "under_200": sum(n < 200 for n in lengths),
+        },
+        "page_metadata": "HTML has section URLs; PDF page numbers are not applicable",
+        "order_sample": uris[:16],
+        "samples": [
+            {
+                "index": i,
+                "source_uri": chunks[i].source_uri,
+                "section": chunks[i].section,
+                "page": chunks[i].page,
+                "characters": len(chunks[i].content),
+                "excerpt": chunks[i].content[:500],
+            }
+            for i in indexes
+        ],
+        "semantic_retrieval": "pending real indexed TEI evaluation of P1's Vietnamese queries",
+    }
+
+
+def audit_query_labels(folder: Path, queries: Path) -> dict[str, object]:
+    """Confirm P1 labels exist in local text, without ranking or tuning held-out cases."""
+    from app.rag.evaluate import load_eval_set
+    from app.rag.library import load_book
+    from app.schemas import Citation
+
+    book, evaluation = load_book(folder), load_eval_set(queries)
+    if evaluation.subject != book.info.subject_slug:
+        raise ValueError("Query subject does not match the exported library subject")
+    passages = [
+        Citation(
+            chunk_id=f"local-audit-{i}",
+            source_title=book.info.title,
+            license=book.info.license,
+            source_uri=c.source_uri,
+            content=c.content,
+            page=c.page,
+            section=c.section,
+            score=0,
+        )
+        for i, c in enumerate(book.chunks)
+    ]
+    rows = []
+    all_present = True
+    expected_sections = confirmed_sections = 0
+    for question in evaluation.questions:
+        labels = []
+        section = re.search(r"\((\d+)\.(\d+)\)", question.note or "")
+        prefix = f"{int(section[1])}.{int(section[2]):02d}:" if section else None
+        confirmed: dict[str, str | None] = {}
+        for criterion in question.relevant:
+            matching = [passage for passage in passages if criterion.matches(passage)]
+            confirmed.update(
+                {
+                    passage.source_uri: criterion.contains
+                    for passage in matching
+                    if prefix and (passage.section or "").startswith(prefix)
+                }
+            )
+            all_present = all_present and bool(matching)
+            labels.append(
+                {
+                    **criterion.model_dump(exclude_none=True),
+                    "present": bool(matching),
+                    "matching_chunks": len(matching),
+                    "sources": [
+                        {
+                            "source_uri": uri,
+                            "sections": sorted(
+                                {p.section or "" for p in matching if p.source_uri == uri}
+                            ),
+                        }
+                        for uri in dict.fromkeys(p.source_uri for p in matching)
+                    ],
+                }
+            )
+        if prefix:
+            expected_sections += 1
+            confirmed_sections += bool(confirmed)
+        rows.append(
+            {
+                "id": question.id,
+                "question_vi": question.question_vi,
+                "p1_note": question.note,
+                "labels": labels,
+                "expected_section_present": bool(confirmed) if prefix else None,
+                "confirmed_relevant": [
+                    {"source_uri": uri, "contains": snippet} for uri, snippet in confirmed.items()
+                ],
+            }
+        )
+    return {
+        "scope": (
+            "P1 label presence in audited local text; no vector search, ranking or model tuning"
+        ),
+        "subject": evaluation.subject,
+        "total_queries": len(rows),
+        "all_snippets_present": all_present,
+        "expected_sections": expected_sections,
+        "expected_sections_confirmed": confirmed_sections,
+        "held_out_policy": "q06-q10 checked for source existence only; not used to tune k/models",
+        "queries": rows,
+    }
+
+
 def _audit_page(path: Path, *, book: Book) -> tuple[dict[str, str] | None, dict[str, str] | None]:
     try:
         metadata = json.loads(path.read_text(encoding="utf-8"))
@@ -173,8 +332,10 @@ def _audit_page(path: Path, *, book: Book) -> tuple[dict[str, str] | None, dict[
         raw = path.with_suffix(".html").read_bytes()
         if hashlib.sha256(raw).hexdigest() != checksum:
             raise ValueError("Source hash mismatch")
-        text = html_text(raw)
-        license_name = detect_license(text)
+        license_name = detect_license(html_text(raw))
+        text = html_content(raw)
+        if sum(char.isalnum() for char in text) < 40:
+            raise ValueError("Page has insufficient book content")
         return {
             "url": canonical_url(uri),
             "source_uri": uri,
@@ -252,8 +413,8 @@ async def download_book(book: Book, root: Path, reader: SafeReader) -> dict[str,
                 }:
                     raise SourceError("Trang giáo trình không phải HTML.")
                 raw = response.body
-                text = html_text(raw)
-                page_license = detect_license(text)
+                page_license = detect_license(html_text(raw))
+                text = html_content(raw)
                 if sum(c.isalnum() for c in text) < 40:
                     raise SourceError("Trang không có đủ văn bản để lập chỉ mục.")
                 metadata = {

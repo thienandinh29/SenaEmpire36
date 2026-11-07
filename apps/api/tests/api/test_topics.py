@@ -1,11 +1,47 @@
 from collections.abc import Iterator
 from io import BytesIO
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
+from app.api.topics import create_router
 from tests.api.conftest import Harness
 from tests.uploads.test_reader import docx
+
+
+@pytest.mark.parametrize("demo,consent", [(False, "demo-v1"), (True, None), (True, "other")])
+@pytest.mark.parametrize("encoding", ["link", "file"])
+def test_upload_policy_blocks_before_fetch_or_parsing(
+    demo: bool, consent: str | None, encoding: str
+) -> None:
+    reader = AsyncMock()
+    app = FastAPI()
+    app.include_router(create_router(link_reader=reader, demo_uploads_enabled=demo))
+    headers = {"X-Demo-Upload-Consent": consent} if consent else {}
+    with patch("app.api.topics.read_file") as parse_file, TestClient(app) as client:
+        response = (
+            client.post("/uploads", json={"url": "https://books.example/file"}, headers=headers)
+            if encoding == "link"
+            else client.post("/uploads", files={"file": ("bad.pdf", b"broken")}, headers=headers)
+        )
+    assert response.status_code == 403
+    reader.assert_not_called()
+    parse_file.assert_not_called()
+
+
+def test_demo_disabled_cannot_enqueue_an_existing_upload() -> None:
+    app = FastAPI()
+    app.include_router(create_router())
+    with TestClient(app) as client:
+        assert (
+            client.post(
+                "/topics", json={"upload_id": "u1", "mode": "quick", "tier": "free"}
+            ).status_code
+            == 403
+        )
 
 
 def test_topic_submission_only_enqueues(harness: Harness) -> None:

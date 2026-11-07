@@ -1,0 +1,29 @@
+{
+  "order": [
+    "think-python-2e",
+    "logic-critical-thinking",
+    "introductory-statistics",
+    "P4 golden"
+  ],
+  "completed": [
+    {
+      "book": "think-python-2e",
+      "chunks": 391,
+      "reused": false
+    },
+    {
+      "book": "logic-critical-thinking",
+      "chunks": 331,
+      "reused": false
+    },
+    {
+      "book": "introductory-statistics",
+      "chunks": 597,
+      "reused": false
+    }
+  ],
+  "vector_index_built": false,
+  "stage": "failed",
+  "updated_at": "2026-11-07T13:19:30.242527+00:00",
+  "error_type": "UniqueViolation"
+}

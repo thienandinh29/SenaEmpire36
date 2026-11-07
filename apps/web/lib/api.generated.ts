@@ -297,7 +297,7 @@ export interface components {
       learner_id: string;
       /** Item Id */
       item_id: string;
-      answer: components["schemas"]["JsonValue"];
+      answer: number;
       /** Hints Used */
       hints_used: number;
     };
@@ -454,7 +454,7 @@ export interface components {
       /** Level */
       level: number;
       /** Last Answer */
-      last_answer?: string | null;
+      last_answer?: number | null;
       /**
        * Tier
        * @enum {string}

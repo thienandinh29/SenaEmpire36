@@ -2,6 +2,7 @@
 
 import hashlib
 from dataclasses import replace
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -26,6 +27,7 @@ class UploadMetadata(BaseModel):
     page_count: int = Field(ge=0, le=MAX_PAGES)
     text_ok: bool
     pages: list[StoredPage]
+    demo_consent_at: datetime | None = None
 
     @model_validator(mode="after")
     def consistent(self) -> "UploadMetadata":

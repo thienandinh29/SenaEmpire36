@@ -84,6 +84,7 @@ export function Workspace({ config }: { config: WebConfig }) {
   const [mode, setMode] = useState<"quick" | "deep">("quick");
   const [tier, setTier] = useState<"free" | "pro">("free");
   const [file, setFile] = useState<File | null>(null);
+  const [uploadConsent, setUploadConsent] = useState(false);
   const [fileError, setFileError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [formError, setFormError] = useState("");
@@ -169,7 +170,7 @@ export function Workspace({ config }: { config: WebConfig }) {
     }
   }
   async function chooseFile(candidate?: File) {
-    if (!candidate) return;
+    if (!candidate || !uploadConsent) return;
     learning.clearUpload();
     setFile(candidate);
     const invalid = validateFile(candidate, config.uploadMaxBytes);
@@ -182,7 +183,7 @@ export function Workspace({ config }: { config: WebConfig }) {
             ? t.flow.uploadDisabled
             : "",
     );
-    if (!invalid) await learning.uploadFile(candidate);
+    if (!invalid) await learning.uploadFile(candidate, uploadConsent);
   }
 
   return (
@@ -644,7 +645,11 @@ export function Workspace({ config }: { config: WebConfig }) {
                         {result && (
                           <Button
                             variant="ghost"
-                            onClick={() => learning.setAnswer(selected, null)}
+                            onClick={() =>
+                              config.mode === "api"
+                                ? void learning.loadLesson(selected, true)
+                                : learning.setAnswer(selected, null)
+                            }
                           >
                             {t.retry}
                             <RotateCcw size={15} />
@@ -1069,27 +1074,50 @@ export function Workspace({ config }: { config: WebConfig }) {
                 </button>
               </div>
               {uploadEnabled ? (
-                <label
-                  className={`upload-zone ${busy.upload ? "is-busy" : ""}`}
-                >
-                  <Upload size={22} />
-                  <strong>{file?.name ?? t.upload}</strong>
-                  <small>
-                    {config.mode === "mock"
-                      ? t.uploadHint
-                      : `${t.flow.uploadLimit}: ${config.uploadMaxBytes} ${t.flow.bytes}`}
-                  </small>
-                  <input
-                    ref={fileRef}
-                    className="sr-only"
-                    type="file"
-                    accept=".pdf,.docx"
-                    disabled={busy.upload || busy.create}
-                    onChange={(event) =>
-                      void chooseFile(event.target.files?.[0])
-                    }
-                  />
-                </label>
+                <>
+                  <p className="demo-notice" id="upload-demo-notice">
+                    {t.uploadDemoNotice}
+                  </p>
+                  <label className="upload-consent">
+                    <input
+                      type="checkbox"
+                      checked={uploadConsent}
+                      disabled={busy.upload || busy.create}
+                      aria-describedby="upload-demo-notice"
+                      onChange={(event) => {
+                        setUploadConsent(event.target.checked);
+                        if (!event.target.checked) {
+                          setFile(null);
+                          learning.clearUpload();
+                          setFileError("");
+                          if (fileRef.current) fileRef.current.value = "";
+                        }
+                      }}
+                    />
+                    <span>{t.uploadDemoConsent}</span>
+                  </label>
+                  <label
+                    className={`upload-zone ${busy.upload ? "is-busy" : ""}`}
+                  >
+                    <Upload size={22} />
+                    <strong>{file?.name ?? t.upload}</strong>
+                    <small>
+                      {config.mode === "mock"
+                        ? t.uploadHint
+                        : `${t.flow.uploadLimit}: ${config.uploadMaxBytes} ${t.flow.bytes}`}
+                    </small>
+                    <input
+                      ref={fileRef}
+                      className="sr-only"
+                      type="file"
+                      accept=".pdf,.docx"
+                      disabled={!uploadConsent || busy.upload || busy.create}
+                      onChange={(event) =>
+                        void chooseFile(event.target.files?.[0])
+                      }
+                    />
+                  </label>
+                </>
               ) : (
                 <p className="demo-notice">{t.flow.uploadDisabled}</p>
               )}
@@ -1135,8 +1163,8 @@ export function Workspace({ config }: { config: WebConfig }) {
               <ErrorState
                 error={errors.upload}
                 onRetry={
-                  file && !fileError
-                    ? () => void learning.uploadFile(file)
+                  file && !fileError && uploadConsent
+                    ? () => void learning.uploadFile(file, uploadConsent)
                     : undefined
                 }
               />

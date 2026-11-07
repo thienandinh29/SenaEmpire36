@@ -10,10 +10,9 @@ from app.api.topics import TopicInput
 from app.db import create_pool
 from app.jobs.queue import append_trail, enqueue, snapshot
 from app.jobs.worker import run_once
-from app.research.pipeline import TopicPipeline
 from app.services.topics import SupabaseStorage, TopicsService, load_upload
 from app.uploads.reader import Document, Page
-from tests.research.test_pipeline import Ports
+from tests.research.test_pipeline import Ports, pipeline
 
 
 def test_worker_calls_pipeline_and_persists_partial_failure(database_url: str) -> None:
@@ -21,7 +20,7 @@ def test_worker_calls_pipeline_and_persists_partial_failure(database_url: str) -
     ports.items[0] = ports.items[0].model_copy(update={"status": "needs_review"})
     with psycopg.connect(database_url) as conn:
         topic_id = enqueue(conn, "Pipeline contract", "free")
-    assert run_once(database_url, pipeline=TopicPipeline(ports))
+    assert run_once(database_url, pipeline=pipeline(ports))
     with psycopg.connect(database_url) as conn:
         state = snapshot(conn, topic_id)
         assert state is not None
@@ -38,7 +37,7 @@ def test_worker_calls_pipeline_and_publishes_ready(database_url: str) -> None:
     with psycopg.connect(database_url) as conn:
         topic_id = enqueue(conn, "Worker success", "free")
         append_trail(conn, topic_id, {"kind": "select", "text_vi": "Nguồn đã chọn"})
-    assert run_once(database_url, pipeline=TopicPipeline(ports))
+    assert run_once(database_url, pipeline=pipeline(ports))
     with psycopg.connect(database_url) as conn:
         state = snapshot(conn, topic_id)
         assert state is not None

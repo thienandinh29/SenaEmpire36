@@ -4,6 +4,9 @@ import asyncio
 import importlib
 import os
 from collections.abc import Sequence
+from contextlib import suppress
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -22,6 +25,48 @@ from app.llm.gateway import (
 )
 
 
+class HTTPProviderError(ProviderError):
+    """Only classified metadata, never raw provider text or headers."""
+
+    def __init__(self, status: int, retry_after: float | None, kind: str) -> None:
+        super().__init__(f"http_{status}", retryable=kind == "transient")
+        self.retry_after = retry_after
+        self.failure_kind = kind
+
+
+def http_failure(response: httpx.Response) -> HTTPProviderError:
+    delay = None
+    header = response.headers.get("Retry-After")
+    if header:
+        try:
+            delay = max(0.0, float(header))
+        except ValueError:
+            with suppress(ValueError, TypeError):
+                delay = max(
+                    0.0, (parsedate_to_datetime(header) - datetime.now(UTC)).total_seconds()
+                )
+    status = response.status_code
+    kind = "transient" if status in (408, 429) or status >= 500 else "configuration"
+    # Do not classify all 429s as quota: inspect provider quota identifiers only.
+    if status == 429:
+        try:
+            details = response.json().get("error", {}).get("details", [])
+            for detail in details:
+                retry_delay = detail.get("retryDelay")
+                if isinstance(retry_delay, str) and retry_delay.endswith("s"):
+                    with suppress(ValueError):
+                        delay = max(delay or 0, float(retry_delay[:-1]))
+                for violation in detail.get("violations", []):
+                    quota = str(violation.get("quotaId", "")).casefold()
+                    if "perday" in quota or "per_day" in quota:
+                        kind = "quota"
+                    if str(violation.get("quotaValue", "")) == "0":
+                        kind = "quota"
+        except (ValueError, AttributeError, TypeError):
+            pass
+    return HTTPProviderError(status, delay, kind)
+
+
 async def _post(
     url: str, token: str, payload: dict[str, Any], *, api_key: bool = False
 ) -> dict[str, Any]:
@@ -35,10 +80,7 @@ async def _post(
                 raise ValueError("Expected response object")
             return data
     except httpx.HTTPStatusError as exc:
-        status = exc.response.status_code
-        raise ProviderError(
-            f"http_{status}", retryable=status in (408, 429) or status >= 500
-        ) from None
+        raise http_failure(exc.response) from None
     except (httpx.RequestError, ValueError):
         raise ProviderError("transport_or_json_error", retryable=True) from None
 
@@ -268,6 +310,10 @@ class OpenRouterAdapter:
 
 
 class DeepSeekAdapter:
+    # Official model table, checked 2026-11-07. Conservative decimal limits.
+    context_tokens = 1_000_000
+    max_output_tokens = 384_000
+
     async def generate(
         self,
         route: Route,
@@ -289,6 +335,15 @@ class DeepSeekAdapter:
         }
         if schema:
             payload["response_format"] = {"type": "json_object"}
+        # Conservative UTF-8/BPE upper bound, not measured token usage. Reserve
+        # framing and output; never silently truncate a book and lose citations.
+        input_upper_bound = 1024 + sum(
+            len(message["content"].encode("utf-8")) + 256 for message in payload["messages"]
+        )
+        if payload["max_tokens"] > self.max_output_tokens:
+            raise ProviderError("deepseek_output_budget_exceeded")
+        if input_upper_bound + payload["max_tokens"] > self.context_tokens:
+            raise ProviderError("deepseek_context_budget_exceeded")
         data = await _post("https://api.deepseek.com/chat/completions", token, payload)
         try:
             choice = data["choices"][0]

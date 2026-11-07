@@ -3,7 +3,6 @@
 import argparse
 import asyncio
 import importlib
-import inspect
 import logging
 import time
 from collections.abc import Callable
@@ -27,7 +26,7 @@ def run_once(
     allow_fixture: bool = False,
     pipeline: TopicPipeline | None = None,
     pipeline_factory: Callable[[str], TopicPipeline] | None = None,
-    processor: Callable[[dict[str, Any]], object] | None = None,
+    processor: Callable[[dict[str, Any]], None] | None = None,
 ) -> bool:
     with psycopg.connect(database_url) as conn:
         job = claim(conn)
@@ -36,6 +35,10 @@ def run_once(
     if job["fixture"]:
         with psycopg.connect(database_url) as conn:
             finish(conn, job["id"], fixture=allow_fixture)
+        return True
+    if processor is not None:
+        # The claim commits before P3/P4 starts long model work.
+        processor(job)
         return True
 
     async def progress(value: Progress) -> None:
@@ -54,11 +57,6 @@ def run_once(
 
     async def process() -> None:
         try:
-            if processor is not None:
-                result = processor(job)
-                if inspect.isawaitable(result):
-                    await result
-                return
             active_pipeline = pipeline_factory(database_url) if pipeline_factory else pipeline
             if active_pipeline is None:
                 raise SourceError("Chưa có bộ sinh và kiểm chứng nội dung từ P4.")
@@ -99,16 +97,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fixture", action="store_true")
     parser.add_argument("--pipeline-factory", help="P4 adapter factory: package.module:function")
-    parser.add_argument("--pipeline", action="store_true", help="Use P4 content ports")
+    parser.add_argument(
+        "--pipeline", action="store_true", help="Use configured P4/P3 content ports"
+    )
     args = parser.parse_args()
+    if args.pipeline and args.pipeline_factory:
+        parser.error("choose --pipeline or --pipeline-factory")
     configure_logging()
     settings = get_settings()
     settings.export_worker_environment()
     database_url = settings.database_url
     pipeline_factory = None
-    processor = None
-    if args.pipeline and args.pipeline_factory:
-        parser.error("choose --pipeline or --pipeline-factory")
     if args.pipeline_factory:
         module, function = args.pipeline_factory.split(":", 1)
         pipeline_factory = getattr(importlib.import_module(module), function)
@@ -117,21 +116,44 @@ def main() -> None:
         from app.content.ports import process_claimed_job
         from app.content.repository import Repository
         from app.db import create_pool
+        from app.research.runtime import retrieval_configuration, worker_retriever
 
-        pool = create_pool(database_url)
-        repository = Repository(lambda: pool)
-        repository.require_schema()
-        gateway = P3Gateway()
+        retrieval_subject, retrieval_k = retrieval_configuration()
+        with create_pool(database_url) as pool:
+            repository = Repository(lambda: pool)
+            repository.require_schema()
+            gateway = P3Gateway()
+            retriever = worker_retriever(pool)
 
-        def process_content(job: dict[str, Any]) -> object:
-            return process_claimed_job(repository, gateway, job)
+            def process(job: dict[str, Any]) -> None:
+                asyncio.run(
+                    process_claimed_job(
+                        repository,
+                        gateway,
+                        job,
+                        retriever=retriever,
+                        retrieval_subject=retrieval_subject,
+                        retrieval_k=retrieval_k,
+                    )
+                )
 
-        processor = process_content
+            loop(database_url, allow_fixture=args.fixture, processor=process)
+        return
+    loop(database_url, allow_fixture=args.fixture, pipeline_factory=pipeline_factory)
+
+
+def loop(
+    database_url: str,
+    *,
+    allow_fixture: bool,
+    pipeline_factory: Callable[[str], TopicPipeline] | None = None,
+    processor: Callable[[dict[str, Any]], None] | None = None,
+) -> None:
     while True:
         try:
             if not run_once(
                 database_url,
-                allow_fixture=args.fixture,
+                allow_fixture=allow_fixture,
                 pipeline_factory=pipeline_factory,
                 processor=processor,
             ):

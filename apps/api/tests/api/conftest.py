@@ -88,7 +88,9 @@ class FakeBackend:
     ) -> learn.AttemptUpdate:
         self.attempts.append((request, result))
         trace = self.trace()
-        trace.evidence.correct = result.correct
+        trace = trace.model_copy(
+            update={"evidence": trace.evidence.model_copy(update={"correct": result.correct})}
+        )
         return learn.AttemptUpdate(
             p_known=0.4,
             mastered=False,
@@ -126,7 +128,10 @@ class FakeBackend:
         document: Document,
         body: bytes | None,
         filename: str | None,
+        *,
+        demo_consent: bool = False,
     ) -> str:
+        assert demo_consent
         self.uploads.append((document, body, filename))
         return f"upload-{len(self.uploads)}"
 
@@ -146,7 +151,9 @@ def harness() -> Iterator[Harness]:
     backend = FakeBackend()
     app = FastAPI()
     app.include_router(learn.create_router(backend))
-    app.include_router(topics.create_router(backend, link_reader=fake_link))
+    app.include_router(
+        topics.create_router(backend, link_reader=fake_link, demo_uploads_enabled=True)
+    )
     app.include_router(tutor.create_router(backend))
-    with TestClient(app) as client:
+    with TestClient(app, headers={"X-Demo-Upload-Consent": "demo-v1"}) as client:
         yield Harness(client, backend)

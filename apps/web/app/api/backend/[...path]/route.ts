@@ -58,6 +58,11 @@ async function proxy(
     const headers = new Headers({ [keyHeader]: key });
     const contentType = request.headers.get("content-type");
     if (contentType) headers.set("content-type", contentType);
+    if (
+      path === "uploads" &&
+      request.headers.get("x-demo-upload-consent") === "demo-v1"
+    )
+      headers.set("X-Demo-Upload-Consent", "demo-v1");
     const signals = AbortSignal.any([
       request.signal,
       AbortSignal.timeout(25000),

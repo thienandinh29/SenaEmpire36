@@ -1287,6 +1287,26 @@ footer i {
   cursor: pointer;
   overflow-wrap: anywhere;
 }
+.upload-consent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  cursor: pointer;
+}
+.upload-consent input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+.upload-zone:has(input:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .upload-zone strong {
   font-size: 11px;
   font-weight: 500;

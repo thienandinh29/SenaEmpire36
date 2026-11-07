@@ -48,6 +48,13 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        if not settings.api_key.strip():
+            if not settings.allow_unauthenticated_local_dev:
+                raise RuntimeError(
+                    "API_KEY is required; unauthenticated local development must be explicit"
+                )
+            logger.warning("API authentication disabled for explicit local development")
+        settings.export_worker_environment()
         app.state.pool = create_pool(settings.database_url)
         try:
             yield
@@ -55,6 +62,9 @@ def create_app(
             app.state.pool.close()
 
     app = FastAPI(title="NodeTrail API", lifespan=lifespan)
+    app.include_router(
+        learn.create_router(learning_backend or LearningService(lambda: app.state.pool))
+    )
     storage = (
         SupabaseStorage(
             settings.supabase_url,
@@ -64,6 +74,13 @@ def create_app(
         if settings.supabase_url and settings.supabase_service_role_key.get_secret_value()
         else None
     )
+    app.include_router(
+        topics.create_router(
+            topics_backend or TopicsService(lambda: app.state.pool, storage),
+            demo_uploads_enabled=settings.demo_uploads_enabled,
+        )
+    )
+    app.include_router(tutor.create_router(tutor_backend))
 
     @app.middleware("http")
     async def request_context(
@@ -105,7 +122,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=[origin.strip() for origin in settings.cors_origins.split(",")],
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["X-API-Key", "Content-Type", "Last-Event-ID"],
+        allow_headers=["X-API-Key", "Content-Type", "Last-Event-ID", "X-Demo-Upload-Consent"],
         expose_headers=["X-Request-ID", "X-Data-Fixture"],
     )
 
@@ -181,22 +198,6 @@ def create_app(
         db_ok = ping(request.app.state.pool)
         return Health(status="ok", db="ok" if db_ok else "down")
 
-    # P2 owns durable adapters. Missing adapters return 503, never mock learner data.
-    app.include_router(
-        learn.create_router(
-            learning_backend
-            if learning_backend is not None
-            else LearningService(lambda: app.state.pool)
-        )
-    )
-    app.include_router(
-        topics.create_router(
-            topics_backend
-            if topics_backend is not None
-            else TopicsService(lambda: app.state.pool, storage)
-        )
-    )
-    app.include_router(tutor.create_router(tutor_backend))
     return app
 
 

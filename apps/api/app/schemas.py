@@ -13,6 +13,7 @@ fields are the only change allowed after H3.
 import re
 from datetime import date, datetime
 from typing import Literal, Self
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -358,6 +359,7 @@ class NextItem(_Contract):
 
 # POST /attempts
 class AttemptCreate(_Contract):
+    client_attempt_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
     learner_id: str
     item_id: str
     answer: int = Field(ge=0)  # index into the item's `options`, in the order they were sent

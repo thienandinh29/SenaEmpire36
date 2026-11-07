@@ -14,6 +14,34 @@ function configure() {
 }
 const context = (path: string[]) => ({ params: Promise.resolve({ path }) });
 describe("same-origin API proxy", () => {
+  it.each([null, "other", "demo-v1"])(
+    "preserves only explicit upload consent %s",
+    async (consent) => {
+      configure();
+      vi.stubEnv("NODETRAIL_MAX_UPLOAD_BYTES", "1000000");
+      const fetchMock = vi.fn().mockResolvedValue(new Response("{}"));
+      vi.stubGlobal("fetch", fetchMock);
+      const headers = new Headers({
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      });
+      if (consent) headers.set("X-Demo-Upload-Consent", consent);
+      const response = await POST(
+        new NextRequest("http://localhost:3000/api/backend/uploads", {
+          method: "POST",
+          headers,
+          body: "{}",
+        }),
+        context(["uploads"]),
+      );
+      expect(response.status).toBe(200);
+      expect(
+        new Headers(fetchMock.mock.calls[0][1].headers).get(
+          "X-Demo-Upload-Consent",
+        ),
+      ).toBe(consent === "demo-v1" ? consent : null);
+    },
+  );
   it("fails closed with missing configuration and rejects noncontract routes", async () => {
     vi.stubEnv("NODETRAIL_DATA_MODE", "mock");
     expect(
@@ -58,17 +86,15 @@ describe("same-origin API proxy", () => {
   });
   it("adds a server-only key and forwards only documented query parameters", async () => {
     configure();
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        new Response('{"nodes":[],"edges":[]}', {
-          headers: {
-            "Content-Type": "application/json",
-            "X-Test-Api-Key": "must-not-forward",
-            "Set-Cookie": "must-not-forward",
-          },
-        }),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('{"nodes":[],"edges":[]}', {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Test-Api-Key": "must-not-forward",
+          "Set-Cookie": "must-not-forward",
+        },
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const response = await GET(
       new NextRequest(
