@@ -110,8 +110,16 @@ _excluded_family: ContextVar[str | None] = ContextVar("generator_family", defaul
 @contextmanager
 def verification_scope(generator_family: str) -> Iterator[None]:
     """P4 supplies Completion.route.family from the actual generator response."""
-    if generator_family.casefold() not in {"gemini", "claude", "deepseek"}:
-        raise ValueError("The actual generator family must be gemini, claude or deepseek")
+    if generator_family.casefold() not in {
+        "gemini",
+        "claude",
+        "deepseek",
+        "gpt",
+        "llama",
+        "mistral",
+        "qwen",
+    }:
+        raise ValueError("The actual generator family must be known")
     token = _excluded_family.set(generator_family.casefold())
     try:
         yield

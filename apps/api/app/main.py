@@ -55,7 +55,6 @@ def create_app(
             app.state.pool.close()
 
     app = FastAPI(title="NodeTrail API", lifespan=lifespan)
-    app.include_router(learn.create_router(LearningService(lambda: app.state.pool)))
     storage = (
         SupabaseStorage(
             settings.supabase_url,
@@ -65,9 +64,6 @@ def create_app(
         if settings.supabase_url and settings.supabase_service_role_key.get_secret_value()
         else None
     )
-    app.include_router(topics.create_router(TopicsService(lambda: app.state.pool, storage)))
-    # P4's verified tutor implementation is not available yet; its routes fail explicitly.
-    app.include_router(tutor.create_router())
 
     @app.middleware("http")
     async def request_context(
@@ -186,8 +182,20 @@ def create_app(
         return Health(status="ok", db="ok" if db_ok else "down")
 
     # P2 owns durable adapters. Missing adapters return 503, never mock learner data.
-    app.include_router(learn.create_router(learning_backend))
-    app.include_router(topics.create_router(topics_backend))
+    app.include_router(
+        learn.create_router(
+            learning_backend
+            if learning_backend is not None
+            else LearningService(lambda: app.state.pool)
+        )
+    )
+    app.include_router(
+        topics.create_router(
+            topics_backend
+            if topics_backend is not None
+            else TopicsService(lambda: app.state.pool, storage)
+        )
+    )
     app.include_router(tutor.create_router(tutor_backend))
     return app
 

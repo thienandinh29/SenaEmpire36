@@ -35,12 +35,15 @@ class FakeProvider:
         return ProviderReply(self.reply)
 
 
-def test_p3_actual_completion_metadata_and_family_scope_drive_p4_gate() -> None:
+@pytest.mark.parametrize("generator_family", ["gemini", "gpt"])
+def test_p3_actual_completion_metadata_and_family_scope_drive_p4_gate(
+    generator_family: str,
+) -> None:
     _, chunks, _, items = topic()
     item = items[0].model_copy(
         update={
             "generator": items[0].generator.model_copy(
-                update={"family": "gemini", "identity_source": "gateway"}
+                update={"family": generator_family, "identity_source": "gateway"}
             )
         }
     )
@@ -64,7 +67,11 @@ def test_p3_actual_completion_metadata_and_family_scope_drive_p4_gate() -> None:
         tiers={
             "pro": {
                 "verify": [
-                    Route(provider="vertex", model="gemini-same-family", family="gemini"),
+                    *(
+                        [Route(provider="vertex", model="gemini-same-family", family="gemini")]
+                        if generator_family == "gemini"
+                        else []
+                    ),
                     Route(provider="bedrock", model="claude-independent", family="claude"),
                 ]
             }

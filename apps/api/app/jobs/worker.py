@@ -2,8 +2,8 @@
 
 import argparse
 import asyncio
-import inspect
 import importlib
+import inspect
 import logging
 import time
 from collections.abc import Callable
@@ -122,7 +122,11 @@ def main() -> None:
         repository = Repository(lambda: pool)
         repository.require_schema()
         gateway = P3Gateway()
-        processor = lambda job: process_claimed_job(repository, gateway, job)
+
+        def process_content(job: dict[str, Any]) -> object:
+            return process_claimed_job(repository, gateway, job)
+
+        processor = process_content
     while True:
         try:
             if not run_once(
