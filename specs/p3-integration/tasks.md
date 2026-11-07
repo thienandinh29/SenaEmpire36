@@ -59,5 +59,5 @@
 - [x] SafeReader transition-address regression and push.
 - [x] Sync main gateway; fix truncation retry, thinking and per-attempt telemetry; push.
 - [x] Wire Retriever with provenance/order checks and canonical graph validation.
-- [ ] Add canonical graph/items smoke and sanitized measurement artifacts.
-- [ ] Run full checks; record missing external prerequisites and handoff to P2/P4.
+- [x] Add canonical graph/items smoke and sanitized measurement artifacts (public-book preflight; live blocked until key rotation).
+- [x] Run full checks; record missing external prerequisites and handoff to P2/P4 in p3-follow-up.md.

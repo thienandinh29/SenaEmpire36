@@ -84,7 +84,7 @@ with one upstream Starlette/httpx deprecation warning. No web app is included.
 | `apps/api/app/observability/` | Logging setup; structlog/Langfuse integration planned |
 | `apps/api/app/rag/` | `notebook.py` (ipynb → chunks), `store.py` (`build_vector_index` after bulk load), `embed.py` (`TeiEmbedder` sync + async, local bge-m3, `make_embedder`; managed-API fallback planned), `chunker.py` (`ParsedDocument` → size-safe `Chunk`s), `library.py` (index every book folder), `retrieve.py` (`Retriever.search` → `Citation`s), `evaluate.py` (retrieval metrics on a labelled question set), `ingest.py` CLI (`--embedder tei|local`, `--build-index`); optional `rerank.py` planned (P1) |
 | `data/raw/thinkpython/` | Downloaded Think Python 3e notebooks + `SOURCE_SHA` (git-ignored; re-download to rebuild) |
-| `apps/api/app/llm/` | LLM gateway (Vertex AI, Bedrock, OpenRouter adapters), `routing.yaml`, smoke CLI and setup README |
+| `apps/api/app/llm/` | LLM gateway (DeepSeek generation, Gemini verification; legacy Vertex AI, Bedrock and OpenRouter adapters), `routing.yaml`, smoke CLI and setup README |
 | `data/sources/` | Open-education allowlist, library manifests and acquisition/index reports |
 | `data/kg/` _(planned)_ | Knowledge Graph YAML fixtures |
 | `data/items/` _(planned)_ | MCQ item fixtures with misconception tags |
@@ -93,3 +93,6 @@ with one upstream Starlette/httpx deprecation warning. No web app is included.
 | `supabase/migrations/` | Database schema (Postgres + pgvector); `0001_init.sql` = schema v1, `0002` = chunk provenance (chapter, section, kind, url), `0003` = `halfvec(1024)`, `url` → `source_uri`, HNSW dropped (rebuilt after load), `0004` = `decision_traces` (the "Vì sao?" audit trail) |
 
 | `apps/api/app/research/pipeline.py` | P3 topic orchestration; optional async Retriever with explicit indexed subject, citation identity checks and original reading order; validates P1 KnowledgeGraph before publication |
+
+| `apps/api/app/research/smoke.py` | Explicit live canonical graph/items and blind verification route smoke; preflight reads a small public book chapter without model calls |
+| `specs/p3-integration/p3-follow-up.md` | P3 follow-up, validated checks, live blockers and P2/P4 integration instructions |
