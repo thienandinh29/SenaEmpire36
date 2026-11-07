@@ -20,4 +20,8 @@ the choices the code makes where `TEAM.md` is silent. Each needs an answer befor
 | 12 | `placement.gap(...)` returns `str \| None` (None = no gap found, e.g. top question answered correctly), matching the optional `gap_slug` | P3 |
 | 13 | Placement is stateless: P3 loads the learner's placement answers `[(concept_slug, correct, item_id)]` and calls `next_question(graph, answers)`; P2 persists `placement.seed_mastery(...)` as the starting `p_known` | P2, P3 |
 | 14 | An item is attached to a concept (`ItemSet.concept`), so P3 picks an unserved `verified` item of the slug placement returns | P3, P4 |
+| 15 | `retrieve.search` needs a pool and an embedder, so P3 builds one `Retriever(pool, embedder)` at startup and calls `await retriever.search(query, subject, k)` (also `search(..., retriever=)`); it is **async** | P3, P2 |
+| 16 | P2 adds `EMBEDDING_BACKEND` (`tei`\|`local`), `TEI_URL`, optional `TEI_API_KEY` to `config.py` and `.env.example`, then `make_embedder(...)` builds the client | P2 |
+| 17 | `sources` has no publisher column, so `Citation.publisher` is always `None`; the web's source list needs one (additive migration, P3's `0007` is the natural place) | P3, P2 |
+| 18 | `httpx` moved from dev to runtime dependencies in `apps/api/pyproject.toml` (already locked; P2 owns the lockfile, please re-check) | P2 |
 
