@@ -3,6 +3,7 @@
 import asyncio
 import importlib
 import os
+import re
 from collections.abc import Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -32,19 +33,25 @@ class HTTPProviderError(ProviderError):
         super().__init__(f"http_{status}", retryable=kind == "transient")
         self.retry_after = retry_after
         self.failure_kind = kind
+        self.delay_source: str | None = None
+        self.quota_violations: list[dict[str, str]] = []
 
 
 def http_failure(response: httpx.Response) -> HTTPProviderError:
     delay = None
+    delay_source = None
+    violations = []
     header = response.headers.get("Retry-After")
     if header:
         try:
             delay = max(0.0, float(header))
+            delay_source = "retry_after_seconds"
         except ValueError:
             with suppress(ValueError, TypeError):
                 delay = max(
                     0.0, (parsedate_to_datetime(header) - datetime.now(UTC)).total_seconds()
                 )
+                delay_source = "retry_after_http_date"
     status = response.status_code
     kind = "transient" if status in (408, 429) or status >= 500 else "configuration"
     # Do not classify all 429s as quota: inspect provider quota identifiers only.
@@ -56,7 +63,14 @@ def http_failure(response: httpx.Response) -> HTTPProviderError:
                 if isinstance(retry_delay, str) and retry_delay.endswith("s"):
                     with suppress(ValueError):
                         delay = max(delay or 0, float(retry_delay[:-1]))
+                        delay_source = "provider_retry_delay_seconds"
                 for violation in detail.get("violations", []):
+                    safe = {}
+                    for name in ("quotaId", "quotaValue"):
+                        value = str(violation.get(name, ""))
+                        if re.fullmatch(r"[A-Za-z0-9_./-]{1,160}", value):
+                            safe[name] = value
+                    violations.append(safe)
                     quota = str(violation.get("quotaId", "")).casefold()
                     if "perday" in quota or "per_day" in quota:
                         kind = "quota"
@@ -64,7 +78,10 @@ def http_failure(response: httpx.Response) -> HTTPProviderError:
                         kind = "quota"
         except (ValueError, AttributeError, TypeError):
             pass
-    return HTTPProviderError(status, delay, kind)
+    error = HTTPProviderError(status, delay, kind)
+    error.delay_source = delay_source
+    error.quota_violations = violations
+    return error
 
 
 async def _post(

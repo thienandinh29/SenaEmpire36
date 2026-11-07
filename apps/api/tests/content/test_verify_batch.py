@@ -78,6 +78,22 @@ def execute(path: Path, retries: int = 0) -> dict[str, Any]:
     return asyncio.run(batch.run(Path("unused"), path, 0, retries))
 
 
+def test_single_probe_saves_audit_before_continuing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    provider, _ = setup(monkeypatch)
+    path = tmp_path / "checkpoint.json"
+    first = asyncio.run(batch.run(Path("unused"), path, 0, 0, max_items=1))
+    assert provider.calls == 1
+    assert first["summary"]["verified"] == 1
+    assert len(first["items"]) == 1
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert next(iter(saved["items"].values()))["result"]["verification"]["evidence"]
+    second = execute(path)
+    assert provider.calls == 2
+    assert second["summary"]["reused_verified"] == 1
+
+
 def test_resume_preserves_success_and_evaluation_flips_only_candidate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

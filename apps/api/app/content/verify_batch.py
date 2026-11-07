@@ -82,12 +82,16 @@ class ClassifiedAdapter:
                     ),
                     "code": str(exc),
                     "retry_after": getattr(exc, "retry_after", None),
+                    "delay_source": getattr(exc, "delay_source", None),
+                    "quota_violations": getattr(exc, "quota_violations", []),
                 }
             )
             raise
 
 
-async def run(topic: Path, checkpoint: Path, interval: float, retries: int) -> dict[str, Any]:
+async def run(
+    topic: Path, checkpoint: Path, interval: float, retries: int, max_items: int | None = None
+) -> dict[str, Any]:
     _, chunks, graph, items = load_topic(topic)
     base = default_gateway()
     config_hash = digest(
@@ -109,6 +113,7 @@ async def run(topic: Path, checkpoint: Path, interval: float, retries: int) -> d
     state["blocked"] = None
     started = time.monotonic()
     reused = 0
+    processed = 0
     for item in items:
         fingerprint = item_hash(item, chunks)
         source_hash = digest(
@@ -196,6 +201,9 @@ async def run(topic: Path, checkpoint: Path, interval: float, retries: int) -> d
             retry_after = max((e.get("retry_after") or 0 for e in provider_errors), default=0)
             await asyncio.sleep(max(interval, retry_after, 2**attempt * 5 + random.random()))
         if state["blocked"]:
+            break
+        processed += 1
+        if max_items is not None and processed >= max_items:
             break
         await asyncio.sleep(interval)
     valid = [
@@ -313,12 +321,17 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--interval", type=float, default=15)
     parser.add_argument("--retries", type=int, default=2)
+    parser.add_argument("--max-items", type=int, help="Probe only this many unfinished items")
     args = parser.parse_args()
     if args.interval < 0 or args.retries < 0:
         parser.error("interval/retries must be nonnegative")
+    if args.max_items is not None and args.max_items < 1:
+        parser.error("max-items must be positive")
     print(
         json.dumps(
-            asyncio.run(run(args.topic, args.checkpoint, args.interval, args.retries))["summary"]
+            asyncio.run(
+                run(args.topic, args.checkpoint, args.interval, args.retries, args.max_items)
+            )["summary"]
         )
     )
 

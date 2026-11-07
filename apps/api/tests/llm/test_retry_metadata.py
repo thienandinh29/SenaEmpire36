@@ -30,3 +30,23 @@ def test_invalid_credentials_are_not_retried() -> None:
     error = http_failure(httpx.Response(403))
     assert error.failure_kind == "configuration"
     assert not error.retryable
+
+
+def test_provider_delay_seconds_are_not_milliseconds_or_locale_numbers() -> None:
+    for raw, expected in [("64589s", 64589), ("64.589s", 64.589)]:
+        error = http_failure(
+            httpx.Response(
+                429,
+                json={
+                    "error": {
+                        "details": [
+                            {"retryDelay": raw},
+                            {"violations": [{"quotaId": "RequestsPerDay", "quotaValue": "0"}]},
+                        ]
+                    }
+                },
+            )
+        )
+        assert error.retry_after == expected
+        assert error.delay_source == "provider_retry_delay_seconds"
+        assert error.quota_violations == [{"quotaId": "RequestsPerDay", "quotaValue": "0"}]
