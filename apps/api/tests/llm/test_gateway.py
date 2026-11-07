@@ -176,6 +176,17 @@ def test_default_deepseek_routes_keep_independent_verifiers() -> None:
     for tasks in load_routing().tiers.values():
         for task, candidates in tasks.items():
             if task == "verify":
-                assert all(route.family in {"gemini", "claude"} for route in candidates)
+                assert all(route.family == "gemini" for route in candidates)
             else:
-                assert candidates[0].provider == "deepseek"
+                assert all(route.provider == "deepseek" for route in candidates)
+
+
+def test_missing_deepseek_never_falls_back_to_gemini(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.llm.providers import default_gateway
+
+    monkeypatch.setenv("DEEPSEEK_FREE_MODEL", "deepseek-flash")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    with pytest.raises(GatewayError, match="No eligible model"):
+        asyncio.run(
+            default_gateway().complete("items", "free", "s", [{"role": "user", "content": "q"}])
+        )

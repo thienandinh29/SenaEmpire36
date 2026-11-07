@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     aws_profile: str = ""
     openrouter_api_key: SecretStr = SecretStr("")
     deepseek_api_key: SecretStr = SecretStr("")
+    gemini_api_key: SecretStr = SecretStr("")
+    gemini_verify_model: str = ""
     deepseek_free_model: str = ""
     deepseek_pro_model: str = ""
     vertex_free_model: str = ""
@@ -64,6 +66,8 @@ class Settings(BaseSettings):
             "aws_profile",
             "openrouter_api_key",
             "deepseek_api_key",
+            "gemini_api_key",
+            "gemini_verify_model",
             "deepseek_free_model",
             "deepseek_pro_model",
             "vertex_free_model",

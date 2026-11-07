@@ -148,10 +148,12 @@ whether to relax the target.
     Claude on Bedrock verifies), so a model never grades its own output (self-preference bias). Enforced in
     `routing.yaml`.
   - *Socratic tutor:* Pro = Claude on Bedrock, Free = a cheap model; confirmed or changed by the H8 Vietnamese test.
-  **Approved routing update (P1/P3/P2, 2026-11-07):** DeepSeek API is now an optional first
-  candidate for generation in both tiers (`DEEPSEEK_FREE_MODEL` / `DEEPSEEK_PRO_MODEL`).
-  The existing Vertex/Bedrock/OpenRouter generation routes remain fallbacks. Default
-  verifiers remain Gemini/Claude and exclude the actual generator family after fallback.
+  **Approved routing update (P1/P3/P2, 2026-11-07):** DeepSeek API generates content
+  in both tiers (`DEEPSEEK_FREE_MODEL` / `DEEPSEEK_PRO_MODEL`); Gemini verifies it.
+  Default generation does not fall back to another family. Gemini verification uses
+  `GEMINI_API_KEY` + `GEMINI_VERIFY_MODEL` (Developer API), or explicitly configured
+  Vertex ADC + `VERTEX_VERIFY_MODEL`. Developer API billing/credits are separate
+  from Vertex. The gateway always excludes the actual generator family.
   This supersedes the provider-order examples above, not the H8 quality gates. Model
   IDs and credentials still need configuration and live acceptance; see
   `apps/api/app/llm/README.md` and `specs/deepseek-gateway/`.

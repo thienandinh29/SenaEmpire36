@@ -23,7 +23,7 @@ class Message(BaseModel):
 
 class Route(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider: Literal["vertex", "bedrock", "openrouter", "deepseek"]
+    provider: Literal["vertex", "bedrock", "openrouter", "deepseek", "gemini"]
     model: str = Field(min_length=1)
     family: Literal["gemini", "claude", "deepseek"]
 
