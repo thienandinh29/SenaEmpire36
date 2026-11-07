@@ -116,14 +116,26 @@ def main() -> None:
         from app.content.ports import process_claimed_job
         from app.content.repository import Repository
         from app.db import create_pool
+        from app.research.runtime import retrieval_configuration, worker_retriever
 
+        retrieval_subject, retrieval_k = retrieval_configuration()
         with create_pool(database_url) as pool:
             repository = Repository(lambda: pool)
             repository.require_schema()
             gateway = P3Gateway()
+            retriever = worker_retriever(pool)
 
             def process(job: dict[str, Any]) -> None:
-                asyncio.run(process_claimed_job(repository, gateway, job))
+                asyncio.run(
+                    process_claimed_job(
+                        repository,
+                        gateway,
+                        job,
+                        retriever=retriever,
+                        retrieval_subject=retrieval_subject,
+                        retrieval_k=retrieval_k,
+                    )
+                )
 
             loop(database_url, allow_fixture=args.fixture, processor=process)
         return

@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Sequence
+from typing import Any
 
 import pytest
 
@@ -86,7 +87,7 @@ def test_quick_upload_pipeline_never_searches_and_publishes_only_after_persisten
         pytest.fail("Quick mode must never search")
 
     result = asyncio.run(
-        TopicPipeline(ports).run(
+        pipeline(ports).run(
             TopicInput(upload_id="u1", mode="quick", tier="free"),
             progress,
             event,
@@ -117,7 +118,7 @@ def test_pipeline_does_not_publish_invalid_items_or_graph(failure: str) -> None:
 
     with pytest.raises(SourceError):
         asyncio.run(
-            TopicPipeline(ports).run(
+            pipeline(ports).run(
                 TopicInput(goal_vi="biology", mode="quick", tier="free"),
                 progress,
                 event,
@@ -143,7 +144,7 @@ def test_deadline_cancels_job_and_reports_failed() -> None:
 
     with pytest.raises(SourceError, match="hết thời gian"):
         asyncio.run(
-            TopicPipeline(SlowPorts(), quick_seconds=0.01).run(
+            pipeline(SlowPorts(), quick_seconds=0.01).run(
                 TopicInput(goal_vi="biology", mode="quick", tier="free"),
                 progress,
                 event,
@@ -184,7 +185,7 @@ def test_deep_pipeline_uses_research_and_preserves_source_summaries() -> None:
         events.append(value)
 
     result = asyncio.run(
-        TopicPipeline(ports, research_runner=deep).run(
+        pipeline(ports, research_runner=deep).run(
             TopicInput(goal_vi="biology", mode="deep", tier="pro"),
             progress,
             event,
@@ -206,7 +207,7 @@ def test_missing_upload_and_internal_failure_are_not_reported_ready() -> None:
 
     with pytest.raises(SourceError, match="Không tìm thấy"):
         asyncio.run(
-            TopicPipeline(Ports()).run(
+            pipeline(Ports()).run(
                 TopicInput(upload_id="missing", mode="quick", tier="free"),
                 progress,
                 event,
@@ -230,7 +231,7 @@ def test_worker_shutdown_propagates_cancellation_without_failed_write() -> None:
 
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(
-            TopicPipeline(CancelledPorts()).run(
+            pipeline(CancelledPorts()).run(
                 TopicInput(goal_vi="biology", mode="quick", tier="free"),
                 progress,
                 event,
@@ -248,7 +249,7 @@ def test_progress_sink_failure_does_not_expose_internal_error() -> None:
 
     with pytest.raises(SourceError) as caught:
         asyncio.run(
-            TopicPipeline(Ports()).run(
+            pipeline(Ports()).run(
                 TopicInput(goal_vi="biology", mode="quick", tier="free"),
                 progress,
                 event,
@@ -340,7 +341,17 @@ def test_pipeline_rejects_bad_canonical_content_before_publication(failure: str)
     ports = BadPorts()
     if failure == "item-source":
         ports.items[0] = ports.items[0].model_copy(update={"source": "https://evil.example"})
-    retriever = Retrieved([]) if failure == "retrieval" else None
+    retriever = (
+        Retrieved([])
+        if failure == "retrieval"
+        else Retrieved(
+            [
+                PreparedChunk(
+                    id="chunk-1", text="Ngu\u1ed3n", source_uri="https://books.example/a", page=1
+                )
+            ]
+        )
+    )
     states: list[Progress] = []
 
     async def progress(state: Progress) -> None:
@@ -351,9 +362,9 @@ def test_pipeline_rejects_bad_canonical_content_before_publication(failure: str)
 
     with pytest.raises(SourceError):
         asyncio.run(
-            TopicPipeline(
-                ports, retriever=retriever, retrieval_subject="biology" if retriever else None
-            ).run(TopicInput(goal_vi="biology", mode="quick", tier="free"), progress, event)
+            pipeline(ports, retriever=retriever, retrieval_subject="biology").run(
+                TopicInput(goal_vi="biology", mode="quick", tier="free"), progress, event
+            )
         )
     assert not ports.items_saved
     if failure != "item-source":
@@ -378,7 +389,29 @@ def test_pipeline_calls_injected_retriever_before_graph() -> None:
         pass
 
     asyncio.run(
-        TopicPipeline(
-            SelectedPorts(), retriever=retriever, retrieval_subject="library-biology"
-        ).run(TopicInput(goal_vi="biology", mode="quick", tier="free"), ignore, ignore)
+        pipeline(SelectedPorts(), retriever=retriever, retrieval_subject="library-biology").run(
+            TopicInput(goal_vi="biology", mode="quick", tier="free"), ignore, ignore
+        )
     )
+
+
+def pipeline(ports: Ports, **kwargs: Any) -> TopicPipeline:
+    kwargs.setdefault(
+        "retriever",
+        Retrieved(
+            [
+                PreparedChunk(
+                    id="chunk-1", text="Ngu\u1ed3n", source_uri="https://books.example/a", page=1
+                )
+            ]
+        ),
+    )
+    kwargs.setdefault("retrieval_subject", "biology")
+    return TopicPipeline(ports, **kwargs)
+
+
+def test_pipeline_cannot_be_constructed_without_retrieval() -> None:
+    with pytest.raises(TypeError):
+        TopicPipeline(Ports())  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="blank"):
+        TopicPipeline(Ports(), retriever=Retrieved([]), retrieval_subject=" ")

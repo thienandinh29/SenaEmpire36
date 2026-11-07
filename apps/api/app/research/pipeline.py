@@ -23,6 +23,7 @@ class PreparedChunk(BaseModel):
     text: str = Field(min_length=1)
     source_uri: str = Field(min_length=1)
     page: int | None = Field(default=None, ge=1)
+    source_url: str | None = None  # registered book URL; source_uri remains the exact page
 
 
 class GraphDraft(BaseModel):
@@ -145,8 +146,8 @@ class TopicPipeline:
         first_items: int = 6,
         quick_seconds: float = 60,
         deep_seconds: float = 480,
-        retriever: ChunkRetriever | None = None,
-        retrieval_subject: str | None = None,
+        retriever: ChunkRetriever,
+        retrieval_subject: str,
         retrieval_k: int = 12,
     ) -> None:
         if first_items < 1 or not 0 < quick_seconds <= 60 or not 0 < deep_seconds <= 480:
@@ -154,11 +155,15 @@ class TopicPipeline:
         self.ports, self.research = ports, research_runner
         self.first_items = first_items
         self.quick_seconds, self.deep_seconds = quick_seconds, deep_seconds
-        if (retriever is None) != (retrieval_subject is None) or not 1 <= retrieval_k <= 50:
+        if (
+            retriever is None
+            or not isinstance(retrieval_subject, str)
+            or not 1 <= retrieval_k <= 50
+        ):
             raise ValueError(
                 "Retriever requires an explicit indexed subject and k between 1 and 50"
             )
-        if retrieval_subject is not None and not retrieval_subject.strip():
+        if not retrieval_subject.strip():
             raise ValueError("Retrieval subject must not be blank")
         self.retriever, self.retrieval_subject, self.retrieval_k = (
             retriever,
@@ -218,15 +223,16 @@ class TopicPipeline:
                 chunks = list(await self.ports.index(sources, upload))
                 if not chunks or len({c.id for c in chunks}) != len(chunks):
                     raise SourceError("Chưa có đoạn nguồn hợp lệ để xây lộ trình.")
-                if self.retriever is not None and self.retrieval_subject is not None:
-                    chunks = await retrieve_chunks(
-                        self.retriever, goal, self.retrieval_subject, chunks, self.retrieval_k
-                    )
+                chunks = await retrieve_chunks(
+                    self.retriever, goal, self.retrieval_subject, chunks, self.retrieval_k
+                )
                 graph = await self.ports.build_graph(goal, chunks, request.tier)
                 if not graph.supported or not graph.graph:
                     raise SourceError("Sơ đồ kiến thức chưa được xác minh từ nguồn.")
                 canonical_graph = KnowledgeGraph.model_validate(graph.graph)
-                source_uris = {chunk.source_uri for chunk in chunks}
+                source_uris = {chunk.source_uri for chunk in chunks} | {
+                    chunk.source_url for chunk in chunks if chunk.source_url
+                }
                 if any(
                     not set(concept.sources) <= source_uris for concept in canonical_graph.concepts
                 ):
@@ -260,7 +266,13 @@ class TopicPipeline:
                         item.status != "verified"
                         or not set(item.chunk_ids) <= chunk_ids
                         or item.source
-                        not in {chunk.source_uri for chunk in chunks if chunk.id in item.chunk_ids}
+                        not in {
+                            uri
+                            for chunk in chunks
+                            if chunk.id in item.chunk_ids
+                            for uri in (chunk.source_uri, chunk.source_url)
+                            if uri
+                        }
                         or item.id in seen
                     ):
                         dropped += 1

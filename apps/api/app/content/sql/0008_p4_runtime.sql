@@ -14,8 +14,8 @@ with ordered as (
 alter table item_options alter column position set not null;
 alter table item_options add constraint item_options_position_key unique(item_id,position);
 alter table item_options add constraint item_options_position_nonnegative check(position>=0);
-alter table topic_jobs add column mode text not null default 'quick' check(mode in ('quick','deep'));
-alter table topic_jobs add column upload_id uuid references uploads(id);
+alter table topic_jobs add column if not exists mode text not null default 'quick' check(mode in ('quick','deep'));
+alter table topic_jobs add column if not exists upload_id uuid references uploads(id);
 
 create table p4_verification_history (
     id uuid primary key default gen_random_uuid(),

@@ -15,6 +15,7 @@ from app.content.ports import process_claimed_job
 from app.content.repository import ContentUnavailable, Repository, StoredItem
 from app.guardrails.answerability import is_currently_verified
 from app.research.reader import SourceError
+from app.schemas import Citation
 from tests.content.fakes import FakeGateway, topic
 
 
@@ -43,9 +44,24 @@ class MemoryRepository(Repository):
 
     def fetchall(self) -> list[Any]:
         if "s.slug,r.p4_metadata" in self.query:
-            return [("python-conditions", self.sources[0].model_dump(mode="json"))]
+            source = self.sources[0]
+            return [
+                (
+                    "python-conditions",
+                    source.model_dump(mode="json"),
+                    source.source_id,
+                    source.title,
+                    source.author,
+                    source.url,
+                    source.license,
+                    source.version,
+                )
+            ]
         if "select c.id" in self.query:
-            return [(c.chunk_id,) for c in self.chunks]
+            return [
+                (c.chunk_id, next(s.url for s in self.sources if s.source_id == c.source_id))
+                for c in self.chunks
+            ]
         raise AssertionError(self.query)
 
     def __iter__(self) -> Iterator[Any]:
@@ -145,11 +161,19 @@ def test_claimed_job_runs_p3_pipeline_p4_generation_gate_and_idempotent_retry() 
         "tier": "free",
         "mode": "quick",
     }
-    asyncio.run(process_claimed_job(repo, models, job))
+    asyncio.run(
+        process_claimed_job(
+            repo, models, job, retriever=Retrieval(repo), retrieval_subject="python"
+        )
+    )
     first = set(repo.saved)
     assert len(first) == 6 and repo.progress[-1][0] == "ready"
     assert models.generate_count == 1
-    asyncio.run(process_claimed_job(repo, models, job))
+    asyncio.run(
+        process_claimed_job(
+            repo, models, job, retriever=Retrieval(repo), retrieval_subject="python"
+        )
+    )
     assert set(repo.saved) == first and models.generate_count == 1
     assert all("item-" in key for key in first)
 
@@ -161,7 +185,32 @@ def test_job_never_becomes_ready_before_verified_content_is_saved(failure: str) 
     repo.fail_save = failure == "save_error"
     with pytest.raises(SourceError):
         asyncio.run(
-            process_claimed_job(repo, models, {"id": uuid4(), "goal_vi": "Python", "tier": "free"})
+            process_claimed_job(
+                repo,
+                models,
+                {"id": uuid4(), "goal_vi": "Python", "tier": "free"},
+                retriever=Retrieval(repo),
+                retrieval_subject="python",
+            )
         )
     assert repo.progress[-1][0] == "failed"
     assert not any(row[0] == "ready" for row in repo.progress)
+
+
+class Retrieval:
+    def __init__(self, repo: MemoryRepository) -> None:
+        self.repo = repo
+
+    async def search(self, query: str, subject: str, k: int = 5) -> list[Citation]:
+        return [
+            Citation(
+                chunk_id=str(c.chunk_id),
+                source_title="Book",
+                license=c.license,
+                source_uri=next(s.url for s in self.repo.sources if s.source_id == c.source_id),
+                page=c.page,
+                content=c.content,
+                score=0.8,
+            )
+            for c in self.repo.chunks[:k]
+        ]

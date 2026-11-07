@@ -13,7 +13,7 @@ from app.content.pipeline import generate_graph, generate_items, require_model_p
 from app.content.repository import ContentUnavailable, Repository, stable_id
 from app.graders.mcq import Item as GraderItem
 from app.research.agent import ChosenSource, detect_license
-from app.research.pipeline import GraphDraft, PreparedChunk, Progress, TopicPipeline
+from app.research.pipeline import ChunkRetriever, GraphDraft, PreparedChunk, Progress
 from app.uploads.metadata import UploadMetadata
 from app.uploads.reader import Document
 
@@ -26,9 +26,11 @@ class ContentPorts:
         subject: str,
         *,
         upload_model_permission: bool = False,
+        library_subject: str | None = None,
     ) -> None:
         self.repository, self.gateway, self.subject = repository, gateway, subject
         self.upload_model_permission = upload_model_permission
+        self.library_subject = library_subject
         self.sources: list[Source] = []
         self.chunks: list[Chunk] = []
         self.graph: Graph | None = None
@@ -52,18 +54,27 @@ class ContentPorts:
         def select() -> list[ChosenSource]:
             with self.repository.transaction() as conn:
                 rows = conn.execute(
-                    "select s.slug,r.p4_metadata from sources r join subjects s "
-                    "on s.id=r.subject_id order by s.slug,r.title"
+                    "select s.slug,r.p4_metadata,r.id,r.title,r.author,r.url,r.license,r.version "
+                    "from sources r join subjects s "
+                    "on s.id=r.subject_id where (%s::text is null or s.slug=%s) "
+                    "order by s.slug,r.title",
+                    (self.library_subject, self.library_subject),
                 ).fetchall()
             selected = []
-            for slug, metadata in rows:
-                if not metadata:
-                    continue
-                source = Source.model_validate(metadata)
+            for slug, metadata, source_id, title, author, url, license_name, version in rows:
                 tokens = [word for word in slug.split("-") if len(word) >= 3]
-                if source.model_ingestion_allowed and any(
+                if self.library_subject is None and not any(
                     word in goal.casefold() for word in tokens
                 ):
+                    continue
+                if not metadata:
+                    from app.research.runtime import indexed_library_source
+
+                    metadata = indexed_library_source(
+                        source_id, title, author, url, license_name, version
+                    )
+                source = Source.model_validate(metadata)
+                if source.model_ingestion_allowed:
                     selected.append(
                         ChosenSource(source.title, source.publisher, source.url, source.license, "")
                     )
@@ -74,6 +85,8 @@ class ContentPorts:
     async def index(
         self, sources: Sequence[ChosenSource], upload: Document | None
     ) -> Sequence[PreparedChunk]:
+        page_uris: dict[str, str] = {}
+
         def prepare() -> None:
             from app.rag.chunker import chunk_document
             from app.schemas import DocBlock, ParsedDocument
@@ -124,14 +137,13 @@ class ContentPorts:
                 return
             uris = [s.url for s in sources]
             with self.repository.transaction() as conn:
-                ids = [
-                    row[0]
-                    for row in conn.execute(
-                        "select c.id from chunks c join sources s on s.id=c.source_id "
-                        "where s.url=any(%s) order by s.url,c.chunk_index",
-                        (uris,),
-                    )
-                ]
+                rows = conn.execute(
+                    "select c.id,c.source_uri from chunks c join sources s on s.id=c.source_id "
+                    "where s.url=any(%s) order by s.url,c.chunk_index",
+                    (uris,),
+                ).fetchall()
+                ids = [row[0] for row in rows]
+                page_uris.update({str(row[0]): row[1] for row in rows})
                 if ids:
                     self.sources, self.chunks = self.repository.material(conn, ids)
             if not self.chunks:
@@ -193,7 +205,9 @@ class ContentPorts:
                 id=str(c.chunk_id),
                 text=c.content,
                 page=c.page,
-                source_uri=next(s.url for s in self.sources if s.source_id == c.source_id),
+                source_uri=page_uris.get(str(c.chunk_id))
+                or next(s.url for s in self.sources if s.source_id == c.source_id),
+                source_url=next(s.url for s in self.sources if s.source_id == c.source_id),
             )
             for c in self.chunks
         ]
@@ -202,8 +216,13 @@ class ContentPorts:
         self, goal: str, chunks: Sequence[PreparedChunk], tier: str
     ) -> GraphDraft:
         # IDs must be exactly the durable IDs returned by index, never model-invented IDs.
-        if {c.id for c in chunks} != {str(c.chunk_id) for c in self.chunks}:
+        selected = {c.id for c in chunks}
+        if not selected or not selected <= {str(c.chunk_id) for c in self.chunks}:
             raise ContentUnavailable("Prepared chunk IDs changed")
+        # Models and verification must see only the selected retrieval context.
+        self.chunks = [c for c in self.chunks if str(c.chunk_id) in selected]
+        source_ids = {c.source_id for c in self.chunks}
+        self.sources = [s for s in self.sources if s.source_id in source_ids]
         try:
             with self.repository.transaction() as conn:
                 self.graph = self.repository.graph(conn, self.subject)
@@ -263,15 +282,28 @@ class ContentPorts:
 
 
 async def process_claimed_job(
-    repository: Repository, gateway: Gateway, job: dict[str, object]
+    repository: Repository,
+    gateway: Gateway,
+    job: dict[str, object],
+    *,
+    retriever: "ChunkRetriever | None" = None,
+    retrieval_subject: str | None = None,
+    retrieval_k: int = 12,
 ) -> None:
     """Called AFTER P2 claim commits. All progress uses the existing topic_jobs row."""
     from dataclasses import asdict
 
     from psycopg.types.json import Jsonb
 
+    from app.research.runtime import build_pipeline, retrieval_configuration, worker_retriever
+
     subject = f"topic-{UUID(str(job['id'])).hex}"
-    ports = ContentPorts(repository, gateway, subject)
+    if retriever is None:
+        retrieval_subject, retrieval_k = retrieval_configuration()
+        retriever = worker_retriever(repository.pool())
+    if retrieval_subject is None:
+        raise ValueError("An injected retriever requires an explicit subject")
+    ports = ContentPorts(repository, gateway, subject, library_subject=retrieval_subject)
     request = TopicInput.model_validate(
         {
             "goal_vi": job["goal_vi"],
@@ -311,4 +343,5 @@ async def process_claimed_job(
 
         await asyncio.to_thread(save)
 
-    await TopicPipeline(ports).run(request, progress, event)
+    pipeline = build_pipeline(ports, retriever=retriever, subject=retrieval_subject, k=retrieval_k)
+    await pipeline.run(request, progress, event)
