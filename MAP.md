@@ -11,7 +11,7 @@ Planned entries are marked _(planned)_ until they exist.
 | `PLAN.md` | Phased build plan and current status |
 | `TEAM.md` | 24-hour team plan: lanes, owned paths, stack, contracts, timeline, git workflow, risks |
 | `team/` | Start guide per lane (`P1.md`–`P5.md`): setup, first task, first prompt; `TEAM.md` wins if they differ |
-| `specs/` | GitHub Spec Kit: one folder per feature (spec, plan, tasks); `engine/`, `retrieval/`, `remediation/`, `model-test/` (P1), `contracts/review.md` (open contract decisions), `contracts/mocks/` (generated mock JSON for P5, `tests/engine/mocks.py`) |
+| `specs/` | GitHub Spec Kit: one folder per feature (spec, plan, tasks); `engine/`, `retrieval/`, `library/`, `remediation/`, `model-test/` (P1), `contracts/review.md` (open contract decisions), `contracts/mocks/` (generated mock JSON for P5, `tests/engine/mocks.py`) |
 | `.specify/` _(planned, P2)_ | Spec Kit project memory: constitution (from `CLAUDE.md` principles), templates |
 | `docker/` _(planned, P2)_ | API image, compose for the cloud VM (API + worker + TEI for bge-m3, Watchtower, named Cloudflare Tunnel), VM setup script |
 | `context/product-brief.vi.md` | Original product brief (Vietnamese) |
@@ -41,7 +41,7 @@ Planned entries are marked _(planned)_ until they exist.
 | `data/golden/` _(planned, P4)_ | 2–3 hand-checked golden topics (chunks, graph, items): test data, labelled sample, demo fallback |
 | `apps/api/app/jobs/` _(planned, P2)_ | `topic_jobs` queue in Postgres, background worker, SSE progress with heartbeat |
 | `apps/api/app/observability/` _(planned, P2)_ | structlog + Langfuse setup (OpenTelemetry, Sentry after the contest) |
-| `apps/api/app/rag/` | `notebook.py` (ipynb → chunks), `store.py` (`build_vector_index` after bulk load), `embed.py` (`TeiEmbedder` sync + async, local bge-m3, `make_embedder`; managed-API fallback planned), `retrieve.py` (`Retriever.search` → `Citation`s), `ingest.py` CLI (`--embedder tei|local`, `--build-index`); optional `rerank.py` planned (P1) |
+| `apps/api/app/rag/` | `notebook.py` (ipynb → chunks), `store.py` (`build_vector_index` after bulk load), `embed.py` (`TeiEmbedder` sync + async, local bge-m3, `make_embedder`; managed-API fallback planned), `chunker.py` (`ParsedDocument` → size-safe `Chunk`s), `library.py` (index every book folder), `retrieve.py` (`Retriever.search` → `Citation`s), `ingest.py` CLI (`--embedder tei|local`, `--build-index`); optional `rerank.py` planned (P1) |
 | `data/raw/thinkpython/` | Downloaded Think Python 3e notebooks + `SOURCE_SHA` (git-ignored; re-download to rebuild) |
 | `apps/api/app/llm/` _(planned, P3)_ | LLM gateway (Vertex AI, Bedrock, OpenRouter adapters) + `routing.yaml` (tier × task → ordered provider:model list) |
 | `data/sources/` _(planned, P3)_ | Allowlist of open-education sites + library manifest |

@@ -16,9 +16,9 @@ class SourceInfo:
     subject_name_vi: str
     subject_name_en: str
     title: str
-    author: str
+    author: str | None
     license: str
-    url: str
+    url: str | None
     version: str
 
 
@@ -66,8 +66,8 @@ def replace_chunks(
             with conn.cursor() as cur:
                 cur.executemany(
                     "insert into chunks (source_id, chunk_index, chapter_no, chapter, section,"
-                    " kind, content, source_uri, embedding)"
-                    " values (%s, %s, %s, %s, %s, %s, %s, %s, %s::halfvec(1024))",
+                    " kind, content, source_uri, page, embedding)"
+                    " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::halfvec(1024))",
                     [
                         (
                             source_id,
@@ -78,6 +78,7 @@ def replace_chunks(
                             c.kind,
                             c.content,
                             c.source_uri,
+                            c.page,
                             to_pgvector(v),
                         )
                         for i, (c, v) in enumerate(zip(batch, vectors, strict=True))

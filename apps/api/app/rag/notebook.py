@@ -20,12 +20,13 @@ MAX_CHARS = 1800  # ~400 tokens: big enough for a code example plus its explanat
 
 @dataclass(frozen=True)
 class Chunk:
-    chapter_no: int
+    chapter_no: int | None
     chapter: str
     section: str
     kind: ChunkKind
     content: str
-    source_uri: str  # web URL of the section (chunks.source_uri)
+    source_uri: str  # web URL of the section, or the storage path of an upload (chunks.source_uri)
+    page: int | None = None  # 1-based PDF page; None for web sources (chunks.page)
 
     @property
     def embedding_text(self) -> str:

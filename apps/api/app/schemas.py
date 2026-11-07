@@ -10,6 +10,7 @@ Changing a shape here changes a contract: only P1, announced at a checkpoint. Ad
 fields are the only change allowed after H3.
 """
 
+import re
 from datetime import date, datetime
 from typing import Literal, Self
 
@@ -179,6 +180,51 @@ class CitationRef(_Contract):
     section: str | None = None
     url: str
     page: int | None = None  # opens the right page of an uploaded PDF
+
+
+# ---------------------------------------------------------------------------------------------
+# 2b. Library documents (P3's readers write, P1's chunker reads): a book or upload as blocks
+# ---------------------------------------------------------------------------------------------
+
+BlockKind = Literal["text", "exercise", "glossary"]  # same kinds as `chunks.kind`
+
+# "ND" (NoDerivatives) licences are not allowed for source material (SPEC.md).
+_ND_LICENSE = re.compile(r"(?i)(?:^|[\s\-/(])ND(?:$|[\s\-/)])|no\s*derivativ")
+
+
+class DocBlock(_Contract):
+    """One passage in reading order. Readers emit blocks; the chunker merges and splits them."""
+
+    chapter_no: int | None = None  # None when the source has no numbered chapters (an upload)
+    chapter: str = Field(min_length=1)
+    section: str = Field(min_length=1)  # heading path, e.g. "Boolean Expressions > Exercises"
+    kind: BlockKind = "text"
+    text: str  # blank text is allowed and dropped by the chunker, so readers need not filter
+    source_uri: str = Field(min_length=1)  # page URL with anchor, or the Supabase Storage path
+    page: int | None = Field(default=None, ge=1)  # 1-based PDF page; None for web sources
+
+
+class ParsedDocument(_Contract):
+    blocks: list[DocBlock] = Field(min_length=1)
+
+
+class SourceMeta(_Contract):
+    """Who a book is and what it may be used for; written next to its document (`source.json`)."""
+
+    subject_slug: str = Slug
+    subject_name_vi: str = Field(min_length=1)
+    subject_name_en: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    author: str | None = None
+    license: str = Field(min_length=1)
+    url: str | None = None
+    version: str = "unknown"  # e.g. the upstream commit or edition the text was taken from
+
+    @model_validator(mode="after")
+    def _no_nd_license(self) -> Self:
+        if _ND_LICENSE.search(self.license):
+            raise ValueError(f"licence {self.license!r} is NoDerivatives (ND); not allowed")
+        return self
 
 
 # ---------------------------------------------------------------------------------------------

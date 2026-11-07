@@ -62,12 +62,11 @@ def ingest(directory: Path, database_url: str, embedder: Embedder) -> int:
         return replace_chunks(conn, source_id, chunks, embedder)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def add_embedder_args(parser: argparse.ArgumentParser) -> None:
+    """The embedder and index options shared by every indexing command."""
     # With TEI_URL set the default is the TEI server (fast, and the same model the API queries);
     # without it, the local model, which uses the GPU if PyTorch can see one.
     default_backend = "tei" if os.environ.get("TEI_URL") else "local"
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("directory", type=Path)
     parser.add_argument("--embedder", choices=["tei", "local"], default=default_backend)
     parser.add_argument("--tei-url", default=os.environ.get("TEI_URL"))
     parser.add_argument("--api-key", default=os.environ.get("TEI_API_KEY"))
@@ -76,20 +75,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="build the HNSW index once loading is done (run it after the last book, not each one)",
     )
-    args = parser.parse_args(argv)
+
+
+def embedder_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> Embedder:
     if args.embedder == "tei" and not args.tei_url:
         parser.error("--embedder tei needs --tei-url (or the TEI_URL environment variable)")
-
     from app.rag.embed import make_embedder
 
-    embedder = make_embedder(args.embedder, tei_url=args.tei_url, api_key=args.api_key)
+    return make_embedder(args.embedder, tei_url=args.tei_url, api_key=args.api_key)
+
+
+def build_index(database_url: str) -> None:
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        build_vector_index(conn)
+    print("Built the vector index", file=sys.stderr)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("directory", type=Path)
+    add_embedder_args(parser)
+    args = parser.parse_args(argv)
+    embedder = embedder_from_args(args, parser)
+
     database_url = get_settings().database_url
     count = ingest(args.directory, database_url, embedder)
     print(f"Ingested {count} chunks from {args.directory}", file=sys.stderr)
     if args.build_index:
-        with psycopg.connect(database_url, autocommit=True) as conn:
-            build_vector_index(conn)
-        print("Built the vector index", file=sys.stderr)
+        build_index(database_url)
     return 0
 
 
