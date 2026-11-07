@@ -497,7 +497,7 @@
         "properties": {
           "question": {
             "type": "string",
-            "maxLength": 4000,
+            "maxLength": 1000,
             "minLength": 1,
             "title": "Question"
           },
@@ -561,12 +561,15 @@
             "title": "Item Id"
           },
           "answer": {
-            "$ref": "#/components/schemas/JsonValue"
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Answer"
           },
           "hints_used": {
             "type": "integer",
             "minimum": 0.0,
-            "title": "Hints Used"
+            "title": "Hints Used",
+            "default": 0
           }
         },
         "additionalProperties": false,
@@ -574,8 +577,7 @@
         "required": [
           "learner_id",
           "item_id",
-          "answer",
-          "hints_used"
+          "answer"
         ],
         "title": "AttemptInput"
       },
@@ -641,21 +643,37 @@
             "title": "Title"
           },
           "section": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Section"
           },
           "url": {
             "type": "string",
-            "maxLength": 2083,
             "minLength": 1,
-            "format": "uri",
             "title": "Url"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
           }
         },
         "type": "object",
         "required": [
           "title",
-          "section",
           "url"
         ],
         "title": "Citation"
@@ -732,12 +750,8 @@
           "kind",
           "concept_slug",
           "at",
-          "prior",
-          "evidence",
-          "posterior",
           "rule",
-          "rule_vi",
-          "alternatives"
+          "rule_vi"
         ],
         "title": "DecisionTrace"
       },
@@ -980,14 +994,15 @@
           },
           "level": {
             "type": "integer",
-            "minimum": 0.0,
+            "maximum": 4.0,
+            "minimum": 1.0,
             "title": "Level"
           },
           "last_answer": {
             "anyOf": [
               {
-                "type": "string",
-                "maxLength": 4000
+                "type": "integer",
+                "minimum": 0.0
               },
               {
                 "type": "null"
@@ -1035,7 +1050,6 @@
         ],
         "title": "HintResponse"
       },
-      "JsonValue": {},
       "LearnerItem": {
         "properties": {
           "id": {
@@ -1219,7 +1233,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "maxLength": 2000,
+                "maxLength": 500,
                 "minLength": 1
               },
               {

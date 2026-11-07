@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import JsonValue
 
 from app.api import learn, topics, tutor
 from app.graders.mcq import Grade, Item, Option
@@ -80,15 +79,6 @@ class FakeBackend:
 
     async def get_item(self, item_id: str) -> Item | None:
         return self.item if self.item and self.item.id == item_id else None
-
-    def resolve_answer(self, item: Item, answer: JsonValue) -> int:
-        if isinstance(answer, int) and not isinstance(answer, bool):
-            return answer
-        if isinstance(answer, str):
-            for index, option in enumerate(item.options):
-                if answer == option.label:
-                    return index
-        raise ValueError("Invalid test answer")
 
     async def apply_attempt(
         self,

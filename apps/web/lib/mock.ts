@@ -51,7 +51,7 @@ export const initialTrace: DecisionTrace = {
 // Local simulation only; never use this fixture grader for live learner submissions.
 export function mockAttempt(answer: number): {
   correct: boolean;
-  trace: DecisionTrace;
+  trace: DecisionTrace & { prior: number; posterior: number };
 } {
   const correct = answer === 1;
   return {

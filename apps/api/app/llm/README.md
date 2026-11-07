@@ -93,16 +93,17 @@ transition to failed/fallback. No generated curriculum is fabricated on failure.
 
 | Owner | Needed before integration |
 | --- | --- |
-| P1 | `schemas.py`, public answer encoding, `ChosenSource`/`Citation`, engine and retrieval interfaces, review allowlist |
+| P1 | Merge pushed schemas/engine/retrieval; approve source coverage/subject naming |
 | P2 | Services for uploads/attempts/mastery/traces/reviews; job submission and progress; Storage interface; router mounting |
 | P4 | Source/chunk-to-graph/items pipeline, answerability gate, tutor interfaces |
 | P5 | Confirm exact OpenAPI-generated client compatibility and Vietnamese failure display |
 
-The MCQ models are internal validation types derived from TEAM's item fixture. The
-HTTP DTOs in the three P3 route files provisionally mirror TEAM's published shapes;
-they do not replace P1's schemas. The public `answer` remains JSON because TEAM does
-not yet specify its encoding. `LearningBackend.resolve_answer` adapts that encoding
-to the grader's zero-based index without hard-coding it in the HTTP handler.
+The MCQ models are internal validation types derived from TEAM's item fixture.
+P3 HTTP DTOs have been compared against P1 ml-core 5245e56; they retain local names
+until the shared schemas are merged. Public `answer` is now a strict zero-based
+integer index, graded directly without an answer-label resolver. See
+[contract-review.md](../../../../../specs/p3-integration/contract-review.md) for the
+exact P1 engine/retrieval calls, library format and remaining P2 integration work.
 
 All ten P3 endpoints are implemented as `create_router(backend)` factories, with
 protocols in the same P3-owned files. Each protocol is P3's adapter requirement, not
@@ -180,3 +181,29 @@ Run `python -m app.llm.smoke` for a network-free routing check, or explicitly op
 into a single-provider `--live` probe after configuration. Actual library acquisition
 results are in `data/sources/acquisition-report.json`. No paid call was used.
 There is no `apps/web` folder to lint/typecheck/test.
+
+
+## P3 follow-up on `ptest2` (2026-11-07)
+
+Routing is synchronized with `main` cb5c2f4: DeepSeek generates and Gemini verifies,
+with no cross-family generation fallback. P2 must carry the five DeepSeek/Gemini
+settings and their worker exports from main's `app/config.py` during integration;
+this P3 patch does not modify P2 configuration. Configure `DEEPSEEK_FREE_MODEL`,
+`DEEPSEEK_PRO_MODEL`, `GEMINI_VERIFY_MODEL` and the provider keys in the host environment.
+Do not paste keys into chat. Rotate the two exposed keys before live acceptance.
+
+Gateway output limits default to 16,384 tokens for graph, 8,192 for verification,
+and 4,096 for other tasks. Override with `Gateway(task_limits={...})` using
+`GenerationLimits`. These are output limits, not proof that an arbitrary book fits:
+use retrieved topic chunks and chunk-ID markers rather than the entire library.
+DeepSeek's [current model table](https://api-docs.deepseek.com/quick_start/pricing/)
+lists a 1M context; re-check the selected model and leave room for output.
+
+Truncation (`length`, `MAX_TOKENS`, `max_tokens`) stops the route without paying for
+an identical retry. Usage from truncated replies remains in `Attempt`; invalid JSON
+and transient errors retain bounded retries. Gemini 3 uses LOW thinking, Gemini 2.5
+a 1,024-token thinking budget; `thoughts_tokens` is separately observable and remains
+included in total output usage. See [Gemini thinking](https://ai.google.dev/gemini-api/docs/generate-content/thinking).
+`Completion.latency_ms` includes the whole request. `Attempt.latency_ms` excludes
+retry backoff: use the successful attempt for per-model latency and count all attempts
+for token totals. Neither token counts nor route smoke constitute H8 quality acceptance.

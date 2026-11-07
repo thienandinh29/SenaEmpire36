@@ -74,10 +74,15 @@ def main() -> None:
         description="P3 routing check; no network unless --live is set."
     )
     parser.add_argument("--live", action="store_true")
-    parser.add_argument("--provider", choices=["vertex", "bedrock", "openrouter"])
+    parser.add_argument(
+        "--provider", choices=["vertex", "bedrock", "openrouter", "deepseek", "gemini"]
+    )
     parser.add_argument("--tier", choices=["free", "pro"], default="free")
     parser.add_argument("--task", default="items")
     args = parser.parse_args()
+    from app.config import get_settings
+
+    get_settings().export_worker_environment()
     if not args.live:
         print(json.dumps({"live": False, "routes": configuration(load_routing())}, indent=2))
         return

@@ -104,11 +104,17 @@ export function parseTrace(value: unknown): DecisionTrace {
     rule: string(data.rule),
     rule_vi: string(data.rule_vi),
     evidence: {
-      item_id: optionalString(evidence.item_id),
-      correct: evidence.correct == null ? undefined : bool(evidence.correct),
-      misconception: optionalString(evidence.misconception),
-      slip: evidence.slip == null ? undefined : probability(evidence.slip),
-      guess: evidence.guess == null ? undefined : probability(evidence.guess),
+      item_id:
+        evidence.item_id === null ? null : optionalString(evidence.item_id),
+      correct:
+        evidence.correct == null ? evidence.correct : bool(evidence.correct),
+      misconception:
+        evidence.misconception === null
+          ? null
+          : optionalString(evidence.misconception),
+      slip: evidence.slip == null ? evidence.slip : probability(evidence.slip),
+      guess:
+        evidence.guess == null ? evidence.guess : probability(evidence.guess),
     },
     alternatives: list(data.alternatives, (value) => {
       const a = record(value);

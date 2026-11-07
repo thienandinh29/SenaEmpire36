@@ -3,15 +3,16 @@
 from typing import Literal, Protocol
 
 from fastapi import APIRouter, HTTPException
-from pydantic import Field, HttpUrl
+from pydantic import Field
 
 from app.api.learn import Input, Output
 
 
 class Citation(Output):
     title: str = Field(min_length=1)
-    section: str
-    url: HttpUrl
+    section: str | None = None
+    url: str = Field(min_length=1)
+    page: int | None = Field(default=None, ge=1)
 
 
 class HintInput(Input):

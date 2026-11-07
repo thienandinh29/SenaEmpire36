@@ -36,7 +36,7 @@ export function fixtureTrace(
   slug: string,
   prior: number,
   correct?: boolean,
-): DecisionTrace {
+): DecisionTrace & { prior: number; posterior: number } {
   return {
     kind: correct === undefined ? "next_item" : "bkt_update",
     concept_slug: slug,

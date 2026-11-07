@@ -59,3 +59,44 @@ def test_invalid_search_payload_rejected() -> None:
     )
     with pytest.raises(SourceError):
         asyncio.run(search("goal", ["books.example"]))
+
+
+def test_search_probe_is_scoped_and_sanitized() -> None:
+    from app.research.search import probe
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert "site:bio.libretexts.org" in request.url.params["q"]
+        return httpx.Response(
+            200,
+            json={
+                "web": {"results": [{"title": "Cells", "url": "https://bio.libretexts.org/cells"}]}
+            },
+        )
+
+    result = asyncio.run(probe(BraveSearch("secret", transport=httpx.MockTransport(handler))))
+    assert result == {"provider": "brave", "status": "ok", "allowed_results": 1}
+    assert "secret" not in str(result)
+
+
+def test_search_probe_empty_results_fail() -> None:
+    from app.research.search import probe
+
+    search = BraveSearch(
+        "secret",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"web": {"results": []}})
+        ),
+    )
+    with pytest.raises(SourceError):
+        asyncio.run(probe(search))
+
+
+def test_search_cli_defaults_to_offline(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    from app.research.search import main
+
+    monkeypatch.setenv("SEARCH_API_KEY", "secret")
+    monkeypatch.setattr(sys, "argv", ["search"])
+    monkeypatch.setattr(BraveSearch, "__call__", lambda *args: pytest.fail("Network attempted"))
+    main()

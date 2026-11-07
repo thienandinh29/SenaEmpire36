@@ -3,12 +3,13 @@
 import asyncio
 import hashlib
 import json
+import re
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
 import yaml  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +26,11 @@ class Book(BaseModel):
     start_url: str
     license_url: str
     page_prefix: str
+    subject_slug: str | None = Field(
+        default=None, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=80
+    )
+    subject_name_vi: str | None = Field(default=None, min_length=1)
+    subject_name_en: str | None = Field(default=None, min_length=1)
     max_pages: int = Field(default=500, ge=1, le=1000)
 
 
@@ -74,7 +80,11 @@ def export_library(manifest: Manifest, root: Path) -> list[dict[str, object]]:
         records: list[dict[str, str]] = []
         seen: set[str] = set()
         rejected: list[dict[str, str]] = []
-        paths = sorted(path for path in directory.glob("*.json") if path.name != "report.json")
+        paths = sorted(
+            path
+            for path in directory.glob("*.json")
+            if path.name not in {"report.json", "source.json", "document.json"}
+        )
         # Bound concurrent disk reads; map preserves stable output order for reproducibility.
         with ThreadPoolExecutor(max_workers=8) as pool:
             for record, rejection in pool.map(partial(_audit_page, book=book), paths):
@@ -88,6 +98,7 @@ def export_library(manifest: Manifest, root: Path) -> list[dict[str, object]]:
             for record in records:
                 output.write(json.dumps(record, ensure_ascii=False) + "\n")
         temporary.replace(directory / "index.jsonl")
+        _export_p1(book, directory, records)
         reports.append(
             {
                 "book": book.slug,
@@ -97,6 +108,56 @@ def export_library(manifest: Manifest, root: Path) -> list[dict[str, object]]:
             }
         )
     return reports
+
+
+def _export_p1(book: Book, directory: Path, records: list[dict[str, str]]) -> None:
+    """Emit P1 SourceMeta/ParsedDocument after the same provenance audit as JSONL.
+
+    Numeric chapter/section names use natural URL order (2 before 10); other names
+    retain deterministic URL order. This does not infer prerequisites or a missing TOC.
+    Never leave a stale ingestible pair when a new audit accepts no pages.
+    """
+    if not records:
+        for filename in ("source.json", "document.json"):
+            (directory / filename).unlink(missing_ok=True)
+        return
+    ordered = sorted(
+        records,
+        key=lambda record: re.sub(
+            r"\d+", lambda match: f"{int(match.group()):012d}", unquote(record["source_uri"])
+        ),
+    )
+    version = hashlib.sha256(
+        "\n".join(record["source_uri"] + " " + record["sha256"] for record in ordered).encode()
+    ).hexdigest()
+    source = {
+        "subject_slug": book.subject_slug or book.slug,
+        "subject_name_vi": book.subject_name_vi or book.title,
+        "subject_name_en": book.subject_name_en or book.title,
+        "title": book.title,
+        "license": "; ".join(sorted({record["license"] for record in records})),
+        "url": book.start_url,
+        "version": version,
+    }
+    document = {
+        "blocks": [
+            {
+                "chapter": book.title,
+                "section": unquote(urlsplit(record["source_uri"]).path.rsplit("/", 1)[-1])
+                or book.title,
+                "kind": "text",
+                "text": record["text"],
+                "source_uri": record["source_uri"],
+                "page": None,
+            }
+            for record in ordered
+        ]
+    }
+    # Publish document first; source.json is P1's discovery marker.
+    for filename, payload in (("document.json", document), ("source.json", source)):
+        temporary = directory / (filename + ".tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+        temporary.replace(directory / filename)
 
 
 def _audit_page(path: Path, *, book: Book) -> tuple[dict[str, str] | None, dict[str, str] | None]:

@@ -4,91 +4,6 @@
  */
 
 export interface paths {
-  "/learners": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Create Learner */
-    post: operations["create_learner_learners_post"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/topics/cached": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Cached Topics */
-    get: operations["cached_topics_topics_cached_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/topics/{topic_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Get Topic */
-    get: operations["get_topic_topics__topic_id__get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/topics/{topic_id}/events": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Topic Events */
-    get: operations["topic_events_topics__topic_id__events_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/health": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Health */
-    get: operations["health_health_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/graph": {
     parameters: {
       query?: never;
@@ -259,6 +174,91 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/learners": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Learner */
+    post: operations["create_learner_learners_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/topics/cached": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Cached Topics */
+    get: operations["cached_topics_topics_cached_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/topics/{topic_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Topic */
+    get: operations["get_topic_topics__topic_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/topics/{topic_id}/events": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Topic Events */
+    get: operations["topic_events_topics__topic_id__events_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/health": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Health */
+    get: operations["health_health_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -297,12 +297,8 @@ export interface components {
       learner_id: string;
       /** Item Id */
       item_id: string;
-      /** Answer */
-      answer: number;
-      /**
-       * Hints Used
-       * @default 0
-       */
+      answer: components["schemas"]["JsonValue"];
+      /** Hints Used */
       hints_used: number;
     };
     /** AttemptResponse */
@@ -318,6 +314,18 @@ export interface components {
       traces: components["schemas"]["DecisionTrace"][];
       /** Correct */
       correct: boolean;
+    };
+    /** CachedTopic */
+    CachedTopic: {
+      /** Subject Slug */
+      subject_slug: string;
+      /** Name Vi */
+      name_vi: string;
+    };
+    /** CachedTopics */
+    CachedTopics: {
+      /** Topics */
+      topics: components["schemas"]["CachedTopic"][];
     };
     /** Citation */
     Citation: {
@@ -446,7 +454,7 @@ export interface components {
       /** Level */
       level: number;
       /** Last Answer */
-      last_answer?: number | null;
+      last_answer?: string | null;
       /**
        * Tier
        * @enum {string}
@@ -460,6 +468,7 @@ export interface components {
       /** Citations */
       citations: components["schemas"]["Citation"][];
     };
+    JsonValue: unknown;
     /** LearnerInput */
     LearnerInput: {
       /** Display Name */
@@ -552,6 +561,69 @@ export interface components {
       /** Cached */
       cached: boolean;
     };
+    /** TopicSource */
+    TopicSource: {
+      /** Title */
+      title: string;
+      /** Publisher */
+      publisher: string;
+      /** Url */
+      url: string;
+      /** License */
+      license: string;
+    };
+    /** TopicState */
+    TopicState: {
+      /**
+       * Status
+       * @enum {string}
+       */
+      status:
+        | "queued"
+        | "researching"
+        | "indexing"
+        | "graph"
+        | "items"
+        | "ready"
+        | "failed";
+      /** Step Vi */
+      step_vi: string;
+      /** Progress */
+      progress: number;
+      /** Subject Slug */
+      subject_slug?: string | null;
+      /** Graph Ready */
+      graph_ready: boolean;
+      /** Items Ready */
+      items_ready: boolean;
+      /**
+       * Sources
+       * @default []
+       */
+      sources: components["schemas"]["TopicSource"][];
+      /**
+       * Trail
+       * @default []
+       */
+      trail: components["schemas"]["TrailEvent"][];
+    };
+    /** TrailEvent */
+    TrailEvent: {
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "search" | "read" | "select";
+      /** Text Vi */
+      text_vi: string;
+      /** Url */
+      url?: string | null;
+    };
     /** UploadResponse */
     UploadResponse: {
       /** Upload Id */
@@ -583,147 +655,6 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  create_learner_learners_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["LearnerInput"];
-      };
-    };
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            [key: string]: string;
-          };
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
-  cached_topics_topics_cached_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            [key: string]: {
-              [key: string]: string;
-            }[];
-          };
-        };
-      };
-    };
-  };
-  get_topic_topics__topic_id__get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        topic_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
-  topic_events_topics__topic_id__events_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        topic_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
-  health_health_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Health"];
-        };
-      };
-    };
-  };
   graph_route_graph_get: {
     parameters: {
       query: {
@@ -1047,6 +978,143 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_learner_learners_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LearnerInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": {
+            [key: string]: string;
+          };
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  cached_topics_topics_cached_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CachedTopics"];
+        };
+      };
+    };
+  };
+  get_topic_topics__topic_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        topic_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TopicState"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  topic_events_topics__topic_id__events_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        topic_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  health_health_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Health"];
         };
       };
     };

@@ -1,5 +1,11 @@
 # P5 → P2 handoff / pre-break note
 
+ptest integration update (2026-11-07): the P5 branch has been merged into ptest.
+See [current integration status](integration-questions.md) for confirmed API settings
+and [verification evidence](verification.md) for the current 38-test/build results.
+The original implementation-session notes below are retained as historical context;
+their statements about a health-only backend or unavailable uv do not describe ptest.
+
 Branch: `p5/web`. All changes are under apps/web; no backend, contracts, root configuration, commit, push or deployment changes. This note is prepared for the agreed H12:00–H13:30 sleep handoff, but **H0/current sprint window is unknown**. It does not claim that the break has started.
 
 ## Delivered frontend implementation

@@ -1,4 +1,4 @@
-"""Vertex REST, Bedrock Converse and OpenRouter adapters; no secrets in errors."""
+"""Vertex, Gemini, Bedrock, OpenRouter and DeepSeek adapters; no secrets in errors."""
 
 import asyncio
 import importlib
@@ -16,17 +16,19 @@ from app.llm.gateway import (
     ProviderError,
     ProviderReply,
     Route,
+    generation_limits,
     load_routing,
     schema_instruction,
 )
 
 
-async def _post(url: str, token: str, payload: dict[str, Any]) -> dict[str, Any]:
+async def _post(
+    url: str, token: str, payload: dict[str, Any], *, api_key: bool = False
+) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
-            response = await client.post(
-                url, headers={"Authorization": f"Bearer {token}"}, json=payload
-            )
+            headers = {"x-goog-api-key": token} if api_key else {"Authorization": f"Bearer {token}"}
+            response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
             if not isinstance(data, dict):
@@ -39,6 +41,81 @@ async def _post(url: str, token: str, payload: dict[str, Any]) -> dict[str, Any]
         ) from None
     except (httpx.RequestError, ValueError):
         raise ProviderError("transport_or_json_error", retryable=True) from None
+
+
+def _gemini_payload(
+    system: str, messages: Sequence[Message], schema: type[BaseModel] | None
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "systemInstruction": {"parts": [{"text": schema_instruction(system, schema)}]},
+        "contents": [
+            {
+                "role": "model" if m.role == "assistant" else "user",
+                "parts": [{"text": m.content}],
+            }
+            for m in messages
+        ],
+        "generationConfig": {"maxOutputTokens": generation_limits().max_tokens},
+    }
+    if schema:
+        payload["generationConfig"]["responseMimeType"] = "application/json"
+    return payload
+
+
+def _thinking_config(payload: dict[str, Any], route: Route) -> None:
+    if "gemini-3" in route.model:
+        payload["generationConfig"]["thinkingConfig"] = {"thinkingLevel": "LOW"}
+    elif "gemini-2.5" in route.model:
+        payload["generationConfig"]["thinkingConfig"] = {
+            "thinkingBudget": generation_limits().thinking_budget
+        }
+
+
+def _gemini_reply(data: dict[str, Any], provider: str) -> ProviderReply:
+    try:
+        candidate = data["candidates"][0]
+        usage = data.get("usageMetadata", {})
+        thoughts = usage.get("thoughtsTokenCount", 0)
+        reply = ProviderReply(
+            "".join(
+                p.get("text", "")
+                for p in candidate.get("content", {}).get("parts", [])
+                if not p.get("thought", False)
+            ),
+            usage.get("promptTokenCount", 0),
+            usage.get("candidatesTokenCount", 0) + thoughts,
+            thoughts,
+        )
+        if candidate.get("finishReason") != "STOP":
+            raise ProviderError(
+                f"{provider}_incomplete_response",
+                retryable=candidate.get("finishReason") != "MAX_TOKENS",
+                reply=reply,
+            )
+        return reply
+    except (KeyError, IndexError, TypeError):
+        raise ProviderError(f"{provider}_invalid_response", retryable=True) from None
+
+
+class GeminiAdapter:
+    async def generate(
+        self,
+        route: Route,
+        system: str,
+        messages: Sequence[Message],
+        schema: type[BaseModel] | None,
+    ) -> ProviderReply:
+        token = os.environ.get("GEMINI_API_KEY", "")
+        if not token:
+            raise ProviderError("gemini_key_missing")
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{quote(route.model, safe='')}:generateContent"
+        )
+        payload = _gemini_payload(system, messages, schema)
+        _thinking_config(payload, route)
+        data = await _post(url, token, payload, api_key=True)
+        return _gemini_reply(data, "gemini")
 
 
 class VertexAdapter:
@@ -74,31 +151,10 @@ class VertexAdapter:
             f"{quote(location, safe='')}/publishers/google/models/"
             f"{quote(route.model, safe='')}:generateContent"
         )
-        payload: dict[str, Any] = {
-            "systemInstruction": {"parts": [{"text": schema_instruction(system, schema)}]},
-            "contents": [
-                {
-                    "role": "model" if m.role == "assistant" else "user",
-                    "parts": [{"text": m.content}],
-                }
-                for m in messages
-            ],
-            "generationConfig": {"maxOutputTokens": 4096},
-        }
-        if schema:
-            payload["generationConfig"]["responseMimeType"] = "application/json"
+        payload = _gemini_payload(system, messages, schema)
+        _thinking_config(payload, route)
         data = await _post(url, await asyncio.to_thread(self._token), payload)
-        try:
-            candidate = data["candidates"][0]
-            if candidate.get("finishReason") != "STOP":
-                raise ProviderError("vertex_incomplete_response", retryable=True)
-            text = "".join(p.get("text", "") for p in candidate["content"]["parts"])
-            usage = data.get("usageMetadata", {})
-            return ProviderReply(
-                text, usage.get("promptTokenCount", 0), usage.get("candidatesTokenCount", 0)
-            )
-        except (KeyError, IndexError, TypeError):
-            raise ProviderError("vertex_invalid_response", retryable=True) from None
+        return _gemini_reply(data, "vertex")
 
 
 class BedrockAdapter:
@@ -120,12 +176,20 @@ class BedrockAdapter:
                     modelId=route.model,
                     system=[{"text": system}],
                     messages=[{"role": m.role, "content": [{"text": m.content}]} for m in messages],
-                    inferenceConfig={"maxTokens": 4096},
+                    inferenceConfig={"maxTokens": generation_limits().max_tokens},
                 )
             finally:
                 client.close()
             if data.get("stopReason") != "end_turn":
-                raise ProviderError("bedrock_incomplete_response", retryable=True)
+                raise ProviderError(
+                    "bedrock_incomplete_response",
+                    retryable=data.get("stopReason") != "max_tokens",
+                    reply=ProviderReply(
+                        "",
+                        data.get("usage", {}).get("inputTokens", 0),
+                        data.get("usage", {}).get("outputTokens", 0),
+                    ),
+                )
             text = "".join(p.get("text", "") for p in data["output"]["message"]["content"])
             usage = data.get("usage", {})
             return ProviderReply(text, usage.get("inputTokens", 0), usage.get("outputTokens", 0))
@@ -173,7 +237,7 @@ class OpenRouterAdapter:
             token,
             {
                 "model": route.model,
-                "max_tokens": 4096,
+                "max_tokens": generation_limits().max_tokens,
                 "messages": [
                     {"role": "system", "content": schema_instruction(system, schema)},
                     *[m.model_dump() for m in messages],
@@ -183,7 +247,15 @@ class OpenRouterAdapter:
         try:
             choice = data["choices"][0]
             if choice.get("finish_reason") != "stop":
-                raise ProviderError("openrouter_incomplete_response", retryable=True)
+                raise ProviderError(
+                    "openrouter_incomplete_response",
+                    retryable=choice.get("finish_reason") != "length",
+                    reply=ProviderReply(
+                        "",
+                        data.get("usage", {}).get("prompt_tokens", 0),
+                        data.get("usage", {}).get("completion_tokens", 0),
+                    ),
+                )
             text = choice["message"]["content"]
             if not isinstance(text, str):
                 raise TypeError
@@ -195,6 +267,52 @@ class OpenRouterAdapter:
             raise ProviderError("openrouter_invalid_response", retryable=True) from None
 
 
+class DeepSeekAdapter:
+    async def generate(
+        self,
+        route: Route,
+        system: str,
+        messages: Sequence[Message],
+        schema: type[BaseModel] | None,
+    ) -> ProviderReply:
+        token = os.environ.get("DEEPSEEK_API_KEY", "")
+        if not token:
+            raise ProviderError("deepseek_key_missing")
+        payload: dict[str, Any] = {
+            "model": route.model,
+            "max_tokens": generation_limits().max_tokens,
+            "thinking": {"type": "disabled"},
+            "messages": [
+                {"role": "system", "content": schema_instruction(system, schema)},
+                *[m.model_dump() for m in messages],
+            ],
+        }
+        if schema:
+            payload["response_format"] = {"type": "json_object"}
+        data = await _post("https://api.deepseek.com/chat/completions", token, payload)
+        try:
+            choice = data["choices"][0]
+            if choice.get("finish_reason") != "stop":
+                raise ProviderError(
+                    "deepseek_incomplete_response",
+                    retryable=choice.get("finish_reason") != "length",
+                    reply=ProviderReply(
+                        "",
+                        data.get("usage", {}).get("prompt_tokens", 0),
+                        data.get("usage", {}).get("completion_tokens", 0),
+                    ),
+                )
+            text = choice["message"]["content"]
+            if not isinstance(text, str):
+                raise TypeError
+            usage = data.get("usage", {})
+            return ProviderReply(
+                text, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+            )
+        except (KeyError, IndexError, TypeError):
+            raise ProviderError("deepseek_invalid_response", retryable=True) from None
+
+
 def default_gateway() -> Gateway:
     return Gateway(
         load_routing(),
@@ -202,5 +320,7 @@ def default_gateway() -> Gateway:
             "vertex": VertexAdapter(),
             "bedrock": BedrockAdapter(),
             "openrouter": OpenRouterAdapter(),
+            "deepseek": DeepSeekAdapter(),
+            "gemini": GeminiAdapter(),
         },
     )

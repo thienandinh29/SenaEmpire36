@@ -1,6 +1,7 @@
 # P3 merge and integration instructions for teammate AI agents
 
-Read this file before merging P3. Read `TEAM.md`, `CLAUDE.md` and your own lane guide
+Read this file before merging P3. Latest P1 comparison and exact engine calls:
+[contract-review.md](contract-review.md). Read `TEAM.md`, `CLAUDE.md` and your own lane guide
 first. P1's final contracts take precedence over provisional DTOs here. Keep changes
 inside your lane; P2 coordinates application wiring and routine green merges.
 
@@ -27,8 +28,8 @@ system or report live acceptance without running it.
 
 ## Merge sequence
 
-1. **P1:** finalize `app/schemas.py`, answer encoding, cited retrieval, graph/placement
-   and traced engine APIs. Review the allowlist/source manifest.
+1. **P1:** merge pushed schemas, integer-index answers, retrieval, placement,
+   remediation/path and traced engine APIs. Review source coverage/subject naming.
 2. **P2:** merge migrations in reserved order 0003, 0004, 0005, 0006, then P3's 0007.
    The migration here depends only on existing Postgres, but do not apply it early
    to the shared/demo DB or renumber it. Local tests create a throwaway database.
@@ -61,7 +62,6 @@ Unconfigured factories intentionally return Vietnamese 503 responses.
 | `placement(LearnerSubject)` | P1 graph-walk next question/gap/trace; P2 loads previous answers. Return PlacementSelection with internal Item, or `item=None, done=True`. |
 | `next_item(learner_id, subject)` | P1 selects the next verified item/reason; P2 loads it; return NextSelection or None. |
 | `get_item(item_id)` | P2 loads internal answer key, source, chunk_ids, verification status and misconception tags; return Item or None. |
-| `resolve_answer(item, answer)` | P1 settles public answer encoding. Translate to a zero-based option index; reject bools, out-of-range or unknown options. Do not infer correctness from client fields. |
 | `apply_attempt(request, item, Grade)` | P2 opens one transaction: save attempt/hints; run P1 BKT/traced/root-cause/review logic; persist mastery, traces and review schedule; return AttemptUpdate. P3 already graded the answer. |
 | `reviews_due(learner_id)` | P2 loads scheduled cards; P1 owns scheduling rules. Return ReviewsResponse. |
 | `exam_plan(ExamInput)` | P1 derives the schedule; P2 supplies current data. Return ExamResponse. |
@@ -72,8 +72,8 @@ to `{id, kind, prompt_vi, options:[{label}]}`. Items with `needs_review` cannot 
 served or graded. Correct attempts suppress wrong-answer misconception/remediation.
 
 P1 should replace provisional DTOs in these P3 files with imports from schemas.py
-once compatible. TEAM leaves public answer encoding unspecified; the temporary
-`answer: JsonValue` is not permission to change the final contract. Preserve JSON
+once merged. P1 has finalized `answer` as a zero-based integer index; P3 now
+grades it directly and no longer requires an answer-label resolver. Preserve JSON
 null for a completed placement's `item`, and preserve timezone-aware trace dates.
 
 ### TopicsBackend — app/api/topics.py
@@ -206,6 +206,7 @@ in `openstax-review.yaml` for review because the checked current preface explici
 restricts LLM ingestion. Do not route around a restriction by using an unreviewed mirror.
 
 The second command performs a fresh **local** hash/license/scope audit and writes
+P1-compatible `source.json` / `document.json` pairs as well as
 `data/raw/library/<slug>/index.jsonl` containing only accepted records. Ingest those
 exports rather than blindly globbing raw files. Each record supplies title, publisher,
 source_uri, URL, license, license_url, SHA-256 and extracted text. Use
@@ -221,7 +222,7 @@ does **not** itself satisfy Deep Research's two-publisher bar.
 
 P2 runs P1's ingestion code **after 0003 halfvec is merged**, enforces the ~30k chunk/
 350 MB stop limit, and builds HNSW after the load. P3's downloader never writes DB
-embeddings. Adapt its per-page provenance JSON to P1's ingestion shape.
+embeddings. Use the exported P1-compatible pairs with `app.rag.library`; see contract-review.md.
 
 ## P5 can work now
 

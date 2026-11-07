@@ -1,5 +1,6 @@
 """Contract shapes (app/schemas.py, app/engine/trace.py) match TEAM.md and reject bad fixtures."""
 
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,6 +17,22 @@ from app.schemas import (
     PublicItem,
     TopicCreate,
 )
+
+
+def test_duplicate_item_ids_rejected() -> None:
+    data = deepcopy(ITEMS)
+    data["items"].append(deepcopy(data["items"][0]))
+    with pytest.raises(ValidationError, match="item ids must be unique"):
+        ItemSet.model_validate(data)
+
+
+def test_distinct_item_ids_still_load() -> None:
+    data = deepcopy(ITEMS)
+    second = deepcopy(data["items"][0])
+    second["id"] = "plr-002"
+    data["items"].append(second)
+    assert len(ItemSet.model_validate(data).items) == 2
+
 
 GRAPH: dict[str, Any] = {
     "concepts": [

@@ -129,3 +129,64 @@ def test_environment_model_and_family_mismatch(monkeypatch: pytest.MonkeyPatch) 
         asyncio.run(
             Gateway(routing, {}).complete("items", "free", "s", [{"role": "user", "content": "q"}])
         )
+
+
+def test_deepseek_generation_and_cross_family_verification() -> None:
+    deepseek = Route(provider="deepseek", model="deepseek-flash", family="deepseek")
+    gemini = Route(provider="vertex", model="gemini-test", family="gemini")
+    routing = Routing(tiers={"free": {"items": [deepseek], "verify": [deepseek, gemini]}})
+    fake = Fake(['{"count":3}', '{"count":3}'])
+    gateway = Gateway(routing, {"deepseek": fake, "vertex": fake})
+    generated = asyncio.run(
+        gateway.complete_with_metadata(
+            "items", "free", "s", [{"role": "user", "content": "q"}], Answer
+        )
+    )
+    assert generated.value == Answer(count=3) and generated.route.family == "deepseek"
+    with verification_scope(generated.route.family):
+        verified = asyncio.run(
+            gateway.complete_with_metadata(
+                "verify", "free", "s", [{"role": "user", "content": "q"}], Answer
+            )
+        )
+    assert verified.route.family == "gemini" and fake.models == ["deepseek-flash", "gemini-test"]
+
+
+def test_deepseek_fallback_uses_actual_family_for_verification() -> None:
+    routing = routes()
+    routing.tiers["free"]["items"].insert(
+        0, Route(provider="deepseek", model="deepseek-flash", family="deepseek")
+    )
+    fake = Fake([ProviderError("key_missing"), ProviderError("missing"), "generated", "verified"])
+    gateway = Gateway(routing, {"deepseek": fake, "vertex": fake, "bedrock": fake})
+    generated = asyncio.run(
+        gateway.complete_with_metadata("items", "free", "s", [{"role": "user", "content": "q"}])
+    )
+    assert generated.route.family == "claude"
+    with verification_scope(generated.route.family):
+        verified = asyncio.run(
+            gateway.complete_with_metadata(
+                "verify", "free", "s", [{"role": "user", "content": "q"}]
+            )
+        )
+    assert verified.route.family == "gemini"
+
+
+def test_default_deepseek_routes_keep_independent_verifiers() -> None:
+    for tasks in load_routing().tiers.values():
+        for task, candidates in tasks.items():
+            if task == "verify":
+                assert all(route.family == "gemini" for route in candidates)
+            else:
+                assert all(route.provider == "deepseek" for route in candidates)
+
+
+def test_missing_deepseek_never_falls_back_to_gemini(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.llm.providers import default_gateway
+
+    monkeypatch.setenv("DEEPSEEK_FREE_MODEL", "deepseek-flash")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    with pytest.raises(GatewayError, match="No eligible model"):
+        asyncio.run(
+            default_gateway().complete("items", "free", "s", [{"role": "user", "content": "q"}])
+        )

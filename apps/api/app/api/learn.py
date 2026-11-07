@@ -1,6 +1,6 @@
 """P3 learning routes, ready for adapters to P1 engine and P2 persistence.
 
-Local DTOs mirror TEAM's published HTTP shapes until P1 supplies schemas.py.
+Local DTOs align with P1 ml-core 5245e56; see specs/p3-integration/contract-review.md.
 Backend protocols describe P3's needs; they do not redefine another lane's API.
 """
 
@@ -8,7 +8,7 @@ from datetime import date
 from typing import Literal, Protocol
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.graders.mcq import Grade, Item, LearnerItem, grade, learner_item
 
@@ -44,12 +44,12 @@ class DecisionTrace(Output):
     kind: Literal["bkt_update", "placement_step", "root_cause", "next_item", "review"]
     concept_slug: str
     at: AwareDatetime
-    prior: float | None = Field(ge=0, le=1)
-    evidence: Evidence
-    posterior: float | None = Field(ge=0, le=1)
+    prior: float | None = Field(default=None, ge=0, le=1)
+    evidence: Evidence = Field(default_factory=Evidence)
+    posterior: float | None = Field(default=None, ge=0, le=1)
     rule: str
     rule_vi: str
-    alternatives: list[Alternative]
+    alternatives: list[Alternative] = Field(default_factory=list)
 
 
 class GraphNode(Output):
@@ -96,7 +96,7 @@ class NextResponse(Output):
 class AttemptInput(Input):
     learner_id: str = Field(min_length=1, max_length=200)
     item_id: str = Field(min_length=1, max_length=200)
-    # Canonical P1 AttemptCreate: zero-based index in the displayed option order.
+    # P1: zero-based index in the exact public options order.
     answer: int = Field(ge=0, strict=True)
     hints_used: int = Field(default=0, ge=0, strict=True)
 
@@ -152,7 +152,6 @@ class LearningBackend(Protocol):
     async def placement(self, request: LearnerSubject) -> PlacementSelection: ...
     async def next_item(self, learner_id: str, subject: str) -> NextSelection | None: ...
     async def get_item(self, item_id: str) -> Item | None: ...
-    def resolve_answer(self, item: Item, answer: JsonValue) -> int: ...
     async def apply_attempt(
         self,
         request: AttemptInput,
@@ -217,7 +216,7 @@ def create_router(backend: LearningBackend | None = None) -> APIRouter:
             raise HTTPException(503, "Dữ liệu câu hỏi không khớp yêu cầu.")
         _safe_item(item)
         try:
-            result = grade(item, adapter.resolve_answer(item, request.answer))
+            result = grade(item, request.answer)
         except (ValueError, TypeError):
             raise HTTPException(422, "Lựa chọn trả lời không hợp lệ.") from None
         update = await adapter.apply_attempt(request, item, result)

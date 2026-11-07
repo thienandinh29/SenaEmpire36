@@ -27,3 +27,19 @@ User additionally approved python-multipart for the published file-upload contra
 
 Checks: ruff lint/format, mypy, pytest; isolated offline tests first, full suite afterward.
 Report missing DB/cloud prerequisites honestly. Coordinate MAP updates with P1.
+
+
+Follow-up execution: pin P1's pushed contract revision for offline regression,
+update P3 boundary fields and eliminate answer-label translation, retain lane
+ownership. Extend audited library export with P1's two-file format; validate both
+sample exports and actual cached library against P1. Add explicit Brave smoke CLI;
+record only process presence/config booleans. Refresh OpenAPI/runtime receipts and
+hand P2 exact engine/transaction/retrieval calls through contract-review.md.
+
+
+Follow-up: add optional Retriever injection and explicit subject/k to TopicPipeline;
+validate returned provenance and canonical KnowledgeGraph before save. Test reversed
+rank order, foreign IDs, changed text/URI/page, empty retrieval, malformed graphs and
+foreign item sources. Add a bounded canonical graph/items smoke CLI with explicit
+--live, a local PostgreSQL read and TEI, plus a read-only book-folder mode when
+retrieval is unavailable. Keep live results separate from deterministic tests.

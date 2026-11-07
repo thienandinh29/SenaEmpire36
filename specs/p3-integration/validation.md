@@ -58,3 +58,25 @@ on the indexing machine. Full publisher-TOC coverage is not claimed.
 
 Final offline suite was rerun after the bounded concurrent export optimization:
 268 passed, lint/format/mypy passed. There are no running acquisition/export jobs.
+
+
+## 2026-11-07 P1 contract follow-up
+
+- P1 reference: pushed ml-core `5245e56`; P2 services reviewed read-only.
+- Ruff check/format and mypy: passed (70 source files).
+- Full pytest: **297 passed**, one existing Starlette/httpx deprecation warning.
+  Initial run had 283 passes and 13 DB setup errors because local DB was stopped;
+  `docker compose up -d db` restored it and the complete rerun passed.
+- 19 tests validate P3 models against pinned P1 schemas/mocks/library contract.
+  These are local Git-blob checks; clones missing that commit explicitly skip them.
+- Export-only audit: 8 books / 1,255 accepted pages / zero rejected cached pages.
+  P1 schema + exact chunker/notebook loaded from the pinned revision validated
+  every real pair: 1,255 blocks -> 17,390 chunks. No embedding/DB indexing.
+- Gateway config: 0/31 slots configured; Brave key absent. No paid/live probes.
+- Fixture OpenAPI refreshed. Production routers, persistence, worker and H7
+  end-to-end flow still require P2/P4 integration; see contract-review.md.
+- No .env read, dependencies added, commit or push performed.
+
+One additional integration check runs the exact P1 placement/BKT/remediation/path
+modules through P3 HTTP routes with in-memory storage. This confirms the wrong-answer
+engine-to-DTO path; it does not verify DB transactions, retrieval or live H7.

@@ -54,3 +54,31 @@ accept content blocked by the source's own license notice. Downloaded files rema
 git-ignored; manifest and acquisition summaries are reviewable. Missing credentials,
 source approvals and cross-lane live acceptance remain explicit operational checks,
 not fabricated successes. Do not commit/push or read .env.
+
+## Follow-up: P1 contract alignment and library handoff
+
+Compare against pushed P1 ml-core 5245e56 without modifying P1-owned files.
+Align answer indexes, hint rungs/last_answer, citation pages and text limits. Grade
+indexes directly rather than requiring an obsolete P2 answer-label translation.
+Add a repeatable offline contract check using the exact pushed P1 schema/mocks.
+Export the audited library as SourceMeta/ParsedDocument pairs alongside JSONL;
+never export a rejected page or leave stale ingestible pairs after an empty audit.
+Add an explicit opt-in Brave probe with sanitized results and no network by default.
+P2 still owns DB adapters, transactions, mounting and worker wiring. Record exact
+P1 engine calls and missing P2 services in the handoff, without claiming H7 is live.
+
+
+## P3 retrieval and canonical smoke follow-up (2026-11-07)
+
+Connect P1's async Retriever to TopicPipeline with an explicitly supplied library
+subject. Select only durable indexed IDs from the prepared material, verify text,
+URI and page against retrieval citations, and restore document reading order before
+graph/items. Reject empty or inconsistent retrieval before model calls. Existing
+ports remain compatible for uploads and P4 adapters awaiting integration. Validate
+graph structure and item provenance with P1 contracts at publication.
+
+Add an explicit live-only CLI under research that retrieves a small public topic,
+calls graph/items with KnowledgeGraph/ItemSet, independently asks Gemini for blind
+answers, and records per-attempt tokens, latency and sanitized errors. Artifacts are
+smoke evidence, never a verified P4 topic or H8 acceptance; item status stays draft.
+No new dependencies, HTTP routes or changes to P1/P2/P4-owned modules.

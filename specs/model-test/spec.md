@@ -50,6 +50,18 @@ say"). **Human rating** (blind, finalists only): Vietnamese fluency, terminology
   results file committed.
 - The verifier of every generator is from another family.
 
+## Offline evidence scorer
+
+P1's `app/evalkit/model_metrics.py` consumes P3 receipts, never calls providers.
+It requires a unique predeclared case manifest, reports missing observations,
+and uses the counts and thresholds in the plan without silently relaxing them.
+G5 reports catches/false alarms with exact intervals. G6 uses nearest-rank sample
+p95 and includes failed/retried case time. G7 projects measured case cost at
+declared topic volumes and checks the combined declared task cost separately.
+Incomplete evidence cannot produce a pass or automatic model selection. Family
+identity and frozen pre-run policy are supplied by the runner and reviewed by P1.
+Input details and limitations: `receipts.md`.
+
 ## Out of scope
 Scoring English quality, benchmarking beyond these four tasks, fine-tuning, the reranker decision (that comes from the
 retrieval evaluation, `specs/retrieval/`).

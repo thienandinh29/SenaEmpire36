@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 import httpx
@@ -46,10 +47,23 @@ def test_library_resume_and_provenance(tmp_path: Path) -> None:
     report = export_library(Manifest(books=[book]), tmp_path)
     assert report[0]["accepted_pages"] == 2
     assert len((tmp_path / "book/index.jsonl").read_text(encoding="utf-8").splitlines()) == 2
+    source = json.loads((tmp_path / "book/source.json").read_text(encoding="utf-8"))
+    document = json.loads((tmp_path / "book/document.json").read_text(encoding="utf-8"))
+    assert source["subject_slug"] == "book" and source["license"] == "CC BY-SA 4.0"
+    assert len(document["blocks"]) == 2
+    assert all(block["source_uri"].startswith(book.page_prefix) for block in document["blocks"])
+    repeated = export_library(Manifest(books=[book]), tmp_path)
+    assert repeated[0]["accepted_pages"] == 2 and repeated[0]["rejected"] == []
     # Index export must never trust metadata when the source bytes have changed.
     next((tmp_path / "book").glob("*.html")).write_bytes(b"tampered")
     audited = export_library(Manifest(books=[book]), tmp_path)
     assert audited[0]["accepted_pages"] == 1 and audited[0]["rejected"]
+    assert len(json.loads((tmp_path / "book/document.json").read_text())["blocks"]) == 1
+    for page in (tmp_path / "book").glob("*.html"):
+        page.write_bytes(b"tampered")
+    assert export_library(Manifest(books=[book]), tmp_path)[0]["accepted_pages"] == 0
+    assert not (tmp_path / "book/source.json").exists()
+    assert not (tmp_path / "book/document.json").exists()
 
 
 def test_transient_http_error_is_retried() -> None:
@@ -66,3 +80,35 @@ def test_transient_http_error_is_retried() -> None:
     reader = SafeReader(resolver=resolve, transport=httpx.MockTransport(handler))
     assert asyncio.run(_fetch(reader, "https://books.example/page")).body == b"ok"
     assert calls == 2
+
+
+def test_export_keeps_numeric_chapters_and_sections_in_reading_order(tmp_path: Path) -> None:
+    from app.rag.library import load_book
+    from app.research.library import _export_p1
+
+    book = Book(
+        slug="book",
+        title="Book",
+        publisher="Publisher",
+        start_url="https://books.example/book",
+        license_url="https://books.example/license",
+        page_prefix="https://books.example/book",
+    )
+    paths = ["10:_Chapter", "2:_Chapter/10:_Section", "2:_Chapter/2:_Section", "2:_Chapter"]
+    records = [
+        {
+            "source_uri": f"https://books.example/book/{path}",
+            "text": f"Paragraph in {path}",
+            "license": "CC BY 4.0",
+            "sha256": path,
+        }
+        for path in paths
+    ]
+    _export_p1(book, tmp_path, records)
+    loaded = load_book(tmp_path)
+    assert [chunk.source_uri.rsplit("/book/", 1)[1] for chunk in loaded.chunks] == [
+        "2:_Chapter",
+        "2:_Chapter/2:_Section",
+        "2:_Chapter/10:_Section",
+        "10:_Chapter",
+    ]
