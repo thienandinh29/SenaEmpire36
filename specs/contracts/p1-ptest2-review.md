@@ -94,6 +94,11 @@ blind answer matched, generator answer excluded from the verifier input; it is a
 | G7 | Low | P2 | The 100 s total deadline is short for Deep Research graph tasks. | `gateway_scope` already allows a per-job gateway; set it for research jobs. |
 | G8 | Info | P2 | **Credentials were pasted into a chat** (both the DeepSeek and the Gemini key). No commit contains them (checked by prefix on the last 50 revisions), but they must be treated as exposed. | Rotate both; keep them only in the host's `.env`. |
 
+**Status on `ptest2` (`16c2be7`, `633e2e8`; source-read by P1, not re-run live):** G1 fixed (a `length`/`max_tokens`
+finish is not retried; the cap comes from `generation_limits()`), G2 addressed (thinking budget/level set per route),
+G3 addressed (attempt telemetry reworked; confirm the H8 test reads the successful attempt's latency), and finding 10
+fixed (`64:ff9b::/96` and `::/96` rejected in `SafeReader`). G4–G8 stand.
+
 **Status updates to this review:** finding 9 is resolved; the generation fallbacks were removed by `f4cd74f`
 (Gemini is the verifier, DeepSeek the only generator). The live receipt above is the first real call of both routes.
 The H8 model test (catch rate, false alarms, Vietnamese quality, cost) is still required.
