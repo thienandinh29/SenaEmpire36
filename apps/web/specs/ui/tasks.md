@@ -21,3 +21,11 @@
 - [x] IELTS sample map and draft approval.
 - [x] Lint, types, tests and production build.
 - [ ] Desktop/mobile browser visual checks: browser access host unavailable.
+
+## Local UI experiment
+
+- [x] Journal overview, contextual Sena and functional study shortcuts.
+- [x] Focused/all knowledge-map camera and mastery stamps.
+- [x] Responsive light/dark styling and reduced motion.
+- [x] Lint, types, existing tests, build and HTTP preview checks.
+- [ ] Desktop/mobile visual browser acceptance: browser access host unavailable.

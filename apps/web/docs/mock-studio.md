@@ -1,5 +1,13 @@
 # Reference-driven mock studio
 
+## Field journal overview
+
+Developed on `p5-ui-test` and approved by the user for merging into `p5`. The branch uses a hyphen because Git cannot create `p5/ui-test` while the local `p5` ref exists.
+
+The overview uses Dancing Script display titles and Be Vietnam Pro small headings, warm paper surfaces, a dedicated knowledge atlas, contextual Sena guidance and compact study shortcuts. Existing mock logic, lesson flows and theme persistence remain intact. Dagre still positions every graph node. Mastery rings replace rectangular cards; the focused/all camera adapts to canvas width and respects reduced motion. Selecting a concept updates Sena's panel and displays its saved note when present. Draft approval still precedes teaching.
+
+Check desktop/mobile widths, both themes, node selection, focus/all controls and links to lessons, notes, reviews and calendar. Browser access is unavailable in this session, so visual acceptance remains pending. Lint, TypeScript, 36 existing tests, production build and HTTP SSR/assets checks passed; these do not replace browser acceptance.
+
 The frontend follows the supplied business brief and Sena image. The ui-ux-pro-max minimal dashboard guidance was adapted to a warm ivory/indigo palette; its landing-page pattern was rejected as unsuitable. Sena is a reference-inspired local vector component with six expressions, not an extracted raster asset.
 
 ## Run locally
