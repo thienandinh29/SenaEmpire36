@@ -54,3 +54,15 @@ accept content blocked by the source's own license notice. Downloaded files rema
 git-ignored; manifest and acquisition summaries are reviewable. Missing credentials,
 source approvals and cross-lane live acceptance remain explicit operational checks,
 not fabricated successes. Do not commit/push or read .env.
+
+## Follow-up: P1 contract alignment and library handoff
+
+Compare against pushed P1 ml-core 5245e56 without modifying P1-owned files.
+Align answer indexes, hint rungs/last_answer, citation pages and text limits. Grade
+indexes directly rather than requiring an obsolete P2 answer-label translation.
+Add a repeatable offline contract check using the exact pushed P1 schema/mocks.
+Export the audited library as SourceMeta/ParsedDocument pairs alongside JSONL;
+never export a rejected page or leave stale ingestible pairs after an empty audit.
+Add an explicit opt-in Brave probe with sanitized results and no network by default.
+P2 still owns DB adapters, transactions, mounting and worker wiring. Record exact
+P1 engine calls and missing P2 services in the handoff, without claiming H7 is live.

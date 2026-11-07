@@ -62,7 +62,7 @@ def learner_item(item: Item) -> LearnerItem:
 
 
 def grade(item: Item, option_index: int) -> Grade:
-    """Zero-based internal index; public answer encoding awaits P1's schema."""
+    """Grade the zero-based option index finalized in P1's AttemptCreate contract."""
     if item.status != "verified":
         raise ValueError("Unverified items cannot be graded")
     if (

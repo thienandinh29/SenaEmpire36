@@ -93,16 +93,17 @@ transition to failed/fallback. No generated curriculum is fabricated on failure.
 
 | Owner | Needed before integration |
 | --- | --- |
-| P1 | `schemas.py`, public answer encoding, `ChosenSource`/`Citation`, engine and retrieval interfaces, review allowlist |
+| P1 | Merge pushed schemas/engine/retrieval; approve source coverage/subject naming |
 | P2 | Services for uploads/attempts/mastery/traces/reviews; job submission and progress; Storage interface; router mounting |
 | P4 | Source/chunk-to-graph/items pipeline, answerability gate, tutor interfaces |
 | P5 | Confirm exact OpenAPI-generated client compatibility and Vietnamese failure display |
 
-The MCQ models are internal validation types derived from TEAM's item fixture. The
-HTTP DTOs in the three P3 route files provisionally mirror TEAM's published shapes;
-they do not replace P1's schemas. The public `answer` remains JSON because TEAM does
-not yet specify its encoding. `LearningBackend.resolve_answer` adapts that encoding
-to the grader's zero-based index without hard-coding it in the HTTP handler.
+The MCQ models are internal validation types derived from TEAM's item fixture.
+P3 HTTP DTOs have been compared against P1 ml-core 5245e56; they retain local names
+until the shared schemas are merged. Public `answer` is now a strict zero-based
+integer index, graded directly without an answer-label resolver. See
+[contract-review.md](../../../../../specs/p3-integration/contract-review.md) for the
+exact P1 engine/retrieval calls, library format and remaining P2 integration work.
 
 All ten P3 endpoints are implemented as `create_router(backend)` factories, with
 protocols in the same P3-owned files. Each protocol is P3's adapter requirement, not

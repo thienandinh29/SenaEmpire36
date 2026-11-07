@@ -16,7 +16,7 @@ from app.uploads.reader import MAX_BYTES, Document, read_file, read_link
 
 
 class TopicInput(Input):
-    goal_vi: str | None = Field(default=None, min_length=1, max_length=2000)
+    goal_vi: str | None = Field(default=None, min_length=1, max_length=500)
     upload_id: str | None = Field(default=None, min_length=1, max_length=200)
     mode: Literal["quick", "deep"]
     tier: Literal["free", "pro"]

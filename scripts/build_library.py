@@ -92,7 +92,7 @@ def main() -> None:
     parser.add_argument(
         "--export-only",
         action="store_true",
-        help="Recheck local pages and write per-book index.jsonl without network",
+        help="Recheck local pages; export P1 source/document pairs and index.jsonl without network",
     )
     args = parser.parse_args()
     raise SystemExit(

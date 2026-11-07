@@ -37,3 +37,18 @@
 - [ ] P1/P2 supply real model IDs/API keys and run the explicit provider/search checks.
 - [ ] Team runs Quick/Deep end-to-end acceptance and records actual timings/costs.
 - [ ] P1 updates root MAP; P5 regenerates client types from merged OpenAPI.
+
+## P3 follow-up against pushed P1
+
+- [x] Compare against P1 ml-core 5245e56 schemas/mocks and P2 service signatures.
+- [x] Align index answers, hint levels/last_answer, citation pages, text limits, trace defaults.
+- [x] Remove obsolete answer-label resolver requirement from P2 port/harness.
+- [x] Run 19 offline compatibility checks using exact P1 Git blobs.
+- [x] Export 8 audited P1 SourceMeta/ParsedDocument pairs; validate 1,255 blocks
+      with P1's schema and chunker (17,390 chunks; no DB indexing).
+- [x] Add offline/default and explicit live Brave smoke CLI; refresh runtime evidence.
+- [x] Refresh fixture OpenAPI and write exact P2 wiring calls in contract-review.md.
+- [x] Full suite 297 passed; lint, format and mypy passed.
+- [ ] P2 mounts real adapters and connects TopicPipeline to worker with P4 gate.
+- [ ] Live provider/search probes after runtime credentials/model IDs are supplied.
+- [ ] Integrated H7 acceptance and P5 types from actual application OpenAPI.
