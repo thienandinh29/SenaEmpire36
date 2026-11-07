@@ -103,6 +103,40 @@ fixed (`64:ff9b::/96` and `::/96` rejected in `SafeReader`). G4–G8 stand.
 (Gemini is the verifier, DeepSeek the only generator). The live receipt above is the first real call of both routes.
 The H8 model test (catch rate, false alarms, Vietnamese quality, cost) is still required.
 
+## Re-review of `ptest2` `68b2371` — P1, 2026-11-07 (about H5.5)
+
+Read-only, in a scratch checkout. Nothing ran against real TEI, models or Supabase.
+
+| Check | Result |
+|---|---|
+| ruff, ruff format, mypy (122 files) | pass |
+| Python tests (database up) | 1,260 pass, 0 skipped, 0 errors |
+| Web: frozen install, lint, typecheck, vitest | pass; 38 tests |
+| Secrets (key-shaped strings) | none found |
+| Lane boundaries | P3 inside its paths; P2's `planv2.md` and the Spec Kit skills are harmless |
+
+**Status of the findings above, checked in the source:**
+
+| # | Status | Evidence |
+|---|---|---|
+| 1 | Open (merge not started) | `ptest2` is 21 ahead of and 17 behind `main`; `main` into `ptest2` conflicts in the gateway/config/lock files only; `ptest2` into `p4` conflicts in 10 files, none in P4's own paths |
+| 2 | **Open** | `backend.py:227` still `min(items, ...)` with no exclusion of answered items |
+| 3 | **Open** | no `nextItem` in `lib/data-client.ts`; `next-item` not in the proxy allowlist |
+| 4 | **Open** | empty `api_key` skips the check (`main.py`) |
+| 5 | **Open** | no attempt idempotency key (`attempt_id` is only stored on traces) |
+| 6 | Addressed (partly checked) | phase stays `placement` until a `placement.done.*` trace exists; "no remediation during placement" not confirmed |
+| 7 | **Open** | items still looked up by `payload->>'id'` |
+| 8 | **Open** | `ci.yml` has only the `api` job |
+| 10 | Fixed | `64:ff9b::/96` and `::/96` rejected in `SafeReader` |
+
+Findings 2 and 3 block the first end-to-end run (H7-H8): without them it cannot get past placement.
+
+**P3 retrieval wiring (`47f8eb1`, `50104b8`, `68b2371`), source-read:** good: `retrieve_chunks` rejects a citation whose text,
+source URI or page differs from the indexed chunk, and the pipeline fails when a graph concept or an item cites a source
+outside the retrieved chunks. Two concerns: (a) retrieval is **optional** (`retriever=None` skips it and every citation check
+that depends on it), so the demo path must always pass a retriever and an explicit subject; (b) the default `k` is 12, which
+may be too little context to extract a whole graph; test graph quality on the Python topic and raise `k` if needed.
+
 ## What is good (keep it)
 
 - **Engine wiring:** `placement`, `next_step`, `remediate`, FSRS and BKT are called as designed; each learner's state
