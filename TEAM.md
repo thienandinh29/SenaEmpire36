@@ -41,6 +41,17 @@ retrieval, migrations `0003`–`0004`. Details and open contract decisions: `spe
 | **P4** | [ ] **Golden topic #1 by H3** (chunks, `graph.yaml`, items): retrieval evaluation waits on it. [ ] Graph and item files must load through `KnowledgeGraph` / `ItemSet` in `app/schemas.py` (cycles, one correct option, a misconception per wrong option are rejected; items without `status` count as `needs_review`). [ ] Label **≥ 20 Vietnamese questions** for retrieval evaluation, in the format in `data/eval/README.md`. [ ] Migration `0005`: add a unique `items.external_id` (the fixture id such as `plr-001`) or agree another mapping with P3. | `review.md` #2, #6, #7, #14; `data/eval/README.md` |
 | **P5** | [ ] Build screens on `specs/contracts/mocks/` (generated from the models and real engine output; **do not edit by hand**, ask P1 for a change). [ ] "Vì sao?" renders `DecisionTrace` (`rule_vi` is ready to show; `prior`, `posterior` and `evidence` fields can be `null`). [ ] Items never contain the answer; graph edges use the key `from`. [ ] SSE sends `state` and `heartbeat` events. | `specs/contracts/mocks/README.md`; `review.md` #4, #10 |
 
+**How to use the board (every lane, and every lane's agent):**
+1. **Read it first.** At the start of a session, and before you wait on anyone, read your row and any `⏳` line that
+   names you. Your agent checks the board to confirm the thing you are waiting for is not already done.
+2. **Waiting on another lane?** Add one line to **your own row**: `⏳ waiting on P_: <what> (since H_)`, and tell that
+   person. Keep working on fixtures, golden topics, stubs or mock JSON meanwhile (rule 3); do not stop.
+3. **Finished something others wait on?** Tick it in your row (`[x]`) and say so; the person waiting deletes their
+   `⏳` line. A blocker open for more than ~1 hour is raised at the next checkpoint, or to P2 while P1 sleeps.
+4. **Update it yourself.** Each lane edits only its own row (the one exception to lane-owned paths, like the reserved
+   migrations), commits on its lane branch and opens a small PR titled `[P_] board: ...`; P2 merges these as routine.
+   Never edit another lane's row or any contract text: ask the owner.
+
 Known gap, not a blocker: placement finds the exact gap in ~56–64% of runs with noisy (slip/guess) answers, against a
 90% target; it is exact with clean answers and always finishes in ≤ 6 questions (`specs/engine/spec.md`). P1 decides
 whether to relax the target.

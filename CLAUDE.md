@@ -30,6 +30,9 @@ every session to save context. Your lane is set in your git-ignored `CLAUDE.loca
 
 Rules that always apply, even without reading `TEAM.md`:
 - Edit only your lane's paths; never change a contract (only P1, announced at a checkpoint); contracts freeze at H3.
+- **Handoff board** (`TEAM.md`): read it at session start and before waiting on another lane. If you are blocked, add a
+  `⏳ waiting on P_: …` line to *your own row* and push it yourself (small PR `[P_] board: …`); tick items you finish.
+  This row is the one thing outside your lane's paths you may edit; never touch another lane's row.
 - Never push to `main`, never force push, never read `.env`.
 - Migrations use the reserved numbers in `TEAM.md`; additive only except `0003`.
 - Feature freeze at H18: after that, bug fixes only.
