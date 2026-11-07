@@ -2,7 +2,7 @@
 
 import asyncio
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from io import BytesIO
 from pathlib import PurePosixPath
 from xml.etree import ElementTree
@@ -11,7 +11,14 @@ from zipfile import BadZipFile, ZipFile
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from app.research.reader import SafeReader, SourceError, html_text
+from app.research.reader import (
+    SafeReader,
+    SourceError,
+    html_content,
+    html_text,
+    resource_chapter_links,
+    resource_pdf_links,
+)
 
 MAX_BYTES = 20_000_000
 MAX_PAGES = 200
@@ -31,6 +38,9 @@ class Document:
     pages: tuple[Page, ...]
     text_ok: bool
     media_type: str = "text/plain"
+    resource_links: tuple[str, ...] = ()
+    license_text: str = ""
+    chapter_links: tuple[tuple[str, str], ...] = ()
 
 
 def _document(uri: str, pages: list[Page], media_type: str = "text/plain") -> Document:
@@ -114,6 +124,15 @@ async def read_link(url: str, reader: SafeReader | None = None) -> Document:
     text = (
         download.body.decode("utf-8-sig", errors="replace")
         if media == "text/plain"
-        else html_text(download.body)
+        else html_content(download.body)
     )
-    return _document(download.url, [Page(1, text)], media)
+    return replace(
+        _document(download.url, [Page(1, text)], media),
+        resource_links=resource_pdf_links(download.body, download.url)
+        if media != "text/plain"
+        else (),
+        license_text=html_text(download.body) if media != "text/plain" else "",
+        chapter_links=resource_chapter_links(download.body, download.url)
+        if media != "text/plain"
+        else (),
+    )

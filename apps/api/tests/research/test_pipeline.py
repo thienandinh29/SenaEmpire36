@@ -241,7 +241,9 @@ def test_worker_shutdown_propagates_cancellation_without_failed_write() -> None:
     assert all(state.status != "failed" for state in states)
 
 
-def test_progress_sink_failure_does_not_expose_internal_error() -> None:
+def test_progress_sink_failure_does_not_expose_internal_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     async def progress(value: Progress) -> None:
         raise RuntimeError("secret database connection details")
 
@@ -257,6 +259,37 @@ def test_progress_sink_failure_does_not_expose_internal_error() -> None:
             )
         )
     assert "secret" not in str(caught.value)
+    assert "secret" not in caplog.text
+    assert "research pipeline failed at research (RuntimeError)" in caplog.text
+    assert "progress:" in caplog.text
+
+
+def test_question_failure_names_stage_without_leaking_details(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class FailingQuestions(Ports):
+        async def build_items(
+            self, graph: GraphDraft, chunks: Sequence[PreparedChunk], tier: str, count: int
+        ) -> Sequence[Item]:
+            raise RuntimeError("secret provider response")
+
+    states: list[Progress] = []
+
+    async def progress(value: Progress) -> None:
+        states.append(value)
+
+    async def event(value: dict[str, str]) -> None:
+        pass
+
+    with pytest.raises(SourceError, match="sinh, kiểm chứng hoặc lưu câu hỏi"):
+        asyncio.run(
+            pipeline(FailingQuestions()).run(
+                TopicInput(goal_vi="biology", mode="quick", tier="free"), progress, event
+            )
+        )
+    assert "secret" not in caplog.text
+    assert "failed at questions (RuntimeError)" in caplog.text
+    assert not states[-1].graph_ready and not states[-1].items_ready
 
 
 class Retrieved:

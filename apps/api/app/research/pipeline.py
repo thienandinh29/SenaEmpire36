@@ -1,6 +1,8 @@
 """Worker-callable orchestration. P2 owns claiming jobs; P1/P4 own learning content."""
 
 import asyncio
+import logging
+import traceback
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -15,6 +17,8 @@ from app.research.reader import SourceError
 from app.schemas import Citation, KnowledgeGraph
 from app.schemas import Item as ContractItem
 from app.uploads.reader import Document
+
+logger = logging.getLogger(__name__)
 
 
 class PreparedChunk(BaseModel):
@@ -182,6 +186,7 @@ class TopicPipeline:
         graph_ready = items_ready = False
         subject_slug: str | None = None
         dropped = 0
+        stage = "research"
         summaries: tuple[SourceSummary, ...] = ()
 
         async def progress(status: Progress) -> None:
@@ -220,12 +225,14 @@ class TopicPipeline:
                     SourceSummary(s.title, s.publisher, s.url, s.license) for s in sources
                 )
                 await progress(Progress("indexing", "Đang chuẩn bị nguồn trích dẫn…", 25))
+                stage = "indexing"
                 chunks = list(await self.ports.index(sources, upload))
                 if not chunks or len({c.id for c in chunks}) != len(chunks):
                     raise SourceError("Chưa có đoạn nguồn hợp lệ để xây lộ trình.")
                 chunks = await retrieve_chunks(
                     self.retriever, goal, self.retrieval_subject, chunks, self.retrieval_k
                 )
+                stage = "graph"
                 graph = await self.ports.build_graph(goal, chunks, request.tier)
                 if not graph.supported or not graph.graph:
                     raise SourceError("Sơ đồ kiến thức chưa được xác minh từ nguồn.")
@@ -249,6 +256,7 @@ class TopicPipeline:
                         subject_slug,
                     )
                 )
+                stage = "questions"
                 generated = await self.ports.build_items(
                     graph, chunks, request.tier, self.first_items
                 )
@@ -312,11 +320,23 @@ class TopicPipeline:
             # P2 owns cancellation/reclaim status. Do not turn worker shutdown into job failure.
             raise
         except Exception as exc:
+            # Log locations and types, never provider responses, document text or credentials.
+            logger.error(
+                "research pipeline failed at %s (%s): %s",
+                stage,
+                type(exc).__name__,
+                "; ".join(
+                    f"{frame.name}:{frame.lineno}"
+                    for frame in traceback.extract_tb(exc.__traceback__)
+                ),
+            )
             message = (
                 "Đã hết thời gian xây lộ trình; hãy thử lại."
                 if isinstance(exc, TimeoutError)
                 else str(exc)
                 if isinstance(exc, SourceError)
+                else "Không thể hoàn tất bước sinh, kiểm chứng hoặc lưu câu hỏi lúc này."
+                if stage == "questions"
                 else "Không thể xây lộ trình lúc này."
             )
             try:

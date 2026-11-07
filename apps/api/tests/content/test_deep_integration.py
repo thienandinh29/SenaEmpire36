@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -22,8 +23,10 @@ from app.main import create_content_app
 from app.rag.retrieve import Retriever
 from app.research.agent import ChosenSource, ResearchAgent
 from app.research.reader import Allowlist, Publisher, SafeReader
+from app.research.relevance import ResearchRelevance
 from app.research.runtime import research_scope
 from app.research.search import BraveSearch, TavilySearch
+from app.schemas import Citation
 from app.uploads.reader import Document, Page
 from tests.content.test_runtime_database import database_url as database_url
 
@@ -40,6 +43,30 @@ class Vectors:
         if self.fail_on == len(self.batches):
             raise RuntimeError("controlled embedding failure")
         return [[1.0] + [0.0] * 1023 for _ in texts]
+
+
+def test_downloaded_pdf_keeps_each_page_and_license_origin(database_url: str) -> None:
+    docs = pages()
+    pdf_pages = (
+        Page(1, "First derivative lesson page. " * 8),
+        Page(2, "Second derivative lesson page. " * 8),
+    )
+    docs[0] = replace(
+        docs[0],
+        url="https://a.example/lesson.pdf",
+        text="\n".join(p.text for p in pdf_pages),
+        pages=pdf_pages,
+        license_source_url="https://a.example/resource",
+    )
+    with create_pool(database_url) as pool:
+        repo = Repository(lambda: pool)
+        ports = ContentPorts(repo, DeepModels(), "topic-" + uuid4().hex, embedder=Vectors())
+        prepared = asyncio.run(ports.index(docs, None))
+        selected = [c for c in prepared if c.source_uri == docs[0].url]
+        assert {c.page for c in selected} == {1, 2}
+        assert all("Second derivative" not in c.text for c in selected if c.page == 1)
+        assert all("First derivative" not in c.text for c in selected if c.page == 2)
+        assert "https://a.example/resource" in ports.sources[0].attribution
 
 
 def pages() -> list[ChosenSource]:
@@ -216,7 +243,18 @@ class DeepModels:
             identity_source="gateway",
         )
         content: dict[str, Any]
-        if task == "extract_graph":
+        if task == "plan_research":
+            content = {"query": "source rule lesson", "scope_vi": "Fixture scope"}
+        elif task == "assess_research_source":
+            if "candidates" in payload:
+                content = {"urls": [r["url"] for r in payload["candidates"]]}
+            else:
+                content = {
+                    "teaches_goal": True,
+                    "reason_vi": "Fixture lesson",
+                    "teaching_excerpt_id": payload["excerpts"][0]["id"],
+                }
+        elif task == "extract_graph":
             ids = re.findall(
                 r'\[CHUNK id="([a-f0-9-]+)" source_id="[^"]+"\]', payload["source_data"]
             )
@@ -341,9 +379,17 @@ def test_deep_http_worker_to_graph_and_learning(database_url: str, provider: str
         ),
         allowlist=allowlist,
         reader=reader,
+        relevance=ResearchRelevance(DeepModels()),
     )
     with create_pool(database_url) as pool:
         repo, vectors, models = Repository(lambda: pool), Vectors(), DeepModels()
+        queries: list[str] = []
+
+        class RecordingRetriever:
+            async def search(self, query: str, subject: str, k: int = 5) -> list[Citation]:
+                queries.append(query)
+                return await Retriever(pool, vectors).search(query, subject, k)
+
         app = create_content_app(
             Settings(_env_file=None, database_url=database_url, api_key="test-api"),
             repository=repo,
@@ -368,13 +414,14 @@ def test_deep_http_worker_to_graph_and_learning(database_url: str, provider: str
                             repo,
                             models,
                             row,
-                            retriever=Retriever(pool, vectors),
+                            retriever=RecordingRetriever(),
                             retrieval_subject="auto",
                             embedder=vectors,
                         )
                     )
 
             assert run_once(database_url, processor=process)
+            assert queries == ["source rule lesson"]
             state = client.get(f"/topics/{job}").json()
             assert state["status"] == "ready" and state["items_ready"]
             assert len(state["sources"]) == 3

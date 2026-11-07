@@ -47,6 +47,7 @@ class ContentPorts:
         self.chunks: list[Chunk] = []
         self.graph: Graph | None = None
         self.generated: list[Item] = []
+        self.retrieval_query: str | None = None
 
     async def load_upload(self, upload_id: str) -> Document | None:
         def load() -> Document | None:
@@ -147,6 +148,7 @@ class ContentPorts:
         if downloaded and any(not source.text.strip() for source in sources):
             raise ContentUnavailable("Every downloaded source must include its retrieved text")
         self.sources, self.chunks = [], []
+        self.retrieval_query = next((s.retrieval_query for s in sources if s.retrieval_query), None)
 
         def prepare() -> None:
             from app.rag.chunker import chunk_document
@@ -228,12 +230,28 @@ class ContentPorts:
                         section=document.title,
                         license=license_name,
                         accessed_at=datetime.now(UTC).date().isoformat(),
-                        attribution=document.publisher,
+                        attribution=document.publisher
+                        + (
+                            f"; license published at {document.license_source_url}"
+                            if document.license_source_url
+                            else ""
+                        ),
                         model_ingestion_allowed=True,
                     )
                     split = chunk_document(
                         ParsedDocument(
                             blocks=[
+                                DocBlock(
+                                    chapter=source.title,
+                                    section=source.section,
+                                    text=page.text,
+                                    source_uri=document.url,
+                                    page=page.number,
+                                )
+                                for page in document.pages
+                            ]
+                            if document.pages
+                            else [
                                 DocBlock(
                                     chapter=source.title,
                                     section=source.section,
@@ -559,7 +577,16 @@ async def process_claimed_job(
     class SelectedLibraryRetriever:
         async def search(self, query: str, subject: str, k: int = 5) -> list[Citation]:
             if request.mode == "deep" or request.upload_id:
-                return await base_retriever.search(query, ports.subject, k)
+                from dataclasses import replace
+
+                from app.rag.retrieve import Retriever
+
+                scoped = (
+                    replace(base_retriever, chunk_ids=tuple(c.chunk_id for c in ports.chunks))
+                    if isinstance(base_retriever, Retriever)
+                    else base_retriever
+                )
+                return await scoped.search(ports.retrieval_query or query, ports.subject, k)
             chosen = ports.library_subject
             return await base_retriever.search(
                 query, chosen if chosen and chosen != "auto" else subject, k

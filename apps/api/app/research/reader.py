@@ -207,6 +207,103 @@ def html_text(body: bytes) -> str:
     return unicodedata.normalize("NFC", text)
 
 
+def resource_chapter_links(body: bytes, base_url: str) -> tuple[tuple[str, str], ...]:
+    """Observed chapter resources from an MIT textbook contents page, never guessed URLs."""
+    parsed = urlsplit(base_url)
+    parts = parsed.path.strip("/").split("/")
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "ocw.mit.edu"
+        or len(parts) != 4
+        or parts[0] != "courses"
+        or parts[2:] != ["pages", "open-textbook"]
+    ):
+        return ()
+
+    class Chapters(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.links: dict[str, str] = {}
+            self.active: str | None = None
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            if tag != "a":
+                return
+            self.active = None
+            target = urljoin(base_url, dict(attrs).get("href") or "")
+            p = urlsplit(target)
+            segments = p.path.strip("/").split("/")
+            if (
+                p.scheme == "https"
+                and p.netloc == parsed.netloc
+                and len(segments) == 4
+                and segments[:3] == ["courses", parts[1], "resources"]
+                and segments[3].endswith("_pdf")
+                and not p.query
+                and len(self.links) < 12
+            ):
+                self.active = target
+                self.links.setdefault(target, "")
+
+        def handle_data(self, data: str) -> None:
+            if self.active:
+                self.links[self.active] += data[: max(0, 200 - len(self.links[self.active]))]
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag == "a":
+                self.active = None
+
+    parser = Chapters()
+    parser.feed(body.decode("utf-8-sig", errors="replace"))
+    return tuple((title.strip()[:200], url) for url, title in parser.links.items())
+
+
+def resource_pdf_links(body: bytes, base_url: str) -> tuple[str, ...]:
+    """Follow only the exact file published by an MIT OCW PDF resource page."""
+    try:
+        validate_url(base_url)
+    except SourceError:
+        return ()
+    parsed = urlsplit(base_url)
+    parts = parsed.path.strip("/").split("/")
+    if (
+        parsed.hostname != "ocw.mit.edu"
+        or len(parts) != 4
+        or parts[0] != "courses"
+        or parts[2] != "resources"
+        or not parts[3].endswith("_pdf")
+    ):
+        return ()
+    expected_path = f"/courses/{parts[1]}/{parts[3][:-4]}.pdf"
+
+    class Links(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.urls: list[str] = []
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            href = dict(attrs).get("href")
+            if tag != "a" or not href:
+                return
+            target = urljoin(base_url, href)
+            try:
+                host = validate_url(target)
+            except SourceError:
+                return
+            p = urlsplit(target)
+            if (
+                host == parsed.hostname
+                and p.path == expected_path
+                and not p.query
+                and not self.urls
+            ):
+                self.urls.append(target)
+
+    parser = Links()
+    parser.feed(body.decode("utf-8-sig", errors="replace"))
+    return tuple(dict.fromkeys(parser.urls))
+
+
 class _BookContent(HTMLParser):
     """Extract LibreTexts' explicit content region, excluding its surrounding UI."""
 

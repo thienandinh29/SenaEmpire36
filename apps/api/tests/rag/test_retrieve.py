@@ -2,6 +2,8 @@
 
 import asyncio
 import unicodedata
+from dataclasses import replace
+from uuid import UUID
 
 import psycopg
 import pytest
@@ -46,6 +48,16 @@ def test_search_is_scoped_to_the_subject(retriever: Retriever) -> None:
 
 def test_unknown_subject_returns_nothing_instead_of_failing(retriever: Retriever) -> None:
     assert asyncio.run(retriever.search("anything", "no-such-subject")) == []
+
+
+def test_retry_context_excludes_older_material_from_same_topic(retriever: Retriever) -> None:
+    hits = asyncio.run(retriever.search(_glossary_text(), "python", k=4))
+    allowed = UUID(hits[-1].chunk_id)
+    scoped = replace(retriever, chunk_ids=(allowed,))
+    assert [h.chunk_id for h in asyncio.run(scoped.search(_glossary_text(), "python", k=4))] == [
+        str(allowed)
+    ]
+    assert asyncio.run(replace(retriever, chunk_ids=()).search("anything", "python")) == []
 
 
 def test_query_is_nfc_normalised_so_decomposed_vietnamese_matches(retriever: Retriever) -> None:
