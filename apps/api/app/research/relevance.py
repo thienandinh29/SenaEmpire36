@@ -126,9 +126,15 @@ class ResearchRelevance:
         # Server-issued excerpts preserve mathematical notation and PDF whitespace.
         # The model selects provenance; it never has to transcribe it back correctly.
         excerpts: dict[str, str] = {}
-        ranges = [(0, min(16000, len(source.text)))]
-        if len(source.text) > 16000:
-            ranges.append((max(16000, len(source.text) - 8000), len(source.text)))
+        ranges = [(0, len(source.text))]
+        if len(source.text) > 24000:
+            # Whole-book samples often start with long contents/preface sections.
+            middle = (len(source.text) - 8000) // 2
+            ranges = [
+                (0, 8000),
+                (middle, middle + 8000),
+                (len(source.text) - 8000, len(source.text)),
+            ]
         for begin, end in ranges:
             for start in range(begin, end, 800):
                 text = source.text[start : min(start + 800, end)]

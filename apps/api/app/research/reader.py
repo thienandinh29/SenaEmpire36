@@ -2,6 +2,7 @@
 
 import asyncio
 import ipaddress
+import re
 import socket
 import unicodedata
 from collections.abc import Awaitable, Callable
@@ -204,6 +205,8 @@ class _HTMLText(HTMLParser):
                         (
                             "https://creativecommons.org/licenses/",
                             "https://creativecommons.org/publicdomain/",
+                            "http://creativecommons.org/licenses/",
+                            "http://creativecommons.org/publicdomain/",
                         )
                     )
                 ):
@@ -225,6 +228,58 @@ def html_text(body: bytes) -> str:
     parser.feed(body.decode("utf-8-sig", errors="replace"))
     text = "\n".join(line.strip() for line in "".join(parser.parts).splitlines() if line.strip())
     return unicodedata.normalize("NFC", text)
+
+
+def html_license_text(body: bytes) -> str:
+    """Keep document restrictions, excluding explicitly labelled related-resource lists."""
+
+    class LicenseText(_HTMLText):
+        def __init__(self) -> None:
+            super().__init__()
+            self.related: list[str] = []
+            self.malformed = False
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            classes = (dict(attrs).get("class") or "").split()
+            if self.related or (tag in {"ul", "ol", "aside"} and "related" in classes):
+                if tag not in _BookContent._void:
+                    self.related.append(tag)
+                return
+            super().handle_starttag(tag, attrs)
+
+        def handle_endtag(self, tag: str) -> None:
+            if self.related:
+                if tag in self.related:
+                    last = len(self.related) - 1 - self.related[::-1].index(tag)
+                    del self.related[last:]
+                elif tag in {
+                    "html",
+                    "body",
+                    "main",
+                    "footer",
+                    "article",
+                    "section",
+                    "div",
+                    "aside",
+                    "ul",
+                    "ol",
+                }:
+                    self.malformed = True
+                return
+            super().handle_endtag(tag)
+
+        def handle_data(self, data: str) -> None:
+            if not self.related:
+                super().handle_data(data)
+
+    parser = LicenseText()
+    parser.feed(body.decode("utf-8-sig", errors="replace"))
+    if parser.related or parser.malformed:
+        return html_text(body)
+    return unicodedata.normalize(
+        "NFC",
+        "\n".join(line.strip() for line in "".join(parser.parts).splitlines() if line.strip()),
+    )
 
 
 def resource_chapter_links(body: bytes, base_url: str) -> tuple[tuple[str, str], ...]:
@@ -287,21 +342,26 @@ def resource_chapter_links(body: bytes, base_url: str) -> tuple[tuple[str, str],
 
 
 def resource_pdf_links(body: bytes, base_url: str) -> tuple[str, ...]:
-    """Follow only the exact file published by an MIT OCW PDF resource page."""
+    """Follow observed files in supported publisher download layouts, never guessed URLs."""
     try:
         validate_url(base_url)
     except SourceError:
         return ()
     parsed = urlsplit(base_url)
     parts = parsed.path.strip("/").split("/")
-    if (
-        parsed.hostname != "ocw.mit.edu"
-        or len(parts) != 4
-        or parts[0] != "courses"
-        or parts[2] != "resources"
-    ):
+    mit_resource = (
+        parsed.hostname == "ocw.mit.edu"
+        and len(parts) == 4
+        and parts[0] == "courses"
+        and parts[2] == "resources"
+    )
+    ods_resource = parsed.hostname in {
+        "opendatastructures.org",
+        "www.opendatastructures.org",
+    } and parsed.path in {"", "/"}
+    if not (mit_resource or ods_resource):
         return ()
-    expected_path = f"/courses/{parts[1]}/{parts[3][:-4]}.pdf"
+    expected_path = f"/courses/{parts[1]}/{parts[3][:-4]}.pdf" if mit_resource else ""
 
     class Links(HTMLParser):
         def __init__(self) -> None:
@@ -321,12 +381,17 @@ def resource_pdf_links(body: bytes, base_url: str) -> tuple[str, ...]:
             if (
                 host == parsed.hostname
                 and (
-                    (parts[3].endswith("_pdf") and p.path == expected_path)
+                    (mit_resource and parts[3].endswith("_pdf") and p.path == expected_path)
                     or (
-                        "download-file" in (dict(attrs).get("class") or "").split()
+                        mit_resource
+                        and "download-file" in (dict(attrs).get("class") or "").split()
                         and p.path.startswith(f"/courses/{parts[1]}/")
                         and len(p.path.strip("/").split("/")) == 3
                         and p.path.lower().endswith(".pdf")
+                    )
+                    or (
+                        ods_resource
+                        and re.fullmatch(r"/ods-(?:python|java|cpp)(?:-screen)?\.pdf", p.path)
                     )
                 )
                 and not p.query
@@ -404,7 +469,7 @@ def html_content(body: bytes) -> str:
     parser = _BookContent()
     parser.feed(body.decode("utf-8-sig", errors="replace"))
     if not parser.found:
-        return html_text(body)
+        return html_license_text(body)
     # Keep leading whitespace in preformatted Python examples.
     text = "\n".join(
         line.rstrip() for line in "".join(parser.text.parts).splitlines() if line.strip()

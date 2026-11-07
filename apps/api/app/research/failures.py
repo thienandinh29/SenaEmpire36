@@ -9,6 +9,8 @@ def failure_report(step_vi: str, trail: list[dict[str, Any]]) -> dict[str, Any]:
         default=0,
     )
     events = trail[start:]
+    selected = {e.get("url") for e in events if e.get("kind") == "select"}
+    licensed = {e.get("url") for e in events if e.get("code") == "license_verified"}
     failed: dict[str, Any] = next((e for e in reversed(events) if e.get("outcome") == "failed"), {})
     rejected = [
         {
@@ -17,8 +19,12 @@ def failure_report(step_vi: str, trail: list[dict[str, Any]]) -> dict[str, Any]:
             "message_vi": e["text_vi"],
         }
         for e in events
-        if e.get("outcome") == "rejected"
-        or str(e.get("text_vi", "")).startswith(("Bỏ qua nguồn:", "Nguồn chưa được xác nhận"))
+        if (
+            e.get("outcome") == "rejected"
+            or str(e.get("text_vi", "")).startswith(("Bỏ qua nguồn:", "Nguồn chưa được xác nhận"))
+        )
+        and (not e.get("url") or e.get("url") not in selected)
+        and not (e.get("code") == "license_missing" and e.get("url") in licensed)
     ]
     return {
         "stage": failed.get("stage", "unknown"),

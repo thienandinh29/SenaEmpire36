@@ -21,7 +21,7 @@ from app.research.reader import (
     load_allowlist,
     validate_url,
 )
-from app.uploads.reader import Page, read_link
+from app.uploads.reader import Document, Page, read_link
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,7 @@ class ChosenSource:
     license_source_url: str | None = None
     pages: tuple[Page, ...] = ()
     retrieval_query: str = ""
+    license_text: str = ""
 
 
 Search = Callable[[str, Sequence[str]], Awaitable[Sequence[SearchResult]]]
@@ -63,12 +64,14 @@ def detect_license(text: str) -> str:
             code="ai_permission_required",
         )
     if re.search(
-        r"\bby(?:[-\s]+nc)?[-\s]+nd\b|creativecommons.org/licenses/by[^\s]*nd", normalized
+        r"\bby(?:[-\s]+nc)?[-\s]+nd\b|creativecommons.org/licenses/by[^\s]*nd|"
+        r"attribution[-\s]+(?:noncommercial[-\s]+)?no[-\s]+derivative(?:s|[-\s]+works)?\b",
+        normalized,
     ):
         raise SourceError("Không sử dụng tài liệu có giấy phép ND.", code="license_nd")
     for code in ("by-nc-sa", "by-nc", "by-sa", "by"):
         found = re.search(
-            rf"(?:creativecommons\.org/licenses/{code}/|\bcc[ -]+{code}[ /]+)([1-4]\.0)",
+            rf"(?:creativecommons\.org/licenses/{code}/|\bcc[ -]+{code}[ /]+)([1-4]\.0|2\.5)",
             normalized,
         )
         if found:
@@ -79,7 +82,7 @@ def detect_license(text: str) -> str:
         ("attribution-sharealike", "BY-SA"),
         ("attribution", "BY"),
     ):
-        found = re.search(rf"creative commons {name}\s+([1-4]\.0)\b", normalized)
+        found = re.search(rf"creative commons {name}\s+([1-4]\.0|2\.5)\b", normalized)
         if found:
             return f"CC {code} {found[1]}"
     if "creativecommons.org/publicdomain/zero/1.0" in normalized or "cc0 1.0" in normalized:
@@ -146,7 +149,9 @@ class ResearchAgent:
         seen: set[str] = set()
         selected_urls: set[str] = set()
         linked_licenses: dict[str, tuple[str, str]] = {}
-        linked_chapters: set[str] = set()
+        followup_urls: set[str] = set()
+        pending_documents: dict[str, Document] = {}
+        deferred: dict[str, SearchResult] = {}
         sources: list[ChosenSource] = []
         publishers: set[str] = set()
         searches = reads = 0
@@ -282,12 +287,14 @@ class ResearchAgent:
                     )
                     results = list(results)
                     for result in results:
+                        key = canonical_url(result.url)
+                        cached = pending_documents.get(key) if key in linked_licenses else None
                         if (
-                            reads >= self.max_reads
+                            (reads >= self.max_reads and cached is None)
                             or (
                                 publisher_reads >= read_limit
                                 and canonical_url(result.url) not in linked_licenses
-                                and canonical_url(result.url) not in linked_chapters
+                                and key not in followup_urls
                             )
                             or (
                                 not self.open_web
@@ -296,10 +303,8 @@ class ResearchAgent:
                             )
                         ):
                             break
-                        key = canonical_url(result.url)
                         if key in seen:
                             continue
-                        seen.add(key)
                         try:
                             self.allowlist.publisher(result.url)
                         except SourceError:
@@ -307,11 +312,24 @@ class ResearchAgent:
                         owner = ".".join(validate_url(result.url).split(".")[-2:])
                         if publisher_selections.get(owner, 0) >= 2:
                             continue
-                        reads += 1
-                        publisher_reads += 1
+                        if (
+                            self.open_web
+                            and len(publishers) == 1
+                            and publisher_selections.get(owner, 0)
+                        ):
+                            deferred[key] = result
+                            continue
+                        seen.add(key)
+                        if cached is None:
+                            reads += 1
+                            publisher_reads += 1
                         await event("read", f"Đang đọc {result.title}…", result.url)
+                        document = None
+                        text = ""
                         try:
-                            document = await read_link(result.url, self.reader)
+                            document = cached or await read_link(
+                                result.url, self.reader, pdf_page_limit=40
+                            )
                             actual = self.allowlist.publisher(document.source_uri)
                             final_url = canonical_url(document.source_uri)
                             if final_url in selected_urls:
@@ -331,6 +349,16 @@ class ResearchAgent:
                                 continue
                             text = "\n".join(p.text for p in document.pages)
                             license_text = document.license_text or text
+                            if document.total_pages and document.total_pages > len(document.pages):
+                                await event(
+                                    "read",
+                                    f"PDF có {document.total_pages} trang; "
+                                    f"chỉ đọc trang 1-{len(document.pages)} cho bài học đầu. "
+                                    "Các phần còn lại chưa được dùng.",
+                                    document.source_uri,
+                                    code="document_sampled",
+                                    stage="reading",
+                                )
                             if document.chapter_links:
                                 detect_license(license_text)
                                 chapters = [
@@ -340,7 +368,7 @@ class ResearchAgent:
                                 if self.relevance:
                                     chapters = await self.relevance.rank(goal, chapters)
                                 for chapter in reversed(chapters):
-                                    linked_chapters.add(canonical_url(chapter.url))
+                                    followup_urls.add(canonical_url(chapter.url))
                                     results.insert(results.index(result) + 1, chapter)
                                 await event(
                                     "read",
@@ -355,6 +383,8 @@ class ResearchAgent:
                                         license_text,
                                         document.source_uri,
                                     )
+                                    if canonical_url(link) in pending_documents:
+                                        seen.discard(canonical_url(link))
                                     results.insert(
                                         results.index(result) + 1, SearchResult(result.title, link)
                                     )
@@ -370,9 +400,29 @@ class ResearchAgent:
                                 license_name = detect_license(text)
                             else:
                                 license_name = detect_license(
-                                    text + "\n" + license_text + ("\n" + grant[0] if grant else "")
+                                    license_text + ("\n" + grant[0] if grant else "")
+                                )
+                            if cached is not None:
+                                pending_documents.pop(key, None)
+                                rejected["license_missing"] = max(
+                                    0, rejected.get("license_missing", 0) - 1
+                                )
+                                await event(
+                                    "read",
+                                    "Đã xác minh giấy phép qua trang tài nguyên liên kết đúng PDF; "
+                                    "tái dùng bản đã tải.",
+                                    document.source_uri,
+                                    code="license_verified",
+                                    stage="licensing",
                                 )
                         except SourceError as exc:
+                            if (
+                                document is not None
+                                and document.media_type == "application/pdf"
+                                and exc.code == "license_missing"
+                                and "all rights reserved" not in text.casefold()
+                            ):
+                                pending_documents[key] = document
                             rejected[exc.code] = rejected.get(exc.code, 0) + 1
                             await event(
                                 "read",
@@ -400,6 +450,7 @@ class ResearchAgent:
                             if document.media_type == "application/pdf"
                             else (),
                             retrieval_query=search_goal if self.relevance else "",
+                            license_text=license_text + ("\n" + grant[0] if grant else ""),
                         )
                         if self.relevance is not None and not await self.relevance.supports(
                             goal, candidate
@@ -420,6 +471,10 @@ class ResearchAgent:
                         owner = ".".join(validate_url(document.source_uri).split(".")[-2:])
                         publisher_selections[owner] = publisher_selections.get(owner, 0) + 1
                         publishers.add(owner)
+                        if len(publishers) >= 2 and deferred:
+                            results.extend(deferred.values())
+                            followup_urls.update(deferred)
+                            deferred.clear()
                         await event(
                             "select",
                             f"Đã chọn {result.title} ({license_name}).",

@@ -48,6 +48,7 @@ def test_resource_links_only_follow_observed_exact_same_course_pdf() -> None:
 
 
 @pytest.mark.parametrize("via_index", [False, True])
+@pytest.mark.parametrize("pdf_first", [False, True])
 @pytest.mark.parametrize(
     "max_reads,grant,restriction,success",
     [
@@ -65,6 +66,7 @@ def test_resource_download_counts_budget_and_retains_license_provenance(
     restriction: str,
     success: bool,
     via_index: bool,
+    pdf_first: bool,
 ) -> None:
     calls: list[str] = []
     events: list[dict[str, str]] = []
@@ -78,9 +80,12 @@ def test_resource_download_counts_budget_and_retains_license_provenance(
     async def search(query: str, domains: Sequence[str]) -> list[SearchResult]:
         if domains[0] == "books.example":
             return [SearchResult("Lesson", f"https://books.example/{n}") for n in range(2)]
-        return [SearchResult("Derivative chapter", INDEX if via_index else PARENT)]
+        return ([SearchResult("Derivative PDF", PDF)] if pdf_first else []) + [
+            SearchResult("Derivative chapter", INDEX if via_index else PARENT)
+        ]
 
-    async def read(url: str, reader: SafeReader) -> Document:
+    async def read(url: str, reader: SafeReader, *, pdf_page_limit: int | None = None) -> Document:
+        assert pdf_page_limit == 40
         calls.append(url)
         if url == INDEX:
             return Document(
@@ -120,7 +125,8 @@ def test_resource_download_counts_budget_and_retains_license_provenance(
         with pytest.raises(SourceError):
             asyncio.run(agent.research("learn derivatives", event))
     assert len(calls) <= max_reads
-    if max_reads == 3 or "ND" in grant:
+    assert calls.count(PDF) <= 1
+    if (max_reads == 3 or "ND" in grant) and not pdf_first:
         assert PDF not in calls
     if not success and max_reads != 3:
         assert any("Bỏ qua nguồn:" in e["text_vi"] for e in events)

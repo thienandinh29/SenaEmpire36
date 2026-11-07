@@ -91,6 +91,7 @@ def test_open_research_uses_new_publishers_and_keeps_license_gate(licensed: bool
             "one.example",
             "two.example",
         }
+        assert [r.headers["host"] for r in reads[:2]] == ["one.example", "two.example"]
     else:
         with pytest.raises(SourceError) as caught:
             asyncio.run(agent.research("arrays", event))
@@ -154,6 +155,26 @@ def test_failure_report_keeps_stage_actions_and_latest_rejections_only() -> None
     checked = TopicFailure.model_validate(report)
     assert checked.stage == "research" and checked.action_vi == "Provide permitted material"
     assert [r.code for r in checked.rejected_sources] == ["license_nd"]
+
+
+def test_failure_report_removes_recovered_pdf_license_rejection() -> None:
+    url = "https://publisher.example/lesson.pdf"
+    report = failure_report(
+        "No items",
+        [
+            {"code": "license_missing", "outcome": "rejected", "text_vi": "Missing", "url": url},
+            {"code": "license_verified", "url": url},
+            {
+                "code": "not_instructional",
+                "outcome": "rejected",
+                "text_vi": "Not a lesson",
+                "url": url,
+            },
+            {"outcome": "failed", "stage": "items", "text_vi": "No items"},
+        ],
+    )
+    assert report["stage"] == "items"
+    assert [r["code"] for r in report["rejected_sources"]] == ["not_instructional"]
 
 
 def test_book_contents_follow_only_observed_chapters_inside_the_same_book() -> None:

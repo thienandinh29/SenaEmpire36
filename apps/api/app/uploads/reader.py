@@ -15,7 +15,7 @@ from app.research.reader import (
     SafeReader,
     SourceError,
     html_content,
-    html_text,
+    html_license_text,
     resource_chapter_links,
     resource_pdf_links,
 )
@@ -41,6 +41,7 @@ class Document:
     resource_links: tuple[str, ...] = ()
     license_text: str = ""
     chapter_links: tuple[tuple[str, str], ...] = ()
+    total_pages: int | None = None
 
 
 def _document(uri: str, pages: list[Page], media_type: str = "text/plain") -> Document:
@@ -53,7 +54,11 @@ def _document(uri: str, pages: list[Page], media_type: str = "text/plain") -> Do
     return Document(uri, normalized, text_ok, media_type)
 
 
-def read_file(filename: str, body: bytes, source_uri: str) -> Document:
+def read_file(
+    filename: str, body: bytes, source_uri: str, *, pdf_page_limit: int | None = None
+) -> Document:
+    if pdf_page_limit is not None and not 1 <= pdf_page_limit <= MAX_PAGES:
+        raise ValueError("PDF page sample must stay within the extraction limit")
     if not body or len(body) > MAX_BYTES:
         raise SourceError("Tệp rỗng hoặc vượt giới hạn 20 MB.")
     suffix = PurePosixPath(filename).suffix.lower()
@@ -64,17 +69,18 @@ def read_file(filename: str, body: bytes, source_uri: str) -> Document:
             reader = PdfReader(BytesIO(body))
             if reader.is_encrypted:
                 raise SourceError("PDF được mã hóa; vui lòng dùng tệp không có mật khẩu.")
-            if len(reader.pages) > MAX_PAGES:
+            if len(reader.pages) > MAX_PAGES and pdf_page_limit is None:
                 raise SourceError("Tài liệu vượt giới hạn 200 trang.")
             pages: list[Page] = []
             size = 0
-            for index, page in enumerate(reader.pages, 1):
+            for index, page in enumerate(reader.pages[:pdf_page_limit], 1):
                 text = page.extract_text() or ""
                 size += len(text)
                 if size > MAX_TEXT:
                     raise SourceError("Văn bản vượt giới hạn xử lý.")
                 pages.append(Page(index, text))
-            return _document(source_uri, pages, "application/pdf")
+            document = _document(source_uri, pages, "application/pdf")
+            return replace(document, total_pages=len(reader.pages)) if pdf_page_limit else document
         if suffix == ".docx":
             with ZipFile(BytesIO(body)) as archive:
                 entries = archive.infolist()
@@ -112,11 +118,15 @@ def read_file(filename: str, body: bytes, source_uri: str) -> Document:
     raise SourceError("Chỉ hỗ trợ tệp PDF hoặc DOCX.")
 
 
-async def read_link(url: str, reader: SafeReader | None = None) -> Document:
+async def read_link(
+    url: str, reader: SafeReader | None = None, *, pdf_page_limit: int | None = None
+) -> Document:
     download = await (reader or SafeReader()).fetch(url)
     media = download.content_type.partition(";")[0].strip().lower()
     if media == "application/pdf" or download.body.startswith(b"%PDF-"):
-        return await asyncio.to_thread(read_file, "upload.pdf", download.body, download.url)
+        return await asyncio.to_thread(
+            read_file, "upload.pdf", download.body, download.url, pdf_page_limit=pdf_page_limit
+        )
     if media == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         return await asyncio.to_thread(read_file, "upload.docx", download.body, download.url)
     if media not in {"text/html", "application/xhtml+xml", "text/plain"}:
@@ -133,7 +143,7 @@ async def read_link(url: str, reader: SafeReader | None = None) -> Document:
         resource_links=resource_pdf_links(download.body, download.url)
         if media != "text/plain"
         else (),
-        license_text=html_text(download.body) if media != "text/plain" else "",
+        license_text=html_license_text(download.body) if media != "text/plain" else "",
         chapter_links=resource_chapter_links(download.body, download.url)
         if media != "text/plain"
         else (),

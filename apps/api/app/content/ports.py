@@ -219,7 +219,10 @@ class ContentPorts:
                 # Deep-research pages have no indexed IDs yet; use P1's chunker once,
                 # persist stable IDs before any model sees them, then reload those IDs.
                 for document in sources:
-                    license_name = detect_license(document.text + "\n" + document.license)
+                    # Reader-scoped permission evidence excludes licences of linked related works.
+                    license_name = detect_license(
+                        (document.license_text or document.text) + "\n" + document.license
+                    )
                     source = Source(
                         source_id=document.url,
                         title=document.title,

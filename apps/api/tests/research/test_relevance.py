@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -83,6 +83,59 @@ def test_agent_rejects_licensed_but_irrelevant_pages_before_selecting_sources() 
         )
     assert not any(e["kind"] == "select" for e in events)
     assert any("chưa được xác nhận" in e["text_vi"] for e in events)
+
+
+def test_agent_reads_ranked_html_lessons_before_whole_book_pdfs() -> None:
+    allowed = Allowlist(publishers=[], allow_public=True)
+    reads: list[str] = []
+
+    async def resolve(host: str) -> list[str]:
+        return ["93.184.216.34"]
+
+    async def search(query: str, domains: Sequence[str]) -> list[SearchResult]:
+        return [
+            SearchResult("Whole book", "https://book.example/textbook.pdf"),
+            SearchResult("Lesson", "https://one.example/lesson"),
+            SearchResult("Lesson", "https://two.example/lesson"),
+            SearchResult("Lesson", "https://three.example/lesson"),
+        ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        reads.append(str(request.url))
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            text="English lesson: I am, she is, they are. CC BY 4.0. " * 10,
+        )
+
+    async def event(data: dict[str, str]) -> None:
+        pass
+
+    sources = asyncio.run(
+        ResearchAgent(
+            search,
+            allowlist=allowed,
+            reader=SafeReader(
+                allowlist=allowed, resolver=resolve, transport=httpx.MockTransport(handler)
+            ),
+            relevance=ResearchRelevance(RelevanceModels()),
+            open_web=True,
+        ).research("hoc tieng anh", event)
+    )
+    assert len(sources) == 3 and len(reads) == 3
+    assert not any(url.endswith(".pdf") for url in reads)
+
+
+def test_long_source_samples_middle_teaching_without_increasing_context_budget() -> None:
+    models = RelevanceModels()
+    text = "Contents and preface. " * 1200
+    text += "English lesson: I am, she is, they are. " * 500
+    text += "Index and bibliography. " * 1200
+    source = ChosenSource("Book", "Publisher", "https://a.example", "CC BY 4.0", text)
+    assert asyncio.run(ResearchRelevance(models).supports("hoc tieng anh", source))
+    excerpts = cast(dict[str, Any], models.calls[-1]["payload"])["excerpts"]
+    assert sum(len(e["text"]) for e in excerpts) <= 24000
+    assert all(e["text"] in text for e in excerpts)
 
 
 def test_invalid_relevance_reply_fails_closed() -> None:
