@@ -65,6 +65,39 @@ the commit for credentials (none; I may not read `.env.example`, so that file is
   not fit the H5–H7 window. Options: index only the books the golden topics need first (4,000 chunks is about 1 hour), and/or
   run the bulk on a GPU machine (Colab, per the risk table; same model, so no re-index). P1 decides the subset; P2 proposes.
 
+## Gateway review (`app/llm/`, `71b7b07` and `f4cd74f`) — P1, 2026-11-07
+
+Source review of `gateway.py`, `providers.py` and `routing.yaml`, plus the receipt `docker/llm-live-smoke.json`.
+`pytest tests/llm tests/test_config.py`: 39 pass. Not reviewed: `smoke.py`, `config.py`, the tests' content. Not run:
+anything against a live model (the receipt is P2's own run: one synthetic Vietnamese MCQ, DeepSeek then Gemini,
+blind answer matched, generator answer excluded from the verifier input; it is a route check, **not** acceptance).
+
+**Sound (keep):**
+- Keys travel only in headers (`x-goog-api-key`, `Authorization`), never in URLs; provider errors are reduced to codes
+  (`from None`), and failure strings hold only `provider:ExceptionType`. `trust_env=False` ignores proxy variables.
+- A route whose model is unset (`$` left), ends in `:free`, or does not contain its declared family name is skipped, so a
+  mislabelled family cannot defeat the verifier rule. `verify` without `verification_scope(...)` is refused.
+- DeepSeek failure ends in `GatewayError` with no silent switch to another family; non-retryable errors (missing key,
+  4xx) stop at once, retryable ones (408, 429, 5xx, incomplete) back off 0.2 s, 0.4 s.
+- Per-attempt telemetry (`Attempt`) includes paid responses that failed validation.
+
+**Findings:**
+
+| # | Sev | Owner | Finding | Fix and check |
+|---|---|---|---|---|
+| G1 | Med | P3 | Every adapter caps output at 4096 tokens. A graph extraction larger than that ends with `finish_reason=length`, which is treated as retryable, so the **same paid call is repeated and fails the same way**. | Per-task `max_tokens` (graph larger); treat `length` as non-retryable or retry with a higher cap. Check: a test where the stub returns `length` twice makes one extra call at most. |
+| G2 | Med | P3 | Gemini counts thinking tokens against `maxOutputTokens`; a verifier that thinks long can be cut off (`MAX_TOKENS`) and be retried into the same result. | Set a thinking budget (or larger cap) on `verify` and log `thoughtsTokenCount`. |
+| G3 | Med | P3 | `Completion.latency_ms` runs from the start of the whole request, so it includes failed attempts and back-off; p95 per model would be inflated by retries. | The H8 test should read `Attempt.latency_ms` of the successful attempt (and report retries separately). |
+| G4 | Med | P1 + P2 | Free and Pro use the same model by default (`DEEPSEEK_PRO_MODEL=deepseek-flash`), so the tier switch changes nothing in the demo. Already on the board. | Set a distinct Pro model, or say openly that tiers differ only in web search and sources. |
+| G5 | Med | P1 decides | **Uploads and privacy.** Uploaded text would go to DeepSeek's API and Gemini's Developer API. SPEC says learner data is private by default; the Developer API's terms differ between free and paid keys, which I have not checked. | Decision pending (uploads policy); until then uploads must not reach either API. |
+| G6 | Low | P3 | A new `httpx.AsyncClient` per call (no connection reuse), a fixed 30 s transport timeout under the 35 s request timeout, no concurrency limit. | Fine for one demo; share one client and add a semaphore before more than a few jobs run at once. |
+| G7 | Low | P2 | The 100 s total deadline is short for Deep Research graph tasks. | `gateway_scope` already allows a per-job gateway; set it for research jobs. |
+| G8 | Info | P2 | **Credentials were pasted into a chat** (both the DeepSeek and the Gemini key). No commit contains them (checked by prefix on the last 50 revisions), but they must be treated as exposed. | Rotate both; keep them only in the host's `.env`. |
+
+**Status updates to this review:** finding 9 is resolved; the generation fallbacks were removed by `f4cd74f`
+(Gemini is the verifier, DeepSeek the only generator). The live receipt above is the first real call of both routes.
+The H8 model test (catch rate, false alarms, Vietnamese quality, cost) is still required.
+
 ## What is good (keep it)
 
 - **Engine wiring:** `placement`, `next_step`, `remediate`, FSRS and BKT are called as designed; each learner's state
