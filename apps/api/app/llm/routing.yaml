@@ -1,0 +1,27 @@
+# Model IDs must be chosen with P1 at H8; no account access is assumed.
+# Families are explicit, independent of provider. Do not relabel a model's family.
+tiers:
+  free:
+    graph: &free
+      - {provider: vertex, model: '${VERTEX_FREE_MODEL}', family: gemini}
+      - {provider: bedrock, model: '${BEDROCK_FREE_MODEL}', family: claude}
+      - {provider: openrouter, model: '${OPENROUTER_FREE_MODEL}', family: gemini}
+    items: *free
+    tutor: *free
+    ask: *free
+    verify: &verify
+      - {provider: bedrock, model: '${BEDROCK_VERIFY_MODEL}', family: claude}
+      - {provider: openrouter, model: '${OPENROUTER_VERIFY_MODEL}', family: claude}
+      - {provider: vertex, model: '${VERTEX_VERIFY_MODEL}', family: gemini}
+  pro:
+    graph: &graph
+      - {provider: vertex, model: '${VERTEX_GRAPH_MODEL}', family: gemini}
+      - {provider: bedrock, model: '${BEDROCK_PRO_MODEL}', family: claude}
+      - {provider: openrouter, model: '${OPENROUTER_GRAPH_MODEL}', family: gemini}
+    research: *graph
+    items: *graph
+    verify: *verify
+    tutor: &pro
+      - {provider: bedrock, model: '${BEDROCK_PRO_MODEL}', family: claude}
+      - {provider: openrouter, model: '${OPENROUTER_PRO_MODEL}', family: claude}
+    ask: *pro
