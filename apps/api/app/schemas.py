@@ -338,7 +338,7 @@ class GraphView(_Contract):
     edges: list[Edge]
 
 
-# GET /graph/review?subject= and POST /graph/confirm (specs/graph-confirmation/).
+# GET /graph/review?subject= and POST /graph/confirm (specs/graph-confirmation-contract/).
 # Identity comes from the learner session cookie (`nodetrail_learner`), never from the body.
 GRAPH_REVISION_PATTERN = r"^[a-f0-9]{64}$"  # sha256 of the generated map, set by the backend
 

@@ -1,6 +1,6 @@
 # Feature: the learner confirms the generated knowledge map
 
-Lane P1 (contract) with P2 (service), P3 (routes, live), P5 (screen). Status: **contract aligned to P3's live routes on
+Lane P1 (contract) with P2 (service), P3 (routes, live; their spec is `specs/graph-confirmation/` on `ptest2`), P5 (screen). Status: **contract aligned to P3's live routes on
 2026-11-07** (P1's first draft used a different route and body; P3's design, identity from the session, is the better one).
 
 ## Why

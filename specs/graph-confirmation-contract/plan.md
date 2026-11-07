@@ -1,6 +1,6 @@
 # Plan: graph confirmation contract
 
-Spec: `specs/graph-confirmation/spec.md`.
+Spec: `specs/graph-confirmation-contract/spec.md` (the contract, P1). The routes' own spec is `specs/graph-confirmation/` (P3, on `ptest2`).
 
 ## History
 P1's first version (merged in PR #21) put `revision` on `GraphView`, used `POST /graph/confirm {learner_id, subject,
