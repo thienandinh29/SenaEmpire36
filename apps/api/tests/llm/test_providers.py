@@ -369,3 +369,23 @@ def test_graph_budget_and_gemini_thinking_configuration(monkeypatch: pytest.Monk
         "maxOutputTokens": 8192,
         "thinkingConfig": {"thinkingLevel": "LOW"},
     }
+
+
+def test_deepseek_long_multibyte_context_is_rejected_before_paid_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "fake")
+    with (
+        patch("app.llm.providers._post") as post,
+        pytest.raises(ProviderError, match="context_budget_exceeded") as error,
+    ):
+        asyncio.run(
+            DeepSeekAdapter().generate(
+                Route(provider="deepseek", model="deepseek-flash", family="deepseek"),
+                "s",
+                [Message(role="user", content="ọ" * 400_000)],
+                None,
+            )
+        )
+    assert not error.value.retryable
+    post.assert_not_called()

@@ -268,6 +268,10 @@ class OpenRouterAdapter:
 
 
 class DeepSeekAdapter:
+    # Official model table, checked 2026-11-07. Conservative decimal limits.
+    context_tokens = 1_000_000
+    max_output_tokens = 384_000
+
     async def generate(
         self,
         route: Route,
@@ -289,6 +293,15 @@ class DeepSeekAdapter:
         }
         if schema:
             payload["response_format"] = {"type": "json_object"}
+        # Conservative UTF-8/BPE upper bound, not measured token usage. Reserve
+        # framing and output; never silently truncate a book and lose citations.
+        input_upper_bound = 1024 + sum(
+            len(message["content"].encode("utf-8")) + 256 for message in payload["messages"]
+        )
+        if payload["max_tokens"] > self.max_output_tokens:
+            raise ProviderError("deepseek_output_budget_exceeded")
+        if input_upper_bound + payload["max_tokens"] > self.context_tokens:
+            raise ProviderError("deepseek_context_budget_exceeded")
         data = await _post("https://api.deepseek.com/chat/completions", token, payload)
         try:
             choice = data["choices"][0]

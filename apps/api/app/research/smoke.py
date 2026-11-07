@@ -1,4 +1,4 @@
-"""Canonical graph/items route smoke. Explicit --live uses process credentials only.
+"""Canonical graph/items route smoke. Explicit --live uses normal local app settings.
 
 This does not publish items, write a database, or replace P4/H8 quality acceptance.
 """
@@ -35,8 +35,8 @@ class BlindAnswer(BaseModel):
 
 def book_material(folder: Path, uri_contains: str, k: int) -> list[PreparedChunk]:
     """Read a bounded public chapter without pretending this is vector retrieval."""
-    if not uri_contains or not 1 <= k <= 12:
-        raise ValueError("Choose a chapter URI and between 1 and 12 chunks")
+    if not uri_contains or not 1 <= k <= 50:
+        raise ValueError("Choose a chapter URI and between 1 and 50 chunks")
     book = load_book(folder)
     detect_license(book.info.license)
     allowlist = load_allowlist()
@@ -211,6 +211,18 @@ async def run(
     report["input_tokens"] = sum(attempt.input_tokens for attempt in attempts)
     report["output_tokens"] = sum(attempt.output_tokens for attempt in attempts)
     report["thoughts_tokens"] = sum(attempt.thoughts_tokens for attempt in attempts)
+    report["successful_calls"] = [
+        {
+            "task": attempt.task,
+            "provider": attempt.route.provider,
+            "model": attempt.route.model,
+            "latency_ms": attempt.latency_ms,
+            "input_tokens": attempt.input_tokens,
+            "output_tokens": attempt.output_tokens,
+        }
+        for attempt in attempts
+        if attempt.status == "success"
+    ]
     return report
 
 
@@ -224,7 +236,9 @@ def main() -> None:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    # No .env read here: P2's normal settings export or the shell configures credentials.
+    from app.config import get_settings
+
+    get_settings().export_worker_environment()
     if args.live and not all(
         os.environ.get(name) for name in ("DEEPSEEK_API_KEY", "GEMINI_API_KEY")
     ):

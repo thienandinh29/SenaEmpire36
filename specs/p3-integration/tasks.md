@@ -68,6 +68,6 @@
 - [x] Vietnamese manifest labels and audited Think Python source/chunk export (P1 semantic queries pending).
 - [x] Mandatory retrieval and actual worker startup wiring; real SQL context/provenance tests pass.
 - [ ] k=12 semantic Python graph review (real model + P1 queries required).
-- [ ] Distinct Pro model and long-context input guard.
+- [x] Distinct Pro model in local/template settings and long-context input guard; no model HTTP call on oversize input.
 - [ ] Live canonical graph/items receipt after key rotation.
 - [x] Replace learn.py public response DTOs after trunk integration; canonical schema imports and strict request subclasses.

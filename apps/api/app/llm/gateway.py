@@ -105,13 +105,16 @@ def generation_limits() -> GenerationLimits:
 
 
 _excluded_family: ContextVar[str | None] = ContextVar("generator_family", default=None)
+KNOWN_GENERATOR_FAMILIES = frozenset(
+    {"gemini", "claude", "deepseek", "gpt", "llama", "mistral", "qwen"}
+)
 
 
 @contextmanager
 def verification_scope(generator_family: str) -> Iterator[None]:
     """P4 supplies Completion.route.family from the actual generator response."""
-    if generator_family.casefold() not in {"gemini", "claude", "deepseek"}:
-        raise ValueError("The actual generator family must be gemini, claude or deepseek")
+    if generator_family.casefold() not in KNOWN_GENERATOR_FAMILIES:
+        raise ValueError("The actual generator family must use the known P4 identity taxonomy")
     token = _excluded_family.set(generator_family.casefold())
     try:
         yield
