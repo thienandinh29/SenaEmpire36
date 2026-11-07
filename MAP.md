@@ -11,7 +11,7 @@ Planned entries are marked _(planned)_ until they exist.
 | `PLAN.md` | Phased build plan and current status |
 | `TEAM.md` | 24-hour team plan: lanes, owned paths, stack, contracts, timeline, git workflow, risks |
 | `team/` | Start guide per lane (`P1.md`–`P5.md`): setup, first task, first prompt; `TEAM.md` wins if they differ |
-| `specs/` | GitHub Spec Kit: one folder per feature (spec, plan, tasks); `engine/`, `retrieval/`, `remediation/` (P1), `contracts/review.md` (open contract decisions), `contracts/mocks/` (generated mock JSON for P5, `tests/engine/mocks.py`) |
+| `specs/` | GitHub Spec Kit: one folder per feature (spec, plan, tasks); `engine/`, `retrieval/`, `remediation/`, `model-test/` (P1), `contracts/review.md` (open contract decisions), `contracts/mocks/` (generated mock JSON for P5, `tests/engine/mocks.py`) |
 | `.specify/` _(planned, P2)_ | Spec Kit project memory: constitution (from `CLAUDE.md` principles), templates |
 | `docker/` _(planned, P2)_ | API image, compose for the cloud VM (API + worker + TEI for bge-m3, Watchtower, named Cloudflare Tunnel), VM setup script |
 | `context/product-brief.vi.md` | Original product brief (Vietnamese) |
