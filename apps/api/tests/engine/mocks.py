@@ -13,8 +13,9 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from app.engine.bkt import DEFAULT_PARAMS, update_traced
-from app.engine.graph import Graph, root_cause
+from app.engine.graph import Graph
 from app.engine.placement import Answer, next_question
+from app.engine.remediation import remediate
 from app.engine.srs import make_scheduler, new_card, review_traced
 from app.schemas import (
     AskRequest,
@@ -41,7 +42,6 @@ from app.schemas import (
     PlacementStep,
     PublicItem,
     PublicOption,
-    Remediation,
     TopicCreate,
     TopicCreated,
     TopicSource,
@@ -218,23 +218,22 @@ def _attempt_wrong() -> AttemptResult:
         item_id="loop-003",
         misconception="range-includes-stop",
     )
-    target, rc_trace = root_cause(
+    misconception_vi = "Bạn nghĩ `range(3)` gồm cả số 3; thực ra nó dừng trước 3."
+    plan, rc_trace = remediate(
         GRAPH,
         MASTERY,
         "vong-lap",
         now=NOW,
         item_id="loop-003",
         misconception="range-includes-stop",
+        misconception_vi=misconception_vi,
     )
     return AttemptResult(
         correct=False,
-        misconception_vi="Bạn nghĩ `range(3)` gồm cả số 3; thực ra nó dừng trước 3.",
+        misconception_vi=misconception_vi,
         p_known=p_loop,
         mastered=False,
-        remediation=Remediation(
-            concept_slug=target,
-            reason_vi=f"Hãy củng cố «{CONCEPTS[target]}» trước khi quay lại «Vòng lặp»",
-        ),
+        remediation=plan.to_contract(),
         traces=[bkt_trace, rc_trace],
     )
 

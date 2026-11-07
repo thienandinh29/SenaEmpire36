@@ -19,6 +19,9 @@ from app.schemas import KnowledgeGraph
 
 # p_known for a concept with no mastery row yet: the BKT prior, i.e. "probably not known".
 UNSEEN_P_KNOWN = DEFAULT_PARAMS["mcq"].p_init
+# A prerequisite counts as a gap when it is probably not known. This is deliberately far below
+# MASTERY_THRESHOLD: placement marks known concepts at 0.85, and those must not be sent back to.
+WEAK_THRESHOLD = 0.5
 
 
 @dataclass(frozen=True)
@@ -132,11 +135,12 @@ def root_cause(
     now: datetime,
     item_id: str | None = None,
     misconception: str | None = None,
-    threshold: float = MASTERY_THRESHOLD,
+    threshold: float = WEAK_THRESHOLD,
 ) -> tuple[str, DecisionTrace]:
     """Where to remediate after a wrong answer on `failed_slug`.
 
-    Candidates are the failed concept's prerequisites (transitively) that are not yet mastered.
+    Candidates are the failed concept's prerequisites (transitively) that are probably not known
+    (`p_known` below `threshold`, `WEAK_THRESHOLD` by default; not "not yet mastered").
     The weakest wins (lowest p_known); a tie goes to the deeper foundation (lower depth, closer to
     a root), then to the nearest one, then slug order. No weak prerequisite -> the failed concept
     itself: the foundations hold, so the learner practises this concept again.
@@ -208,8 +212,10 @@ def _why_not(
     threshold: float,
 ) -> str:
     chosen_name = graph.name_vi(chosen)
-    if p(slug) >= threshold:
+    if p(slug) >= MASTERY_THRESHOLD:
         return f"Đã nắm vững ({fmt_p(p(slug))})"
+    if p(slug) >= threshold:
+        return f"Tương đối vững ({fmt_p(p(slug))}), chưa cần củng cố"
     if round(p(slug), 6) > round(p(chosen), 6):
         return f"Vững hơn «{chosen_name}» ({fmt_p(p(slug))} so với {fmt_p(p(chosen))})"
     if graph.depth[slug] > graph.depth[chosen]:

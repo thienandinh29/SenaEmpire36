@@ -22,4 +22,4 @@ Window per `TEAM.md` timeline. `[x]` done. Tests in `apps/api/tests/engine/`.
   and store them, P3 to return them from `/attempts` and `/placement/next`
 
 ## H8–H11
-- [ ] T10 Remediation rules on top of `root_cause` (misconception → concept hints), varied graph shapes
+- [x] T10 Remediation rules on top of `root_cause`: see `specs/remediation/`
