@@ -1,5 +1,30 @@
-# Local dev database. Same Postgres + pgvector that Supabase runs, so migrations are portable.
+# Local P2 services: Postgres + pgvector and the bge-m3 embedding server.
 services:
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    container_name: nodetrail-tei
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - tei-data:/data
+    command:
+      - --model-id
+      - BAAI/bge-m3
+      - --max-batch-tokens
+      - "1024"
+      - --max-client-batch-size
+      - "32"
+      - --max-concurrent-requests
+      - "64"
+    mem_limit: 8g
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10m
+      retries: 3
+
   db:
     image: pgvector/pgvector:pg16
     container_name: nodetrail-db
@@ -18,4 +43,5 @@ services:
       retries: 20
 
 volumes:
+  tei-data:
   nodetrail-db:
