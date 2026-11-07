@@ -33,7 +33,7 @@ from app.llm.gateway import (
     Route,
     gateway_scope,
 )
-from app.llm.providers import default_gateway
+from app.llm.providers import default_gateway, diagnostic_transport_timeout
 
 
 def atomic_json(path: Path, value: object) -> None:
@@ -182,6 +182,7 @@ async def run(
                         "family": event.route.family,
                         "status": event.status,
                         "error": event.error_code,
+                        "provider_errors": provider_errors,
                         "latency_ms": event.latency_ms,
                         "input_tokens": event.input_tokens
                         if event.status == "success" or event.input_tokens > 0
@@ -331,18 +332,31 @@ def main() -> None:
     parser.add_argument("--interval", type=float, default=15)
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--max-items", type=int, help="Probe only this many unfinished items")
+    parser.add_argument(
+        "--request-timeout",
+        type=float,
+        default=30,
+        help="Explicit scoped provider timeout (1..90s); production default unchanged",
+    )
     args = parser.parse_args()
     if args.interval < 0 or args.retries < 0:
         parser.error("interval/retries must be nonnegative")
     if args.max_items is not None and args.max_items < 1:
         parser.error("max-items must be positive")
-    print(
-        json.dumps(
-            asyncio.run(
-                run(args.topic, args.checkpoint, args.interval, args.retries, args.max_items)
-            )["summary"]
+    if not 1 <= args.request_timeout <= 90:
+        parser.error("request-timeout must be between 1 and 90 seconds")
+    with diagnostic_transport_timeout(args.request_timeout):
+        result = asyncio.run(
+            run(
+                args.topic,
+                args.checkpoint,
+                args.interval,
+                args.retries,
+                args.max_items,
+                timeout_seconds=max(70, args.request_timeout + 10),
+            )
         )
-    )
+    print(json.dumps(result["summary"]))
 
 
 if __name__ == "__main__":

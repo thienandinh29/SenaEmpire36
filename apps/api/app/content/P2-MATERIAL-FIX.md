@@ -114,7 +114,7 @@ If P2 diagnostic succeeds, its output is a resumable checkpoint with the success
 Item/audit saved immediately. Continue that SAME checkpoint (skips current verified):
 
 ```powershell
-uv run python -m app.content.verify_batch ../../data/golden/python-conditions --checkpoint ../../data/guardrails/gemini-shared-p2.json --interval 15 --retries 2
+uv run python -m app.content.verify_batch ../../data/golden/python-conditions --checkpoint ../../data/guardrails/gemini-shared-p2.json --interval 15 --retries 2 --request-timeout 90
 ```
 
 The runner records 20 paired cases, actual calls, reused blind results and separate

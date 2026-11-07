@@ -131,6 +131,10 @@ def test_retry_is_finite_and_honors_retry_after(
     assert result["evaluation_summary"]["unfinished"] == 2
     assert result["evaluation_summary"]["wrong_blocked"] == 0
     assert result["summary"]["input_tokens"] is None
+    assert len(result["attempts"]) == 3
+    assert all(
+        attempt["provider_errors"][0]["code"] == "http_429" for attempt in result["attempts"]
+    )
 
 
 def test_changed_chunk_invalidates_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
