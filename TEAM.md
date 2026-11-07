@@ -44,18 +44,20 @@ retrieval, migrations `0003`–`0004`. Details and open contract decisions: `spe
 **How to use the board (every lane, and every lane's agent):**
 1. **Read it first.** At the start of a session, and before you wait on anyone, read your row and any `⏳` line that
    names you. Your agent checks the board to confirm the thing you are waiting for is not already done.
-2. **Waiting on another lane?** Add one line to **your own row**: `⏳ waiting on P_: <what> (since H_)`, and tell that
-   person. Keep working on fixtures, golden topics, stubs or mock JSON meanwhile (rule 3); do not stop.
-3. **Finished something others wait on?** Tick it in your row (`[x]`) and say so; the person waiting deletes their
-   `⏳` line.
+2. **Waiting on another lane?** Name the gap and the tag that will end it, in one line in **your own row**:
+   `⏳ waiting on P_: <what> (ready/<tag>, since H_)`. Pick the tag from the table under Git workflow, or propose one.
+   Keep working on fixtures, golden topics, stubs or mock JSON meanwhile (rule 3); do not stop.
+3. **Finished something others wait on?** Merge it (CI green), then **tag it `ready/<what>`** (see Git workflow) and tick
+   your row (`[x]`). That tag is the signal: the waiting lane's agent sees it, deletes its `⏳` line, rebases and
+   continues, with nobody asking anybody.
 4. **Update it yourself, no approval needed.** Each lane edits only its own row (the one exception to lane-owned paths,
    like the reserved migrations) on its lane branch and opens a small PR titled `[P_] board: ...` that touches **only
    that row**. Nobody reviews it: merge your own once CI is green. Never edit another lane's row or any contract text:
    ask the owner.
 
 **The contact: P1 (P2 while P1 sleeps).** Their one job is that **nobody waits on another lane's work.** They read the
-board at every checkpoint and whenever a `⏳` line appears. For each one they find who owns the work and make it
-happen, or remove the wait: reorder the work, give the waiting lane a fixture, stub or mock to build on, or take the
+board at every checkpoint and whenever a `⏳` line appears, and they tag the scheduled `checkpoint-h*` tags. For each
+`⏳` they find who owns the work and make it happen, or remove the wait: reorder the work, give the waiting lane a fixture, stub or mock to build on, or take the
 task over. A `⏳` older than ~1 hour is treated as a problem to fix now, not a note to leave.
 
 Known gap, not a blocker: placement finds the exact gap in ~56–64% of runs with noisy (slip/guess) answers, against a
@@ -322,7 +324,31 @@ P3 watches the VM and merges green PRs.
 
 ## Git workflow
 - Branch per lane: `p1/ml-core`, `p2/platform`, `p3/integration`, `p4/content`, `p5/web`; one worktree per extra agent.
-- **Rebase at every checkpoint**: `git fetch && git rebase origin/main`, then run tests.
+- **Rebase at every checkpoint**: `git fetch --tags && git rebase checkpoint-h3` (or the latest `checkpoint-h*` tag),
+  then run tests.
+- **Checkpoint tags (the shared baseline).** When everything due at H3, H8 and H12 is merged and CI on `main` is green,
+  P1 (P2 while P1 sleeps) tags that commit `checkpoint-h3`, `checkpoint-h8`, `checkpoint-h12`, with the list of what is
+  in it as the tag message (`git tag -a checkpoint-h3 -m "..." && git push origin checkpoint-h3`). Tagging before
+  everything due is merged gives a baseline nobody is really on, so wait. `demo-v1` at H18 stays P2's. **A tag never
+  moves**: a mistake gets a new tag. `checkpoint-h3` is the contract freeze: `git diff checkpoint-h3 --
+  apps/api/app/schemas.py` shows any later contract change. Pushing a tag is not pushing to `main`.
+- **Ready tags (the unblock signal).** When you finish something another lane waits on, merge it (CI green), then tag
+  `main` `ready/<what>` and push the tag (`git tag -a ready/<what> -m "..." && git push origin ready/<what>`), and tick your
+  board row. A waiting agent runs `git fetch --tags` and `git tag -l "ready/*"`; when its tag exists it deletes its `⏳`
+  line, rebases onto it and continues. Whoever merged the work (or its owner) tags it; a wrong tag is replaced by
+  `ready/<what>-2`, never moved. Expected tags (add rows as needs appear):
+
+| Tag | Tagged by | Waiting on it | When |
+|---|---|---|---|
+| `ready/p1-core` (PR #1: contracts, engine, retrieval, migrations `0003`–`0004` on `main`) | whoever merges it | P3, P5, P2 (indexing) | H3 |
+| `ready/tei-host` (TEI serves bge-m3, reachable from the API machine) | P2 | P1 (speed check, retrieval eval), P3 | H2–H3 |
+| `ready/api-stubs` (every route serves fixture data) | P2 | P5, P3 | H3 |
+| `ready/golden-topic-1`, `ready/golden-topics-2-3` | P4 | P1 (retrieval eval), P3, P5 | H3 |
+| `ready/gateway-vertex`, `ready/gateway-bedrock` | P3 | P4, P1 (model test) | H3, H5 |
+| `ready/model-test-cases` (held-out chunks + planted-wrong items) | P4 | P3, P1 | H6 |
+| `ready/library-readers` (HTML/PDF/DOCX readers + `build_library` emit book folders) | P3 | P1, P2 (indexing) | H5 |
+| `ready/library-indexed` (library in the database, index built, size checked) | P2 | P1, P3, P4 (Nhanh, retrieval eval) | H7 |
+
 - PR title `[P3] ...`; CI green; P2 merges routine PRs, P1 approves contract changes. Stacked PRs: **retarget to `main`
   before deleting the base branch**.
 - Migrations reserved, numbered in merge order: `0003` P1 (`halfvec`, `chunks.url` → `source_uri`, HNSW rebuilt),
