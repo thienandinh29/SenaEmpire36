@@ -34,6 +34,7 @@ Planned entries are marked _(planned)_ until they exist.
 | `apps/api/app/evalkit/model_metrics.py` | H8 receipt scoring: verifier catches/false alarms with intervals, p95 latency, task and combined topic cost; missing evidence remains explicit (`specs/model-test/receipts.md`) |
 | `specs/contracts/p1-h7-review.md` | P1 source review, H7 engine acceptance sequence, library issues and placement limitation |
 | `specs/contracts/h7-run-sheet.md` | P1's run sheet for the H7 end-to-end run: go/no-go list, 12 steps with expected results, what to record, a blank result table |
+| `specs/model-test/run-procedure.md` | P1's run procedure for the H8 model test: US$2.00 run cap and US$0.50 per-topic cap (proposals), settings, order, evidence to keep, stop rules |
 | `apps/api/tests/engine/test_learning_flow.py` | JSON-replayed placement/remediation/mastery/review flow; optional P3 real grader on an integration checkout; no live DB/worker claim |
 | `apps/api/app/engine/path.py` | The next step when nothing just went wrong (`next_step`: resume, overdue review, continue, learn, confirm, done) with a target difficulty; traced |
 | `apps/api/app/engine/remediation.py` | Remediation rules after a wrong answer (`remediate`: weakest prerequisite, repeated misconception, practise again) and `resume`; traced |
