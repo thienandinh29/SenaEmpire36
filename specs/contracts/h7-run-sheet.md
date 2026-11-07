@@ -5,6 +5,16 @@ correct answer → review card, **through the real HTTP routes, real models and 
 sequence in `specs/contracts/p1-h7-review.md`; route shapes in `TEAM.md` (Contracts). Nothing in this sheet claims a
 result: fill the record at the bottom as you go.
 
+## 0. Which run counts for the demo (added at about H17.5)
+
+Run the 12 steps below once per path; the record table is per path, so copy it. Status from the branches as pushed, not from a run of mine.
+
+| Path | Status | Use in the demo |
+|---|---|---|
+| **A. Quick mode, "tôi muốn học Python", from the indexed library** | **No live run recorded yet.** This is the main demo topic. | Primary. Run it first. |
+| **B. Uploaded PDF** | **Passed live** per P4's `outputs/live-lesson-acceptance.md` on branch `mtri`: 162.7 s including one retry, 4 chunks embedded, graph confirmed in the UI, 7 verified questions, 9 answers graded, 3 verified hints with citations. Placement, remediation, resume, mastery and the review card are **not** reported there; steps 3 to 9 still need a pass. | Second path; also the cheapest backup video: record it. |
+| **C. Deep Research, "tôi muốn học Python"** | **Failed live** (no 3 eligible sources from 2 publishers, 91 s). | Bonus or a recording only, until it passes. |
+
 ## 1. Go / no-go (check before anyone starts; any "no" = fix it first or run the fallback)
 
 | # | Condition | Owner | Go? |
