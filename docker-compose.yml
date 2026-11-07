@@ -1,0 +1,21 @@
+# Local dev database. Same Postgres + pgvector that Supabase runs, so migrations are portable.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: nodetrail-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: nodetrail
+    ports:
+      - "54322:5432"
+    volumes:
+      - nodetrail-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nodetrail"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  nodetrail-db:
