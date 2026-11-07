@@ -15,7 +15,8 @@ Need a different mock? Ask P1.
 | `topics-id.researching` / `.ready` | `GET /topics/{id}` and each SSE `state` payload | research trail, 3 sources from 3 publishers |
 | `topics-cached.response` | `GET /topics/cached` | |
 | `uploads.request-link` / `.response` | `POST /uploads` (link body) | file upload is multipart; response shape is the same |
-| `graph.response` | `GET /graph` | `edges` use the key `from`; node brightness = `p_known` |
+| `graph.response` | `GET /graph` | `edges` use the key `from`; node brightness = `p_known`; `revision` identifies the map shown and is echoed back to confirm it |
+| `graph-confirm.request` / `.response` | `POST /graph/confirm` | the learner explicitly accepts the revision they were shown; 409 if it is stale (`specs/graph-confirmation/`) |
 | `placement-next.request` / `.question` / `.done` | `POST /placement/next` | `.question` and `.done` are real `placement.next_question` output; `.done` (4 questions, learner's real gap = booleans) has `gap_slug` and `item: null` |
 | `next-item.response` | `GET /next-item` | |
 | `attempts.request` | `POST /attempts` | `answer` = 0-based option index |

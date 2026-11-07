@@ -335,6 +335,21 @@ class GraphNode(_Contract):
 class GraphView(_Contract):
     nodes: list[GraphNode]
     edges: list[Edge]
+    # Opaque id of the generated map this view was projected from. The real route always sets it
+    # (None only in legacy stubs); the web keeps it and echoes it in POST /graph/confirm.
+    revision: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+# POST /graph/confirm (specs/graph-confirmation/)
+class GraphConfirm(_Contract):
+    learner_id: str
+    subject: str
+    revision: str = Field(min_length=1, max_length=128)  # the revision the learner was shown
+
+
+class GraphConfirmed(_Contract):
+    confirmed: bool
+    revision: str = Field(min_length=1, max_length=128)
 
 
 # POST /placement/next

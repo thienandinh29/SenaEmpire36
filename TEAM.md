@@ -281,7 +281,8 @@ Route owner = who writes the endpoint; logic comes from the lanes in brackets.
 | `GET /topics/{id}/events` | P2 | SSE stream of the same fields as they change, plus a `heartbeat` event every 15–20 s |
 | `GET /topics/cached` | P2 | → `{topics: [{subject_slug, name_vi}]}` |
 | `POST /uploads` | P3 | multipart PDF/DOCX or `{url}` → `{upload_id, pages, text_ok}` |
-| `GET /graph?learner_id=&subject=` | P3 (engine P1) | → `{nodes: [{slug, name_vi, p_known, mastered}], edges: [{from, to}]}` |
+| `GET /graph?learner_id=&subject=` | P3 (engine P1) | → `{nodes: [{slug, name_vi, p_known, mastered}], edges: [{from, to}], revision}` (`revision`: opaque id of the map shown; always set by the real route) |
+| `POST /graph/confirm` | P3 (service P2, contract P1) | `{learner_id, subject, revision}` → `{confirmed, revision}`; 409 if `revision` is stale, 404 unknown learner or topic, 422 invalid, 503 graph unavailable. Until the learner confirms, practice, attempts and hints return 409. Added by P1 (2026-11-07, spec `specs/graph-confirmation/`); additive, nothing existing changes. |
 | `POST /placement/next` | P3 (engine P1) | `{learner_id, subject}` → `{item \| null, done, gap_slug?, trace: DecisionTrace}` |
 | `GET /next-item?learner_id=&subject=` | P3 (engine P1) | → `{item, reason_vi}` |
 | `POST /attempts` | P3 (grading P3, engine P1) | `{learner_id, item_id, answer, hints_used}` → `{correct, misconception_vi?, p_known, mastered, remediation?: {concept_slug, reason_vi}, traces: [DecisionTrace]}` |
