@@ -137,6 +137,16 @@ outside the retrieved chunks. Two concerns: (a) retrieval is **optional** (`retr
 that depends on it), so the demo path must always pass a retriever and an explicit subject; (b) the default `k` is 12, which
 may be too little context to extract a whole graph; test graph quality on the Python topic and raise `k` if needed.
 
+## Full-suite run on `ptest2` `ee5bc3f` — P1, 2026-11-07 (about H7.5)
+
+Scratch checkout; GitHub CI run 111 on the same head also concluded "failure". ruff, format, mypy (153 files): pass. Web
+lint and typecheck: pass. Python: 1,330 passed, 1 failed, 10 errors. Vitest: 40 passed, 1 failed. Findings and owners are on the
+board (`TEAM.md`): (1) a duplicated `topic_jobs.mode`/`upload_id` migration between P4's `app/content/sql/0008_p4_runtime.sql`
+and `supabase/migrations/0008_topic_inputs.sql` (10 errors); (2) a verification-gate test where a `ValueError` precedes the
+verifier identity, likely from the generator-family check in `verification_scope` (not confirmed); (3) a web test expecting
+`undefined` where the decoder returns `null`; (4) `/ask` registered twice. Findings 2, 3, 4, 5, 7, 8 above were unchanged at this
+head. Not re-tested: `4ac891c`.
+
 ## What is good (keep it)
 
 - **Engine wiring:** `placement`, `next_step`, `remediate`, FSRS and BKT are called as designed; each learner's state
