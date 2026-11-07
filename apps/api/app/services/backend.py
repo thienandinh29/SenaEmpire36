@@ -266,7 +266,7 @@ class LearningService:
         request: learn.AttemptInput,
         item: Item,
         result: Grade,
-    ) -> learn.AttemptUpdate:
+    ) -> learn.AttemptUpdate | learn.AttemptResponse:
         return await asyncio.to_thread(self._apply_attempt, request, item, result)
 
     def _apply_attempt(
@@ -274,7 +274,7 @@ class LearningService:
         request: learn.AttemptInput,
         item: Item,
         result: Grade,
-    ) -> learn.AttemptUpdate:
+    ) -> learn.AttemptUpdate | learn.AttemptResponse:
         with self.pool().connection() as conn:
             rows = conn.execute(
                 "select i.id,c.slug,s.slug,i.payload from items i "

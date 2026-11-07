@@ -66,8 +66,8 @@
 ## H7 go/no-go follow-up
 
 - [x] Vietnamese manifest labels and audited Think Python source/chunk export (P1 semantic queries pending).
-- [ ] Mandatory retrieval and a real worker-loadable runtime factory.
+- [x] Mandatory retrieval and actual worker startup wiring; real SQL context/provenance tests pass.
 - [ ] k=12 semantic Python graph review (real model + P1 queries required).
 - [ ] Distinct Pro model and long-context input guard.
 - [ ] Live canonical graph/items receipt after key rotation.
-- [ ] Replace learn.py duplicate DTOs after trunk integration.
+- [x] Replace learn.py public response DTOs after trunk integration; canonical schema imports and strict request subclasses.

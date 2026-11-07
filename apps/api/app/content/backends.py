@@ -301,8 +301,8 @@ class LearningBackend:
 
     async def apply_attempt(
         self, request: learn.AttemptInput, item: GraderItem, result: Grade
-    ) -> learn.AttemptUpdate:
-        def run() -> learn.AttemptUpdate:
+    ) -> learn.AttemptUpdate | learn.AttemptResponse:
+        def run() -> learn.AttemptUpdate | learn.AttemptResponse:
             with self.repo.transaction() as conn:
                 # Use the same learner -> item lock order as selection.
                 conn.execute(

@@ -54,7 +54,7 @@ def test_openapi_exposes_ten_p3_routes_and_both_upload_encodings(harness: Harnes
     }
     content = schema["paths"]["/uploads"]["post"]["requestBody"]["content"]
     assert set(content) == {"application/json", "multipart/form-data"}
-    learner = schema["components"]["schemas"]["LearnerOption"]["properties"]
+    learner = schema["components"]["schemas"]["PublicOption"]["properties"]
     assert set(learner) == {"label"}
 
 
