@@ -4,9 +4,8 @@ import asyncio
 import importlib
 import os
 import re
-from collections.abc import Iterator, Sequence
-from contextlib import contextmanager, suppress
-from contextvars import ContextVar
+from collections.abc import Sequence
+from contextlib import suppress
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -26,20 +25,6 @@ from app.llm.gateway import (
     schema_instruction,
 )
 
-_diagnostic_timeout: ContextVar[float] = ContextVar("diagnostic_http_timeout", default=30)
-
-
-@contextmanager
-def diagnostic_transport_timeout(seconds: float) -> Iterator[None]:
-    """Explicit diagnostic scope; ordinary API requests keep their 30s timeout."""
-    if seconds < 1 or seconds > 90:
-        raise ValueError("Diagnostic timeout must be 1..90 seconds")
-    token = _diagnostic_timeout.set(seconds)
-    try:
-        yield
-    finally:
-        _diagnostic_timeout.reset(token)
-
 
 class HTTPProviderError(ProviderError):
     """Only classified metadata, never raw provider text or headers."""
@@ -50,31 +35,6 @@ class HTTPProviderError(ProviderError):
         self.failure_kind = kind
         self.delay_source: str | None = None
         self.quota_violations: list[dict[str, str]] = []
-        self.http_diagnostic: dict[str, Any] = {}
-
-
-def sanitize_error(value: object) -> object:
-    """Keep a bounded error body; strip credentials, identities and URL queries."""
-    if isinstance(value, dict):
-        return {
-            str(k): sanitize_error(v)
-            for k, v in list(value.items())[:40]
-            if not any(s in str(k).lower() for s in ("token", "authorization", "api_key", "apikey"))
-        }
-    if isinstance(value, list):
-        return [sanitize_error(v) for v in value[:30]]
-    if isinstance(value, str):
-        text = value[:8000]
-        for name, secret in os.environ.items():
-            if (
-                any(s in name.upper() for s in ("KEY", "TOKEN", "PASSWORD", "SECRET"))
-                and len(secret) > 5
-            ):
-                text = text.replace(secret, "[REDACTED]")
-        text = re.sub(r"(?i)(key|token|password)=([^\s&]+)", r"\1=[REDACTED]", text)
-        text = re.sub(r"projects/[A-Za-z0-9_-]+", "projects/[REDACTED]", text)
-        return text
-    return value if value is None or isinstance(value, (int, float, bool)) else "[REDACTED]"
 
 
 def http_failure(response: httpx.Response) -> HTTPProviderError:
@@ -121,18 +81,6 @@ def http_failure(response: httpx.Response) -> HTTPProviderError:
     error = HTTPProviderError(status, delay, kind)
     error.delay_source = delay_source
     error.quota_violations = violations
-    try:
-        body = sanitize_error(response.json())
-    except ValueError:
-        body = sanitize_error(response.text)
-    error.http_diagnostic = {
-        "status": status,
-        "body": body,
-        "retry_after_header": sanitize_error(header),
-        "request_id": sanitize_error(
-            response.headers.get("x-request-id") or response.headers.get("x-goog-request-id")
-        ),
-    }
     return error
 
 
@@ -140,7 +88,7 @@ async def _post(
     url: str, token: str, payload: dict[str, Any], *, api_key: bool = False
 ) -> dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=_diagnostic_timeout.get(), trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
             headers = {"x-goog-api-key": token} if api_key else {"Authorization": f"Bearer {token}"}
             response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
@@ -150,16 +98,7 @@ async def _post(
             return data
     except httpx.HTTPStatusError as exc:
         raise http_failure(exc.response) from None
-    except httpx.RequestError as exc:
-        error = ProviderError("transport_or_json_error", retryable=True)
-        error.transport_diagnostic = {  # type: ignore[attr-defined]
-            "exception_type": type(exc).__name__,
-            "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else None,
-            "timeout_seconds": _diagnostic_timeout.get(),
-            "trust_env": False,
-        }
-        raise error from None
-    except ValueError:
+    except (httpx.RequestError, ValueError):
         raise ProviderError("transport_or_json_error", retryable=True) from None
 
 

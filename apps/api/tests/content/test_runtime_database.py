@@ -16,7 +16,6 @@ from psycopg import sql
 
 from app.config import Settings
 from app.content.demo import install_schema, local_only
-from app.content.learning import graph_revision
 from app.content.repository import Repository
 from app.content.runtime import create_app
 from app.db import create_pool
@@ -24,26 +23,6 @@ from app.guardrails.answerability import verify_item
 from app.services.topics import TopicsService
 from app.uploads.reader import Document, Page
 from tests.content.fakes import FakeGateway, topic
-
-
-class ConfirmedGraphs:
-    """Test-only approvals: never grant confirmation to an unrelated session."""
-
-    def __init__(self) -> None:
-        self.approved: set[tuple[str, str, str]] = set()
-
-    def __call__(self, learner: str, subject: str, revision: str) -> bool:
-        return (learner, subject, revision) in self.approved
-
-    def confirm(self, store: Repository, learner: str, subject: str) -> None:
-        with store.transaction() as conn:
-            revision = graph_revision(store.graph(conn, subject))
-        self.approved.add((learner, subject, revision))
-
-
-@pytest.fixture
-def confirmed_graphs() -> ConfirmedGraphs:
-    return ConfirmedGraphs()
 
 
 @pytest.fixture
@@ -182,18 +161,17 @@ def test_content_edits_atomically_invalidate_items_and_hint_cache(
 
 
 def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
-    store: Repository, database_url: str, confirmed_graphs: ConfirmedGraphs
+    store: Repository, database_url: str
 ) -> None:
     fake = FakeGateway()
     app = create_app(
         Settings(database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None),
         repository=store,
         gateway=fake,
-        confirmation=confirmed_graphs,
+        confirmation=lambda learner, subject, revision: True,
     )
     with TestClient(app) as client:
         learner = client.post("/learners", json={"display_name": "P4 DB test"}).json()["learner_id"]
-        confirmed_graphs.confirm(store, learner, "python-conditions")
         placement = client.post(
             "/placement/next", json={"learner_id": learner, "subject": "python-conditions"}
         )
@@ -233,7 +211,7 @@ def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
 
 
 def test_practice_exhaustion_reuses_oldest_answered_item(
-    store: Repository, database_url: str, confirmed_graphs: ConfirmedGraphs
+    store: Repository, database_url: str
 ) -> None:
     _, chunks, graph, items = topic()
     graph = graph.model_copy(update={"concepts": [graph.concepts[0]], "edges": []})
@@ -252,11 +230,9 @@ def test_practice_exhaustion_reuses_oldest_answered_item(
         Settings(database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None),
         repository=store,
         gateway=FakeGateway(),
-        confirmation=confirmed_graphs,
     )
     with TestClient(app) as client:
         learner = client.post("/learners", json={"display_name": "Exhaustion"}).json()["learner_id"]
-        confirmed_graphs.confirm(store, learner, "python-conditions")
         served = []
         for _ in range(4):
             response = client.get(
@@ -275,7 +251,7 @@ def test_practice_exhaustion_reuses_oldest_answered_item(
 
 
 def test_practice_skips_a_concept_without_usable_items(
-    store: Repository, database_url: str, confirmed_graphs: ConfirmedGraphs
+    store: Repository, database_url: str
 ) -> None:
     _, _, graph, _ = topic()
     graph = graph.model_copy(update={"concepts": graph.concepts[:2], "edges": []})
@@ -293,11 +269,9 @@ def test_practice_skips_a_concept_without_usable_items(
         Settings(database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None),
         repository=store,
         gateway=FakeGateway(),
-        confirmation=confirmed_graphs,
     )
     with TestClient(app) as client:
         learner = client.post("/learners", json={"display_name": "Skip empty"}).json()["learner_id"]
-        confirmed_graphs.confirm(store, learner, "python-conditions")
         response = client.get(
             "/next-item", params={"learner_id": learner, "subject": "python-conditions"}
         )
@@ -306,17 +280,15 @@ def test_practice_skips_a_concept_without_usable_items(
 
 
 def test_retried_attempt_replays_once_under_concurrency(
-    store: Repository, database_url: str, confirmed_graphs: ConfirmedGraphs
+    store: Repository, database_url: str
 ) -> None:
     app = create_app(
         Settings(database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None),
         repository=store,
         gateway=FakeGateway(),
-        confirmation=confirmed_graphs,
     )
     with TestClient(app) as client:
         learner = client.post("/learners", json={"display_name": "Retry"}).json()["learner_id"]
-        confirmed_graphs.confirm(store, learner, "python-conditions")
         item = client.post(
             "/placement/next", json={"learner_id": learner, "subject": "python-conditions"}
         ).json()["item"]
@@ -349,11 +321,7 @@ def test_retried_attempt_replays_once_under_concurrency(
 @pytest.mark.parametrize("demo_enabled", [False, True])
 @pytest.mark.parametrize("consented", [False, True])
 def test_uploaded_topic_hints_require_demo_mode_and_stored_consent(
-    store: Repository,
-    database_url: str,
-    demo_enabled: bool,
-    consented: bool,
-    confirmed_graphs: ConfirmedGraphs,
+    store: Repository, database_url: str, demo_enabled: bool, consented: bool
 ) -> None:
     sources, chunks, _, items = topic()
     sources = [source.model_copy(update={"version": "uploaded document"}) for source in sources]
@@ -384,13 +352,11 @@ def test_uploaded_topic_hints_require_demo_mode_and_stored_consent(
         ),
         repository=store,
         gateway=fake,
-        confirmation=confirmed_graphs,
     )
     with TestClient(app) as client:
         learner = client.post("/learners", json={"display_name": "Consent check"}).json()[
             "learner_id"
         ]
-        confirmed_graphs.confirm(store, learner, "python-conditions")
         response = client.post(
             "/tutor/hint",
             json={

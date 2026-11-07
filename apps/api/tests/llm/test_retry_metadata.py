@@ -1,29 +1,6 @@
 import httpx
-import pytest
 
 from app.llm.providers import http_failure
-
-
-def test_http_evidence_preserves_quota_and_removes_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GEMINI_API_KEY", "sensitive-test-credential")
-    response = httpx.Response(
-        429,
-        headers={"Retry-After": "42", "x-request-id": "req-123"},
-        json={
-            "error": {
-                "status": "RESOURCE_EXHAUSTED",
-                "message": "key=sensitive-test-credential projects/123",
-                "details": [{"violations": [{"quotaId": "RequestsPerDay", "quotaValue": "0"}]}],
-            }
-        },
-    )
-    evidence = http_failure(response)
-    assert evidence.http_diagnostic["status"] == 429
-    assert evidence.http_diagnostic["request_id"] == "req-123"
-    assert evidence.http_diagnostic["retry_after_header"] == "42"
-    assert "sensitive-test-credential" not in str(evidence.http_diagnostic)
-    assert "projects/123" not in str(evidence.http_diagnostic)
-    assert evidence.quota_violations[0]["quotaValue"] == "0"
 
 
 def test_rate_limit_is_not_assumed_to_be_daily_quota() -> None:

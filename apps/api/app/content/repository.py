@@ -82,9 +82,7 @@ class Repository:
         sources: dict[str, Source] = {}
         chunks = {}
         for row in rows:
-            # Chapter-level inputs may share one canonical book row. Preserve
-            # their original citation identity/URL in each chunk's provenance.
-            meta = dict(row["p4_metadata"].get("source", row["source_metadata"]))
+            meta = dict(row["source_metadata"])
             if not meta:
                 from app.research.runtime import indexed_library_source
 
@@ -96,15 +94,12 @@ class Repository:
                     row["source_license"],
                     row["source_version"],
                 )
-            if row["p4_metadata"].get("source"):
-                meta["url"] = row["source_uri"]
-            else:
-                meta.update(
-                    title=row["source_title"],
-                    url=row["source_url"],
-                    license=row["source_license"],
-                    author=row["source_author"] or "",
-                )
+            meta.update(
+                title=row["source_title"],
+                url=row["source_url"],
+                license=row["source_license"],
+                author=row["source_author"] or "",
+            )
             source = Source.model_validate(meta)
             sources[source.source_id] = source
             chunk = Chunk(
@@ -113,7 +108,7 @@ class Repository:
                 section=row["section"] or "",
                 page=row["page"],
                 content=row["content"],
-                license=source.license,
+                license=row["source_license"],
                 representation=row["p4_metadata"].get("representation", "verbatim"),
             )
             chunks[chunk.chunk_id] = chunk
@@ -128,16 +123,8 @@ class Repository:
                 (stable_id("subject", subject), subject, subject, subject),
             )
             sid = self._subject(conn, subject)
-            # Serialize P4 imports of a subject before source mapping/index reads.
-            conn.execute("select id from subjects where id=%s for update", (sid,))
             source_ids = {}
-            groups: dict[str, list[Source]] = {}
-            for source in sorted(sources, key=lambda value: (value.title, value.source_id)):
-                groups.setdefault(source.title, []).append(source)
-            for group in groups.values():
-                # One canonical update per existing book identity, avoiding alias
-                # metadata flip-flops (and spurious invalidation) on identical retries.
-                source = group[-1]
+            for source in sources:
                 conn.execute(
                     "insert into sources(id,subject_id,title,author,license,url,versio"
                     "n,p4_metadata) "
@@ -150,7 +137,7 @@ class Repository:
                     "xcluded.version,"
                     "excluded.p4_metadata)",
                     (
-                        stable_id("source", subject, group[0].source_id),
+                        stable_id("source", subject, source.source_id),
                         sid,
                         source.title,
                         source.author,
@@ -164,32 +151,17 @@ class Repository:
                     "select id from sources where subject_id=%s and title=%s", (sid, source.title)
                 ).fetchone()
                 assert row
-                for alias in group:
-                    source_ids[alias.source_id] = row[0]
-            # Source upserts lock the same book rows used by P2's index_document.
-            # Allocate against actual DB IDs, not input chapter source IDs.
-            indices: dict[UUID, int] = {}
-            for source_id in sorted(set(source_ids.values())):
-                conn.execute("select id from sources where id=%s for update", (source_id,))
-                maximum = conn.execute(
-                    "select coalesce(max(chunk_index),-1) from chunks where source_id=%s",
-                    (source_id,),
-                ).fetchone()
-                assert maximum is not None
-                indices[source_id] = maximum[0] + 1
+                source_ids[source.source_id] = row[0]
+            indices: dict[str, int] = {}
             for chunk in chunks:
-                database_source = source_ids[chunk.source_id]
+                index = indices.get(chunk.source_id, 0)
+                indices[chunk.source_id] = index + 1
                 # UUIDs come from P1/the caller; never allocate new chunk IDs on retry.
                 current = conn.execute(
-                    "select source_id,chunk_index from chunks where id=%s", (chunk.chunk_id,)
+                    "select source_id from chunks where id=%s", (chunk.chunk_id,)
                 ).fetchone()
                 if current and current[0] != source_ids[chunk.source_id]:
                     raise ContentUnavailable("Chunk ID belongs to another source")
-                if current:
-                    index = current[1]
-                else:
-                    index = indices[database_source]
-                    indices[database_source] += 1
                 source = next(s for s in sources if s.source_id == chunk.source_id)
                 conn.execute(
                     "insert into chunks(id,source_id,chunk_index,chapter,section,page,content,"
@@ -212,12 +184,7 @@ class Repository:
                         chunk.page,
                         chunk.content,
                         source.url,
-                        Jsonb(
-                            {
-                                "representation": chunk.representation,
-                                "source": source.model_dump(mode="json"),
-                            }
-                        ),
+                        Jsonb({"representation": chunk.representation}),
                     ),
                 )
 

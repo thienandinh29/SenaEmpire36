@@ -78,7 +78,7 @@
           },
           "verifier": null,
           "prompt_version": "p4-item-blind-v2",
-          "checked_at": "2026-11-07T14:36:10.678974Z",
+          "checked_at": "2026-11-07T14:03:17.168208Z",
           "evidence": []
         },
         "verification_history": [],
@@ -91,20 +91,10 @@
       },
       "reply": null,
       "blind_hash": "d609ed192c7e1c0d6da9945696cdf0605a0f31d4d99bf19114575b1eae157650",
-      "checked_at": "2026-11-07T14:36:10.678974+00:00",
-      "attempt": 1,
-      "latency_ms": 30578,
-      "infrastructure_error": true,
-      "provider_errors": [
-        {
-          "kind": "transient",
-          "code": "transport_or_json_error",
-          "retry_after": null,
-          "delay_source": null,
-          "quota_violations": [],
-          "http": null
-        }
-      ]
+      "checked_at": "2026-11-07T14:03:17.168208+00:00",
+      "attempt": 3,
+      "latency_ms": 812,
+      "infrastructure_error": true
     }
   },
   "attempts": [
@@ -143,22 +133,12 @@
       "latency_ms": 811.9999999180436,
       "input_tokens": null,
       "output_tokens": null
-    },
-    {
-      "item_id": "python-conditions-001",
-      "batch_attempt": 1,
-      "provider": "gemini",
-      "model": "gemini-3.8-flash",
-      "family": "gemini",
-      "status": "provider_error",
-      "error": "transport_or_json_error",
-      "latency_ms": 30577.99999997951,
-      "input_tokens": null,
-      "output_tokens": null
     }
   ],
   "blocked": {
-    "kind": "api_retry_exhausted"
+    "kind": "quota",
+    "code": "http_429",
+    "retry_after": 64589.0
   },
   "summary": {
     "verified": 0,
@@ -167,12 +147,12 @@
     "reused_verified": 0,
     "elapsed_seconds": 91.89000000001397,
     "cost_usd": null,
-    "requests": 4,
+    "requests": 3,
     "human_review": "pending",
     "successful_requests": 0,
     "retry_requests": 2,
     "errors_by_type": {
-      "transport_or_json_error": 3,
+      "transport_or_json_error": 2,
       "http_429": 1
     },
     "input_tokens": null,
@@ -350,17 +330,5 @@
     "model_result_reuses": 0,
     "labels": "expected agent labels; human confirmation pending"
   },
-  "resume_after_epoch": 1794124786.168208,
-  "latest_diagnostic": "data/guardrails/gemini-diagnostic-current.json",
-  "blocker_history": [
-    {
-      "source": "previous_checkpoint",
-      "blocked": {
-        "kind": "quota",
-        "code": "http_429",
-        "retry_after": 64589.0
-      },
-      "resume_after_epoch": 1794124786.168208
-    }
-  ]
+  "resume_after_epoch": 1794124786.168208
 }
