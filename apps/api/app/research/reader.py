@@ -173,7 +173,7 @@ class _HTMLText(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in {"script", "style", "nav", "noscript", "svg"}:
             self.hidden += 1
-        if not self.hidden and tag in {"p", "div", "br", "li", "h1", "h2", "h3", "tr"}:
+        if not self.hidden and tag in {"p", "div", "br", "li", "h1", "h2", "h3", "tr", "pre"}:
             self.parts.append("\n")
         if tag == "a" and not self.hidden:
             for name, value in attrs:
@@ -192,7 +192,7 @@ class _HTMLText(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag in {"script", "style", "nav", "noscript", "svg"}:
             self.hidden = max(0, self.hidden - 1)
-        if not self.hidden and tag in {"p", "div", "li", "h1", "h2", "h3", "tr"}:
+        if not self.hidden and tag in {"p", "div", "li", "h1", "h2", "h3", "tr", "pre"}:
             self.parts.append("\n")
 
     def handle_data(self, data: str) -> None:
@@ -204,4 +204,77 @@ def html_text(body: bytes) -> str:
     parser = _HTMLText()
     parser.feed(body.decode("utf-8-sig", errors="replace"))
     text = "\n".join(line.strip() for line in "".join(parser.parts).splitlines() if line.strip())
+    return unicodedata.normalize("NFC", text)
+
+
+class _BookContent(HTMLParser):
+    """Extract LibreTexts' explicit content region, excluding its surrounding UI."""
+
+    _void = frozenset(
+        {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "param",
+            "source",
+            "track",
+            "wbr",
+        }
+    )
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[str] = []
+        self.region_depth: int | None = None
+        self.found = False
+        self.text = _HTMLText()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if (
+            self.region_depth is None
+            and "mt-content-container" in (dict(attrs).get("class") or "").split()
+        ):
+            self.region_depth = len(self.stack)
+            self.found = True
+        if self.region_depth is not None:
+            self.text.handle_starttag(tag, attrs)
+        if tag not in self._void:
+            self.stack.append(tag)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        if tag not in self._void:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.region_depth is not None:
+            self.text.handle_endtag(tag)
+        if tag in self.stack:
+            last = len(self.stack) - 1 - self.stack[::-1].index(tag)
+            del self.stack[last:]
+        if self.region_depth is not None and len(self.stack) <= self.region_depth:
+            self.region_depth = None
+
+    def handle_data(self, data: str) -> None:
+        if self.region_depth is not None:
+            self.text.handle_data(data)
+
+
+def html_content(body: bytes) -> str:
+    """Book text for indexing; licence evidence is checked separately on full HTML."""
+    parser = _BookContent()
+    parser.feed(body.decode("utf-8-sig", errors="replace"))
+    if not parser.found:
+        return html_text(body)
+    # Keep leading whitespace in preformatted Python examples.
+    text = "\n".join(
+        line.rstrip() for line in "".join(parser.text.parts).splitlines() if line.strip()
+    )
     return unicodedata.normalize("NFC", text)

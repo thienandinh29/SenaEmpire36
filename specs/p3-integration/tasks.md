@@ -61,3 +61,13 @@
 - [x] Wire Retriever with provenance/order checks and canonical graph validation.
 - [x] Add canonical graph/items smoke and sanitized measurement artifacts (public-book preflight; live blocked until key rotation).
 - [x] Run full checks; record missing external prerequisites and handoff to P2/P4 in p3-follow-up.md.
+
+
+## H7 go/no-go follow-up
+
+- [x] Vietnamese manifest labels and audited Think Python source/chunk export (P1 semantic queries pending).
+- [ ] Mandatory retrieval and a real worker-loadable runtime factory.
+- [ ] k=12 semantic Python graph review (real model + P1 queries required).
+- [ ] Distinct Pro model and long-context input guard.
+- [ ] Live canonical graph/items receipt after key rotation.
+- [ ] Replace learn.py duplicate DTOs after trunk integration.

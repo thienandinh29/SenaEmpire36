@@ -43,3 +43,10 @@ rank order, foreign IDs, changed text/URI/page, empty retrieval, malformed graph
 foreign item sources. Add a bounded canonical graph/items smoke CLI with explicit
 --live, a local PostgreSQL read and TEI, plus a read-only book-folder mode when
 retrieval is unavailable. Keep live results separate from deterministic tests.
+
+
+H7 execution: label all eight manifest subjects, re-export cached HTML without UI
+chrome, add audit-only to build_library; require Retriever/subject parameters and
+connect a production research runtime factory. Extend live smoke defaults and
+per-successful-attempt latency reporting; configure distinct Pro model without
+printing or transmitting secrets. Keep live calls pending key rotation.

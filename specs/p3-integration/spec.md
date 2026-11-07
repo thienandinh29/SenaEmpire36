@@ -82,3 +82,14 @@ calls graph/items with KnowledgeGraph/ItemSet, independently asks Gemini for bli
 answers, and records per-attempt tokens, latency and sanitized errors. Artifacts are
 smoke evidence, never a verified P4 topic or H8 acceptance; item status stays draft.
 No new dependencies, HTTP routes or changes to P1/P2/P4-owned modules.
+
+
+## H7 follow-up
+
+Require retrieval in every TopicPipeline construction. Supply a production factory
+inside the P3 research runtime for P2 worker loading, with one managed pool/embedder/
+Retriever, explicit indexed subject, and lazy P4 content ports. Audit public book
+exports before indexing: Vietnamese labels, article-only text, code whitespace,
+natural page order, chunk sizes, source/page retention, and no lost non-whitespace
+content. Record k=12 coverage as structural only until P1 queries and real models
+are available. Never claim semantic graph quality from source or fake-model tests.

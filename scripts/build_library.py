@@ -10,7 +10,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "apps/api"))
 
-from app.research.library import Manifest, download_book, export_library, load_manifest  # noqa: E402
+from app.research.library import (  # noqa: E402
+    Manifest,
+    audit_export,
+    download_book,
+    export_library,
+    load_manifest,
+)
 from app.research.reader import SafeReader, SourceError, load_allowlist  # noqa: E402
 
 
@@ -23,6 +29,7 @@ async def run(
     max_pages: int | None = None,
     report_path: Path | None = None,
     export_only: bool = False,
+    audit_only: bool = False,
 ) -> int:
     books = load_manifest(manifest).books
     if selected:
@@ -32,6 +39,16 @@ async def run(
         books = [book for book in books if book.slug in selected]
     if not 1 <= jobs <= 4 or (max_pages is not None and not 1 <= max_pages <= 1000):
         raise ValueError("jobs must be 1..4 and max_pages must be 1..1000")
+    if audit_only:
+        reports = [await asyncio.to_thread(audit_export, book, output) for book in books]
+        result = {"generated_at": datetime.now(UTC).isoformat(), "books": reports}
+        if report_path:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(
+                json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+        print(json.dumps({"books": [{"book": r["book"], "status": r["status"]} for r in reports]}))
+        return int(any(report["status"] != "pass" for report in reports))
     if export_only:
         reports = await asyncio.to_thread(export_library, Manifest(books=books), output)
         result = {"generated_at": datetime.now(UTC).isoformat(), "books": reports}
@@ -90,6 +107,11 @@ def main() -> None:
     parser.add_argument("--max-pages", type=int)
     parser.add_argument("--report", type=Path)
     parser.add_argument(
+        "--audit-only",
+        action="store_true",
+        help="Measure exported P1 chunk sizes, order, labels and provenance; no network",
+    )
+    parser.add_argument(
         "--export-only",
         action="store_true",
         help="Recheck local pages; export P1 source/document pairs and index.jsonl without network",
@@ -105,6 +127,7 @@ def main() -> None:
                 max_pages=args.max_pages,
                 report_path=args.report,
                 export_only=args.export_only,
+                audit_only=args.audit_only,
             )
         )
     )
