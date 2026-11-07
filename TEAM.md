@@ -25,9 +25,9 @@ The plan has two versions, chosen by the answers to (2) and (3); see "Before H0 
    principles and repeats "edit only your lane's paths", so `/speckit-implement` stays in the lane. Work stays on the
    lane branch: if Spec Kit creates a feature branch, merge the spec back into the lane branch and delete it.
    **Exempt** (a short PR description is enough): bug fixes, changes under ~30 min that stay inside an existing spec,
-   and everything after the H18 freeze. A change that adds a route, a contract field or a new module is never exempt.
+   and everything after the H20 freeze. A change that adds a route, a contract field or a new module is never exempt.
 6. **Integration before the checkpoint.** Pieces due at H8 are merged by **H7**; H7–H8 is the first end-to-end run.
-7. **Feature freeze at H18.** After that, only bug fixes, rehearsal and the backup video.
+7. **Feature freeze at H20** (moved from H18 by the lead on 2026-11-07, for integration and bug fixes only). After that, only bug fixes, rehearsal and the backup video.
 
 ## Handoff board (P1 → everyone; read your row, tick it off, reply in PR #1 or to P1)
 Status of P1's work: [PR #1](https://github.com/thienandinh29/SenaEmpire36/pull/1) (`p1/ml-core`): contracts, engine,
@@ -62,7 +62,7 @@ Earlier findings 2, 3, 4, 5, 7, 8 were still open at `ee5bc3f` (P2 says the `/ne
 - **Branches:** `p5`, `p5-ui-test` and `p3-research-gateway` merge cleanly into `ptest2` (trial merge). **`mtri` conflicts with `ptest2` in 23 files** (gateway, `main.py`, pipeline, research agent, tutor hints, graph-confirmation service, the web proxy route and tests). Its acceptance note says the fixes were not committed or pushed, so it is unclear whether `mtri` carries that code. `p5-curriculum-class` adds multi-lesson curricula and class dashboards (the spec lists the class view as post-contest).
 - **Next, in order:** (1) P2 merges `p5`, `p5-ui-test`, `p3-research-gateway` into `ptest2`; (2) P4, P2 and P3 resolve the `mtri` conflicts together, keeping `ptest2`'s version of services P2 and P3 own and P4's evidence and fixes, with P5 reviewing web changes; (3) P1 leads a live run of path A (Quick, Python, library) from `specs/contracts/h7-run-sheet.md` section 0, then path B steps 3 to 9; (4) record a screen capture of the working PDF path as the minimum backup video; (5) pre-generate and pre-verify the Python topic before the demo, because live verification is slow; (6) once Gemini has a stable tier, run the planted-error test (all 20 cases are still unfinished).
 - **Correction by P1 (the lead, 2026-11-07):** Deep Research is the team's signature and the demo's opening in `SPEC.md`, so it is **not** a bonus. The fallback chain in `SPEC.md` stays (Deep Research over 8 min, then Nhanh for the same topic, then a pre-generated topic said openly, then the backup video). The failed live run recorded above ran on P4's `mtri` branch, which lacks 7 `ptest2` commits (including the overnight research-discovery fixes), so Deep Research's status on the `ptest2` head is **unknown until it is run live there**; run it right after path A.
-- **Proposed by P1, not yet agreed by the team:** move the feature freeze from H18 to about H20 for integration and bug fixes only, no new features; park `p5-curriculum-class` until after the contest.
+- **Decided by the lead (2026-11-07):** the feature freeze moves from H18 to **H20** (about 01:25 UTC, 08:25 Vietnam time, if kickoff was 05:25 UTC), for integration and bug fixes only, no new features; the rehearsals and backup video that were planned from H18 start at H20. **Still proposed, not agreed by the team:** park `p5-curriculum-class` until after the contest.
 
 **Uploaded documents (P1, 2026-11-07, agreed with the team):** one uploaded PDF that teaches enough for a small lesson is the source and no external search runs; gaps are filled from the library (Quick) or the web (Deep); the 3-source rule is for external research only. This is what P4's `mtri` branch does (`outputs/live-lesson-acceptance.md`); it is not on `ptest2` yet, so it lands with the `mtri` merge. Now written in `SPEC.md`. To verify live: a PDF that is thin on one topic must show the outline naming the gap and the supplement being cited, which no run has shown yet.
 
@@ -364,7 +364,7 @@ objectives; everything cited; answerability-checked items.
 | **H11–H12** | Everyone plays judge with an unfamiliar topic; measure time + cost per mode (nobody sleeps) | | | | |
 | **H12** | P1 decides: Deep Research live on stage, or shown as a recording | | | | |
 | **H12–H18** | Metrics review with P4; tutor evaluation ≥ 18/20 with P4; algorithm part of the pitch. Sleep H12:00–H13:30 | Pre-generate topics, monitoring; deputy lead while P1 sleeps. Sleep H16:00–H17:30 | Fixes. Sleep H13:30–H15:00 | Label 50 items + 20 hints in **H15–H16** (whole team, nobody sleeps), run `guardrails/metrics.py`. Sleep H13:30–H15:00 | Polish, manual E2E checklist. Sleep H12:00–H13:30 |
-| **H18** freeze | Tag `demo-v1` (P2) | | | | |
+| **H20** freeze (moved from H18) | Tag `demo-v1` (P2) | | | | |
 | **H18–H23** | Demo script + pitch; 3 clean runs with unseen topics, timed to the research | | | | **Backup video** |
 | **H23–H24** | Buffer | | | | |
 

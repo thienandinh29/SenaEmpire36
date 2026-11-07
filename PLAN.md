@@ -2,7 +2,7 @@
 
 ## Current: 24-hour team build
 The contest build runs as the H0–H24 plan in `TEAM.md` (5 lanes, contracts frozen at H3, scope decision at H8,
-integration run H7–H8, feature freeze at H18). If this summary and `TEAM.md` disagree, `TEAM.md` wins. Milestones:
+integration run H7–H8, feature freeze at H20, moved from H18 on 2026-11-07). If this summary and `TEAM.md` disagree, `TEAM.md` wins. Milestones:
 
 | Hour | Milestone |
 |---|---|
@@ -11,7 +11,7 @@ integration run H7–H8, feature freeze at H18). If this summary and `TEAM.md` d
 | H7 | Pieces due at H8 merged; library indexed; first end-to-end Nhanh run |
 | H8 | Nhanh mode end to end on 3 unfamiliar topics; Free/Pro models chosen; migrations `0003`–`0007` merged |
 | H12 | Deep Research decision (live on stage or recording) |
-| H18 | Feature freeze, tag `demo-v1` |
+| H20 | Feature freeze (moved from H18 by the lead on 2026-11-07), tag `demo-v1` |
 | H23 | 3 clean rehearsals, backup video |
 
 Already on `main` before the contest (reuse only if the organizers allow pre-contest code): schema 0001–0002,
