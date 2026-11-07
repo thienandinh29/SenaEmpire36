@@ -29,11 +29,46 @@ The plan has two versions, chosen by the answers to (2) and (3); see "Before H0 
 6. **Integration before the checkpoint.** Pieces due at H8 are merged by **H7**; H7–H8 is the first end-to-end run.
 7. **Feature freeze at H18.** After that, only bug fixes, rehearsal and the backup video.
 
+## Handoff board (P1 → everyone; read your row, tick it off, reply in PR #1 or to P1)
+Status of P1's work: [PR #1](https://github.com/thienandinh29/SenaEmpire36/pull/1) (`p1/ml-core`): contracts, engine,
+retrieval, migrations `0003`–`0004`. Details and open contract decisions: `specs/contracts/review.md` (19 items).
+**Contracts are still a draft until the H3 freeze: reply "OK" or list concrete problems (silence is not agreement).**
+
+| Lane | What P1 needs from you | Read |
+|---|---|---|
+| **P2** | [ ] Review and merge migration `0003` **before bulk indexing (~H5)**, then `0004`, in number order. [ ] Add `EMBEDDING_BACKEND` (`tei`\|`local`), `TEI_URL`, optional `TEI_API_KEY` to `config.py` and `.env.example` (P1's agent cannot read or edit those files), then build the client with `make_embedder(...)`. [ ] Re-check `uv.lock`: `httpx` is now a runtime dependency. [ ] **Hosting** (see Hosting decision): pick the machine and OS, run the compose stack and the named tunnel on it, plan a standby, keep it awake. [ ] Bulk indexing runs on the host GPU: `python -m app.rag.library <library> --tei-url <TEI> --build-index` (validates every book first; `app.rag.ingest` is only for the Think Python notebooks). Build the index once, after the last book. [ ] Store traces in `decision_traces` (`trace.model_dump(mode="json")` in, `DecisionTrace.model_validate` out). [ ] H3 check: query embedding < ~1 s on the host. [ ] Langfuse cost and latency per model exportable by H6 (model test). [ ] A service that returns a learner's earlier misconception keys on a concept (from `attempts.misconception_id`). | `review.md` #11, #16, #18, #19, #23; `specs/retrieval/`, `specs/library/` |
+| **P3** | [ ] Build one `Retriever(pool, embedder)` at startup; `search` is **async**: `await retriever.search(query, subject, k)`. [ ] Placement is stateless: load the learner's placement answers, call `placement.next_question(graph, answers)`, persist `placement.seed_mastery(...)`; `gap` can be `None`. [ ] **Readers and `build_library` emit one folder per book**: `source.json` + `document.json` (blocks in reading order; do not split text; `page` for PDFs; ND licences are rejected). Copy `specs/contracts/library-example/`; at H5 index one real HTML book and one real PDF with P1. [ ] H5–H6: list the models the gateway can reach (exact IDs) and smoke-call each, then run P1's model test (`specs/model-test/`) at H6–H7. [ ] Return `traces` from `/attempts` and `/placement/next`. [ ] After a wrong answer call `remediation.remediate(...)` (not `root_cause`): pass the wrong option's misconception and the learner's earlier ones on that concept; `plan.to_contract()` is the `remediation` field (`None` → omit) and its trace goes in `traces`; use `remediation.resume` for the step after. [ ] `answer` is the 0-based option index; map the API item id to the DB uuid (needs `items.external_id`, see P4). [ ] `Citation.publisher` is always `None` until `sources` gets a publisher column (your `0007`?). | `review.md` #1, #2, #12–#15, #17, #20, #22–#25; `specs/engine/`, `specs/remediation/`, `specs/library/` |
+| **P4** | [ ] **Golden topic #1 by H3** (chunks, `graph.yaml`, items): retrieval evaluation waits on it. [ ] Graph and item files must load through `KnowledgeGraph` / `ItemSet` in `app/schemas.py` (cycles, one correct option, a misconception per wrong option are rejected; items without `status` count as `needs_review`). [ ] **By H6** for the model test: chunks for the held-out topic #3, and 20 verification cases (10 planted-wrong items made by flipping the key of verified golden items, 10 untouched). [ ] `metrics.py` stays thin: `evalkit.labels.load_records` → run the gate on each record → `evalkit.guardrail.score` (method, planted items and the labelling hour: `specs/guardrails/`); ≥ 36 planted items by H14. [ ] Label **≥ 20 Vietnamese questions** for retrieval evaluation, in the format in `data/eval/README.md`. [ ] Migration `0005`: add `misconceptions.slug` (unique per concept; the table has none) and a unique `items.external_id` (the fixture id such as `plr-001`) or agree another mapping with P3. | `review.md` #2, #6, #7, #14, #21; `data/eval/README.md` |
+| **P5** | [ ] Build screens on `specs/contracts/mocks/` (generated from the models and real engine output; **do not edit by hand**, ask P1 for a change). [ ] "Vì sao?" renders `DecisionTrace` (`rule_vi` is ready to show; `prior`, `posterior` and `evidence` fields can be `null`). [ ] Items never contain the answer; graph edges use the key `from`. [ ] SSE sends `state` and `heartbeat` events. [ ] H7–H8: ~35 min as a blind Vietnamese rater for the model test (P1 picks two raters). [ ] **H15–H16: the labelling hour, nobody sleeps** (`specs/guardrails/labelling-protocol.md`). | `specs/contracts/mocks/README.md`; `review.md` #4, #10 |
+
+**How to use the board (every lane, and every lane's agent):**
+1. **Read it first.** At the start of a session, and before you wait on anyone, read your row and any `⏳` line that
+   names you. Your agent checks the board to confirm the thing you are waiting for is not already done.
+2. **Waiting on another lane?** Name the gap and the tag that will end it, in one line in **your own row**:
+   `⏳ waiting on P_: <what> (ready/<tag>, since H_)`. Pick the tag from the table under Git workflow, or propose one.
+   Keep working on fixtures, golden topics, stubs or mock JSON meanwhile (rule 3); do not stop.
+3. **Finished something others wait on?** Merge it (CI green), then **tag it `ready/<what>`** (see Git workflow) and tick
+   your row (`[x]`). That tag is the signal: the waiting lane's agent sees it, deletes its `⏳` line, rebases and
+   continues, with nobody asking anybody.
+4. **Update it yourself, no approval needed.** Each lane edits only its own row (the one exception to lane-owned paths,
+   like the reserved migrations) on its lane branch and opens a small PR titled `[P_] board: ...` that touches **only
+   that row**. Nobody reviews it: merge your own once CI is green. Never edit another lane's row or any contract text:
+   ask the owner.
+
+**The contact: P1 (P2 while P1 sleeps).** Their one job is that **nobody waits on another lane's work.** They read the
+board at every checkpoint and whenever a `⏳` line appears, and they tag the scheduled `checkpoint-h*` tags. For each
+`⏳` they find who owns the work and make it happen, or remove the wait: reorder the work, give the waiting lane a fixture, stub or mock to build on, or take the
+task over. A `⏳` older than ~1 hour is treated as a problem to fix now, not a note to leave.
+
+Known gap, not a blocker: placement finds the exact gap in ~56–64% of runs with noisy (slip/guess) answers, against a
+90% target; it is exact with clean answers and always finishes in ≤ 6 questions (`specs/engine/spec.md`). P1 decides
+whether to relax the target.
+
 ## Lanes
 
 | Person | Lane | Owns (only edits these) | Delivers |
 |---|---|---|---|
-| **P1** (lead, ML/AI engineer; 2 agents: retrieval + engine) | Lead + ML core | `app/schemas.py` (contracts), `app/engine/` (`bkt.py`, `srs.py`, `graph.py`, `placement.py`, `trace.py`), `app/rag/` (`embed.py`, `retrieve.py`, `rerank.py`, `notebook.py`, `store.py`, `ingest.py`), `data/eval/`, `tests/engine/`, `tests/rag/`, `CLAUDE.md`, `TEAM.md`, `SPEC.md`, `PLAN.md`, `MAP.md`, `team/` | Contracts (draft H1, frozen H3); **retrieval**: `embed.py` (TEI client + managed-API fallback), cited retrieval, optional reranker, retrieval evaluation (golden topic #1 before H8, the rest after), library indexing code (`ingest.py`; P2 runs it), `source_uri` per chunk; **learner model**: BKT/FSRS (traced), root-cause tracing, graph-walk placement, `DecisionTrace`; **evaluation design** for guardrail metrics and the H8 model test; H8/H12 decisions; the algorithm part of the pitch. **No server or Docker work.** |
+| **P1** (lead, ML/AI engineer; 2 agents: retrieval + engine) | Lead + ML core | `app/schemas.py` (contracts), `app/engine/` (`bkt.py`, `srs.py`, `graph.py`, `placement.py`, `trace.py`), `app/rag/` (`embed.py`, `retrieve.py`, `rerank.py`, `notebook.py`, `store.py`, `ingest.py`), `app/evalkit/`, `data/eval/`, `tests/engine/`, `tests/rag/`, `tests/evalkit/`, `CLAUDE.md`, `TEAM.md`, `SPEC.md`, `PLAN.md`, `MAP.md`, `team/` | Contracts (draft H1, frozen H3); **retrieval**: `embed.py` (TEI client + managed-API fallback), cited retrieval, optional reranker, retrieval evaluation (golden topic #1 before H8, the rest after), library indexing code (`ingest.py`; P2 runs it), `source_uri` per chunk; **learner model**: BKT/FSRS (traced), root-cause tracing, graph-walk placement, `DecisionTrace`; **evaluation design** for guardrail metrics and the H8 model test; H8/H12 decisions; the algorithm part of the pitch. **No server or Docker work.** |
 | **P2** (backend/DevOps; 2 agents: infra + services) | Platform | `apps/api/app/main.py`, `app/api/__init__.py`, `app/config.py`, `app/db.py`, `app/services/` (database layer), `app/jobs/`, `app/observability/`, `supabase/migrations/`, `apps/api/tests/conftest.py`, `scripts/seed.py`, `scripts/pregenerate.py`, `docker/`, `.github/`, `pyproject.toml`/`uv.lock`, `.specify/` | Repo, CI, Spec Kit setup (CLI, `specify init`, constitution); API stubs from P1's contracts by H3; **GPU VM + AWS backup VM**, Docker, named Cloudflare Tunnel, GHCR/Watchtower deploy, budget alerts; **TEI container serving bge-m3** (and the reranker if used) on the VM (H0–H2) and the temporary indexing GPU VM; **runs the library indexing** with P1's code (H5–H7, size check per book, HNSW after load); `topic_jobs` queue + worker + SSE; structlog + Langfuse; database layer (attempts, mastery, traces, review cards); tests on a throwaway schema per run; merging green PRs; pre-generated topics |
 | **P3** (backend) | Agents & integration | `app/research/`, `app/uploads/`, `app/llm/`, `app/graders/`, `app/api/learn.py`, `app/api/tutor.py`, `app/api/topics.py`, `data/sources/`, `scripts/build_library.*`, `tests/research/`, `tests/uploads/`, `tests/llm/`, `tests/graders/`, `tests/api/` | Allowlist + textbook downloader/HTML reader; **full library download H1–H5** (P2 runs the indexing); **Deep Research agent**; uploaded-file reader (PDF/DOCX/link); **LLM gateway** (Vertex AI → Bedrock → OpenRouter, Vertex by H3 and Bedrock by H5, per-tier routing, model roles incl. the cross-family verifier rule); MCQ grading; the **API routes** that connect P1's engine and retrieval, P2's database layer and P4's content/tutor to the web |
 | **P4** (careful, detail-oriented) | Content & tutor | `app/content/`, `app/guardrails/`, `app/tutor/`, `data/golden/`, `data/kg/`, `data/items/`, `data/guardrails/`, `tests/content/`, `tests/guardrails/`, `tests/tutor/` | **Golden topics first (H0–H3):** 2–3 hand-checked topics (source chunks, graph, ~15 items each) used as test data, labelled sample and demo fallback; content pipeline (sources → Knowledge Graph via **long-context extraction with chunk-ID markers** → MCQs with a misconception per wrong option); **verification gate**; `guardrails/metrics.py`; **Socratic tutor** prompts and hint ladder (Vietnamese, cited, never the final answer) |
@@ -42,6 +77,15 @@ The plan has two versions, chosen by the answers to (2) and (3); see "Before H0 
 ## Stack (decided; changes go through P1)
 - **Web:** Next.js (App Router, TypeScript strict), Tailwind + shadcn/ui, React Flow with **`dagre` auto-layout
   from H0** (never hand-computed x/y; every topic produces a differently shaped graph); deployed on **Vercel**.
+- **Hosting decision (team, 2026-11-07): the API, worker and TEI container run on a teammate's personal machine with
+  an NVIDIA GPU, not on a cloud VM.** Supabase (database, storage) and the LLM APIs (Vertex AI, Bedrock, OpenRouter)
+  stay in the cloud, so organizer credits still pay for models. *Replaced:* the cloud GPU VM, the backup VM on the second
+  cloud, the temporary indexing GPU VM, GPU-quota requests. *Unchanged:* Docker compose (API, worker, TEI GPU image with
+  the NVIDIA Container Toolkit), the named Cloudflare Tunnel (outbound only, so a home or venue network is fine),
+  GHCR + Watchtower or a manual `docker compose pull`, the Supabase size budget. Bulk indexing now runs on this machine's
+  GPU: `uv run python -m app.rag.ingest <dir> --tei-url http://localhost:8080 --build-index`. **Open for P2**, replacing
+  the VM tasks: which machine and OS (on Windows: Docker Desktop with WSL2 GPU support), the tunnel from it, a standby
+  plan, and keeping it awake. "API VM spec" below is now that machine's minimum spec; the VM rows in Risks are marked.
 - **Cloud (organizer credits, both open at H0):** **Google Cloud is primary, AWS is backup**; swap the roles if AWS
   gets a GPU first. Google credits cover Cloud Run, Vertex AI and other GCP services (amount and GPU access not yet
   confirmed), on each member's **own Google account**. **P2 owns the product project** on P2's credit; P1 and P3 join it
@@ -53,7 +97,7 @@ The plan has two versions, chosen by the answers to (2) and (3); see "Before H0 
   Bedrock and the backup VM, **P1 keeps a backup account**, **P3 gets a Bedrock-only IAM user** in P2's account at H0,
   and P3–P5 can create accounts later as reserve. Region: Singapore (`asia-southeast1` / `ap-southeast-1`),
   next to Supabase. Budget alerts on every account in use; root accounts get MFA and no access keys (use IAM users).
-- **API host (P2):** Python 3.12, FastAPI, Pydantic v2, `uv`, in Docker on a **GPU VM** on the primary cloud (spec below).
+- **API host (P2)** *(host superseded: see Hosting decision)*: Python 3.12, FastAPI, Pydantic v2, `uv`, in Docker on a **GPU VM** on the primary cloud (spec below).
   The backup cloud keeps a **stopped VM with the same image and compose file**, started only if the primary fails.
   Exposed with a **named Cloudflare Tunnel on the team's own domain** (never `trycloudflare.com`: its URL changes on
   every restart and the web app would point at a dead address); `cloudflared` runs with `--protocol http2`. **The VM
@@ -113,7 +157,7 @@ The plan has two versions, chosen by the answers to (2) and (3); see "Before H0 
 - **Typed web client:** P5 generates TypeScript types from FastAPI's OpenAPI with `openapi-typescript`, so a contract
   change breaks the web build instead of the demo. Until the stubs exist (H3), P5 uses mock JSON matching P1's H1 draft.
 
-### API VM spec (P2)
+### API VM spec (P2): now the minimum spec of the personal host (see Hosting decision)
 | | With GPU (recommended) | CPU only (no GPU quota yet) |
 |---|---|---|
 | Machine | Google Cloud `g2-standard-4` (1× L4) or `n1-standard-4` + 1× T4; AWS `g4dn.xlarge` (1× T4) | 8 vCPU, 32 GB RAM |
@@ -289,7 +333,31 @@ P3 watches the VM and merges green PRs.
 
 ## Git workflow
 - Branch per lane: `p1/ml-core`, `p2/platform`, `p3/integration`, `p4/content`, `p5/web`; one worktree per extra agent.
-- **Rebase at every checkpoint**: `git fetch && git rebase origin/main`, then run tests.
+- **Rebase at every checkpoint**: `git fetch --tags && git rebase checkpoint-h3` (or the latest `checkpoint-h*` tag),
+  then run tests.
+- **Checkpoint tags (the shared baseline).** When everything due at H3, H8 and H12 is merged and CI on `main` is green,
+  P1 (P2 while P1 sleeps) tags that commit `checkpoint-h3`, `checkpoint-h8`, `checkpoint-h12`, with the list of what is
+  in it as the tag message (`git tag -a checkpoint-h3 -m "..." && git push origin checkpoint-h3`). Tagging before
+  everything due is merged gives a baseline nobody is really on, so wait. `demo-v1` at H18 stays P2's. **A tag never
+  moves**: a mistake gets a new tag. `checkpoint-h3` is the contract freeze: `git diff checkpoint-h3 --
+  apps/api/app/schemas.py` shows any later contract change. Pushing a tag is not pushing to `main`.
+- **Ready tags (the unblock signal).** When you finish something another lane waits on, merge it (CI green), then tag
+  `main` `ready/<what>` and push the tag (`git tag -a ready/<what> -m "..." && git push origin ready/<what>`), and tick your
+  board row. A waiting agent runs `git fetch --tags` and `git tag -l "ready/*"`; when its tag exists it deletes its `⏳`
+  line, rebases onto it and continues. Whoever merged the work (or its owner) tags it; a wrong tag is replaced by
+  `ready/<what>-2`, never moved. Expected tags (add rows as needs appear):
+
+| Tag | Tagged by | Waiting on it | When |
+|---|---|---|---|
+| `ready/p1-core` (PR #1: contracts, engine, retrieval, migrations `0003`–`0004` on `main`) | whoever merges it | P3, P5, P2 (indexing) | H3 |
+| `ready/tei-host` (TEI serves bge-m3, reachable from the API machine) | P2 | P1 (speed check, retrieval eval), P3 | H2–H3 |
+| `ready/api-stubs` (every route serves fixture data) | P2 | P5, P3 | H3 |
+| `ready/golden-topic-1`, `ready/golden-topics-2-3` | P4 | P1 (retrieval eval), P3, P5 | H3 |
+| `ready/gateway-vertex`, `ready/gateway-bedrock` | P3 | P4, P1 (model test) | H3, H5 |
+| `ready/model-test-cases` (held-out chunks + planted-wrong items) | P4 | P3, P1 | H6 |
+| `ready/library-readers` (HTML/PDF/DOCX readers + `build_library` emit book folders) | P3 | P1, P2 (indexing) | H5 |
+| `ready/library-indexed` (library in the database, index built, size checked) | P2 | P1, P3, P4 (Nhanh, retrieval eval) | H7 |
+
 - PR title `[P3] ...`; CI green; P2 merges routine PRs, P1 approves contract changes. Stacked PRs: **retarget to `main`
   before deleting the base branch**.
 - Migrations reserved, numbered in merge order: `0003` P1 (`halfvec`, `chunks.url` → `source_uri`, HNSW rebuilt),
@@ -323,11 +391,11 @@ explanations cited; contract shapes exact; `MAP.md` updated.
 |---|---|---|
 | Contracts late past H1 / foundation late past H3 | Lanes keep working on golden topics, mock JSON and their own folders; P1 does nothing but contracts in H0–H1 | P1, P2 |
 | Tunnel URL changes or SSE stream drops mid-research | Named tunnel on own domain; heartbeat every 15–20 s; web reconnects and reloads `GET /topics/{id}` | P2, P5 |
-| Primary VM down | Start the backup VM on the other cloud (same image + compose + tunnel token); `/health` check; Render/Railway last resort | P2 |
-| No GPU quota by H1 (cloud opens only at H0) | CPU VM (8 vCPU / 32 GB) with the TEI CPU image; swap primary cloud if the other approves first; bulk indexing on Colab writing to Supabase (same bge-m3 model, no re-index) | P2, P1 |
-| Google Cloud unavailable (VM by H1, Vertex by H3; decide each separately) | **VM:** AWS `g4dn.xlarge` → AWS CPU VM; same Docker setup, keep bge-m3 (no re-index). **Models:** reorder `routing.yaml`: cheap model on Bedrock, Gemini through OpenRouter for graph extraction (or Claude on Bedrock with smaller inputs). **Verifier stays another family than the generator.** Raise the OpenRouter spending limit on purpose (real money, not credits). AWS also blocked: personal Google account if allowed (Vertex + CPU VM), last resort a laptop with Docker and the tunnel + OpenRouter | P2 (VM), P3 (models), P1 decides |
+| *(VM part superseded: see Hosting decision)* Primary VM down | Start the backup VM on the other cloud (same image + compose + tunnel token); `/health` check; Render/Railway last resort | P2 |
+| *(VM part superseded: see Hosting decision)* No GPU quota by H1 (cloud opens only at H0) | CPU VM (8 vCPU / 32 GB) with the TEI CPU image; swap primary cloud if the other approves first; bulk indexing on Colab writing to Supabase (same bge-m3 model, no re-index) | P2, P1 |
+| *(VM part superseded: see Hosting decision)* Google Cloud unavailable (VM by H1, Vertex by H3; decide each separately) | **VM:** AWS `g4dn.xlarge` → AWS CPU VM; same Docker setup, keep bge-m3 (no re-index). **Models:** reorder `routing.yaml`: cheap model on Bedrock, Gemini through OpenRouter for graph extraction (or Claude on Bedrock with smaller inputs). **Verifier stays another family than the generator.** Raise the OpenRouter spending limit on purpose (real money, not credits). AWS also blocked: personal Google account if allowed (Vertex + CPU VM), last resort a laptop with Docker and the tunnel + OpenRouter | P2 (VM), P3 (models), P1 decides |
 | Cloud access closes before the final demo | Confirm the closing time with the organizers; if it closes first, keep a recording and move the API to a surviving account before H23 | P1, P2 |
-| Cloud credits burn (GPU VM left running) | Budget alerts on both clouds; delete the indexing VM right after use; backup VM stays stopped | P2 |
+| *(VM part superseded: see Hosting decision)* Cloud credits burn (GPU VM left running) | Budget alerts on both clouds; delete the indexing VM right after use; backup VM stays stopped | P2 |
 | Vertex model access missing or rate-limited | Gateway falls through to Bedrock, then OpenRouter (`routing.yaml` order) | P3 |
 | bge-m3 too slow, or TEI / GPU driver fails | TEI CPU image → HF hosted bge-m3 → managed multilingual embedding API on Bedrock/Vertex (**requires re-indexing**) | P1, P2 |
 | Long-context graph extraction too slow or costly | Fall back to chapter-by-chapter extraction with the same chunk-ID markers | P4, P3 |
@@ -349,6 +417,10 @@ explanations cited; contract shapes exact; `MAP.md` updated.
 | P1 overloaded (contracts, engine, retrieval, decisions) | P2 runs indexing; retrieval evaluation on one golden topic before H8; P2 tracks the critical path at checkpoints | P1, P2 |
 | Bedrock unreachable (no cross-family verifier) | Verifier falls back to an OpenRouter model of another family than the generator; stated in `routing.yaml` | P3, P4 |
 | Team exhausted after H14 (mistakes during labelling and freeze) | Staggered 90-min sleep slots in H12–H18; deputy lead (P2) | P1 |
+| Host machine sleeps, updates itself, loses power, overheats or leaves the network | Dedicated demo machine: sleep and automatic updates off, plugged in, wired network if possible; `restart: unless-stopped`; an outside `/health` check; run the whole demo on it at H18–H23 | P2 |
+| Host machine dies or is unavailable on demo day | A second teammate's machine kept ready with the same compose file and tunnel token (the TEI CPU image works without a GPU); pre-generated topics and the backup video | P2, P1 |
+| The GPU is shared with its owner's other work (VRAM taken, driver update) | Only the demo stack uses the GPU from H12; measure VRAM at H3; the owner closes other GPU apps for rehearsals and the demo | P2 |
+| Network blocks inbound connections (home router, CGNAT, venue) | Not a problem for a named tunnel (outbound only); `--protocol http2`; test from a phone on mobile data | P2 |
 | Venue wifi fails | Pre-generated topics + golden topics + backup video | P2, P1 |
 
 ## Demo acceptance (run at every checkpoint after H8)
