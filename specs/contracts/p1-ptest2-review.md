@@ -51,7 +51,8 @@ the commit for credentials (none; I may not read `.env.example`, so that file is
 
 - **Routing note on `main`.** `TEAM.md` there carries "Approved routing update (P1/P3/P2)": DeepSeek is now an optional first
   generation candidate in both tiers, with Vertex, Bedrock and OpenRouter as fallbacks, and verifiers still gemini or
-  claude. It says it does not replace the H8 quality gates. P1 to confirm this matches what P1 approved.
+  claude. It says it does not replace the H8 quality gates. **Confirmed by P1 (2026-11-07):** generation DeepSeek, verification
+  Gemini, embedding bge-m3; see the Model decision in `TEAM.md`.
 - **Finding 1 is bigger.** `ptest2` now conflicts with `main` in 12 files and `p4` in 10, mostly the gateway files each
   carries its own copy of (`llm/*`), plus `config.py`, `pyproject.toml` and `.env.example`. Whoever merges first, the next
   one resolves against `main`, so `main` should be merged into the trunk before anything else.

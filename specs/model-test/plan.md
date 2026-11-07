@@ -15,6 +15,10 @@ from the existing protocol: graph 3, items 15, hint 12, verification 10+10.
 No model calls or automatic model selection; P3 owns measured receipts.
 
 ## Candidates
+**Decided stack (2026-11-07):** generator DeepSeek (the free model; the Pro tier's model once set), verifier Gemini on
+Vertex, plus one non-Gemini verifier for the fallback case. Test only those; add a model only if a gate fails. The slots
+below are the original plan.
+
 Slots, not names: exact IDs are whatever P3's gateway can reach at H6 and are recorded in the results file.
 - **Free:** a cheap Gemini Flash-class model (Vertex), a cheap Claude-class model (Bedrock), one cheap OpenRouter model
   of a third family (no `:free` variants).
