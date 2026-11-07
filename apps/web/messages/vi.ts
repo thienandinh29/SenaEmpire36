@@ -255,6 +255,7 @@ export const vi = {
     apiNotice:
       "Yêu cầu được gửi đến API đã cấu hình. Kết quả phụ thuộc học liệu và quyền máy chủ.",
     traceEmpty: "Chưa có DecisionTrace cho khái niệm này.",
+    traceNotApplicable: "Không áp dụng",
     traceNoEvidence: "Không có bằng chứng bổ sung trong dữ liệu trả về.",
     traceIntro: "Hiển thị đúng dữ liệu quyết định do nguồn đang dùng cung cấp.",
     traceAlternativesEmpty: "Không có lựa chọn thay thế trong trace.",

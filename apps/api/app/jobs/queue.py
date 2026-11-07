@@ -36,7 +36,11 @@ def claim(conn: psycopg.Connection[Any]) -> dict[str, Any] | None:
 def snapshot(conn: psycopg.Connection[Any], topic_id: UUID) -> dict[str, Any] | None:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(f"select {FIELDS} from topic_jobs where id=%s", (topic_id,))
-        return cur.fetchone()
+        state = cur.fetchone()
+        if state is not None:
+            # P2 stores integer percent; P1 TopicState exposes a normalized probability.
+            state["progress"] = state["progress"] / 100
+        return state
 
 
 def finish(conn: psycopg.Connection[Any], topic_id: UUID, *, fixture: bool) -> None:

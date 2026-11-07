@@ -35,12 +35,20 @@ export function TracePanel({
       <div className="trace-scores">
         <div>
           <span>{t.before}</span>
-          <strong>{Math.round(trace.prior * 100)}%</strong>
+          <strong>
+            {trace.prior === null
+              ? t.flow.traceNotApplicable
+              : `${Math.round(trace.prior * 100)}%`}
+          </strong>
         </div>
         <ArrowRight size={22} />
         <div>
           <span>{t.after}</span>
-          <strong>{Math.round(trace.posterior * 100)}%</strong>
+          <strong>
+            {trace.posterior === null
+              ? t.flow.traceNotApplicable
+              : `${Math.round(trace.posterior * 100)}%`}
+          </strong>
         </div>
       </div>
       <div className="trace-section">

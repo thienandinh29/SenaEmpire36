@@ -17,13 +17,13 @@ class Citation(Output):
 class HintInput(Input):
     learner_id: str = Field(min_length=1, max_length=200)
     item_id: str = Field(min_length=1, max_length=200)
-    level: int = Field(ge=0, strict=True)
-    last_answer: str | None = Field(default=None, max_length=4000)
+    level: int = Field(ge=1, le=4, strict=True)
+    last_answer: int | None = Field(default=None, ge=0, strict=True)
     tier: Literal["free", "pro"]
 
 
 class AskInput(Input):
-    question: str = Field(min_length=1, max_length=4000)
+    question: str = Field(min_length=1, max_length=1000)
     subject: str = Field(min_length=1, max_length=200)
     tier: Literal["free", "pro"]
 

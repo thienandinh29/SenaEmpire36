@@ -24,16 +24,25 @@ export function getWebConfig(): WebConfig {
         ? 10 * 1024 * 1024
         : Number.isSafeInteger(uploadLimit) && uploadLimit > 0
           ? uploadLimit
-          : null,
-    uploadField: process.env.NODETRAIL_UPLOAD_FIELD || null,
+          : mode === "api"
+            ? 20_000_000
+            : null,
+    uploadField:
+      process.env.NODETRAIL_UPLOAD_FIELD || (mode === "api" ? "file" : null),
     answerEncoding:
-      encoding === "index0" || encoding === "label" ? encoding : null,
+      encoding === "index0" || encoding === "label"
+        ? encoding
+        : mode === "api"
+          ? "index0"
+          : null,
     hintFirstLevel:
       hintLevel !== undefined &&
       hintLevel.trim() !== "" &&
       Number.isSafeInteger(Number(hintLevel)) &&
       Number(hintLevel) >= 0
         ? Number(hintLevel)
-        : null,
+        : mode === "api"
+          ? 1
+          : null,
   };
 }

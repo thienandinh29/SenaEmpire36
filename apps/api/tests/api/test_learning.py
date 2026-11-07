@@ -49,7 +49,7 @@ def test_unverified_items_never_served_or_persisted(harness: Harness, path: str)
     assert not harness.backend.attempts
 
 
-@pytest.mark.parametrize("answer", [0, "Nước"])
+@pytest.mark.parametrize("answer", [0])
 def test_correct_grade_comes_from_key_and_clears_wrong_answer_feedback(
     harness: Harness, answer: int | str
 ) -> None:
@@ -87,7 +87,7 @@ def test_wrong_grade_passes_misconception_to_engine_adapter(harness: Harness) ->
     assert response.json()["remediation"]["concept_slug"] == "water"
 
 
-@pytest.mark.parametrize("answer", [-1, 50, True, None, {"correct": True}, 0.5])
+@pytest.mark.parametrize("answer", [-1, 50, True, None, {"correct": True}, 0.5, "Nước"])
 def test_invalid_answer_does_not_write_attempt(harness: Harness, answer: object) -> None:
     response = harness.client.post(
         "/attempts",

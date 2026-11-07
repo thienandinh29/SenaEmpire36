@@ -8,6 +8,24 @@ from psycopg import sql
 
 from app.migrate import apply_migrations
 
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--no-db",
+        action="store_true",
+        default=False,
+        help="Explicitly skip tests requiring a PostgreSQL database.",
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if config.getoption("--no-db"):
+        skip = pytest.mark.skip(reason="--no-db: PostgreSQL integration test not executed")
+        for item in items:
+            if "database_url" in getattr(item, "fixturenames", ()):
+                item.add_marker(skip)
+
+
 # Admin connection to the local Docker server; tests create and drop their own database.
 ADMIN_URL = os.environ.get(
     "TEST_DATABASE_ADMIN_URL", "postgresql://postgres:postgres@localhost:54322/postgres"

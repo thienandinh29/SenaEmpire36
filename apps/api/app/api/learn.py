@@ -96,9 +96,9 @@ class NextResponse(Output):
 class AttemptInput(Input):
     learner_id: str = Field(min_length=1, max_length=200)
     item_id: str = Field(min_length=1, max_length=200)
-    # TEAM leaves answer encoding unspecified. P1's adapter resolves it to an index.
-    answer: JsonValue
-    hints_used: int = Field(ge=0, strict=True)
+    # Canonical P1 AttemptCreate: zero-based index in the displayed option order.
+    answer: int = Field(ge=0, strict=True)
+    hints_used: int = Field(default=0, ge=0, strict=True)
 
 
 class Remediation(Output):

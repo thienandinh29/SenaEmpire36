@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
+from app.api import learn, topics, tutor
 from app.config import Settings, get_settings
 from app.db import create_pool, ping
 from app.jobs.queue import snapshot
@@ -24,7 +25,7 @@ HEARTBEAT_SECONDS = 15
 
 
 class LearnerInput(BaseModel):
-    display_name: str = Field(min_length=1, max_length=200, pattern=r"\S")
+    display_name: str = Field(min_length=1, max_length=80, pattern=r"\S")
 
 
 class Health(BaseModel):
@@ -32,7 +33,13 @@ class Health(BaseModel):
     db: str
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    learning_backend: learn.LearningBackend | None = None,
+    topics_backend: topics.TopicsBackend | None = None,
+    tutor_backend: tutor.TutorBackend | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
     configure_logging()
 
@@ -162,6 +169,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         db_ok = ping(request.app.state.pool)
         return Health(status="ok", db="ok" if db_ok else "down")
 
+    # P2 owns durable adapters. Missing adapters return 503, never mock learner data.
+    app.include_router(learn.create_router(learning_backend))
+    app.include_router(topics.create_router(topics_backend))
+    app.include_router(tutor.create_router(tutor_backend))
     return app
 
 

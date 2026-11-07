@@ -1,19 +1,13 @@
-// Draft contract mirrors TEAM.md. Replace with generated OpenAPI types when available.
-export interface GraphNode {
-  slug: string;
-  name_vi: string;
-  p_known: number;
-  mastered: boolean;
-}
-export interface KnowledgeGraph {
-  nodes: GraphNode[];
-  edges: { from: string; to: string }[];
-}
+import type { components } from "./api.generated";
+
+// Wire shapes generated from the integrated app; decoders still validate runtime data.
+export type GraphNode = components["schemas"]["GraphNode"];
+export type KnowledgeGraph = components["schemas"]["GraphResponse"];
 export interface DecisionTrace {
   kind: "bkt_update" | "placement_step" | "root_cause" | "next_item" | "review";
   concept_slug: string;
   at: string;
-  prior: number;
+  prior: number | null;
   evidence: {
     item_id?: string;
     correct?: boolean;
@@ -21,17 +15,12 @@ export interface DecisionTrace {
     slip?: number;
     guess?: number;
   };
-  posterior: number;
+  posterior: number | null;
   rule: string;
   rule_vi: string;
   alternatives: { concept_slug: string; p_known: number; why_not_vi: string }[];
 }
-export interface PublicItem {
-  id: string;
-  kind: "mcq";
-  prompt_vi: string;
-  options: { label: string }[];
-}
+export type PublicItem = components["schemas"]["LearnerItem"];
 
 export type Tier = "free" | "pro";
 export type ResearchMode = "quick" | "deep";
