@@ -43,7 +43,7 @@ class Provider:
                     "ambiguous": False,
                     "multiple_correct": False,
                     "insufficient_evidence": False,
-                    "evidence": [{"chunk_id": chunk["chunk_id"], "quote": chunk["content"]}],
+                    "evidence": [{"chunk_id": chunk["chunk_id"], "passage_id": "source-quote-0"}],
                     "reason": "fake test only",
                 }
             ),

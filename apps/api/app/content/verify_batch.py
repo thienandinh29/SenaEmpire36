@@ -15,7 +15,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.content.artifacts import load_topic
-from app.content.gateway import ModelReply, P3Gateway, independent, parse_reply
+from app.content.gateway import ModelReply, P3Gateway, independent
 from app.content.models import Item, cited_chunks, digest, item_hash
 from app.guardrails.answerability import (
     PROMPT_VERSION,
@@ -268,9 +268,11 @@ async def run(
             )
             outcome = "infrastructure_or_unfinished"
             if record in valid and record["reply"] and not record["infrastructure_error"]:
-                from app.guardrails.answerability import Verdict, evidence_valid
+                from app.guardrails.answerability import bind_verdict, evidence_valid
 
-                verdict = parse_reply(ModelReply.model_validate(record["reply"]), Verdict)
+                verdict = bind_verdict(
+                    ModelReply.model_validate(record["reply"]), blind_request(item, chunks)
+                )
                 selected = next(
                     (
                         o.id

@@ -138,6 +138,12 @@ class Repository:
                 # One canonical update per existing book identity, avoiding alias
                 # metadata flip-flops (and spurious invalidation) on identical retries.
                 source = group[-1]
+                source_key = stable_id("source", subject, group[0].source_id)
+                existing = conn.execute(
+                    "select title from sources where id=%s and subject_id=%s", (source_key, sid)
+                ).fetchone()
+                # Search titles can change for the same URL; retain its durable book identity.
+                canonical_title = existing[0] if existing else source.title
                 conn.execute(
                     "insert into sources(id,subject_id,title,author,license,url,versio"
                     "n,p4_metadata) "
@@ -150,9 +156,9 @@ class Repository:
                     "xcluded.version,"
                     "excluded.p4_metadata)",
                     (
-                        stable_id("source", subject, group[0].source_id),
+                        source_key,
                         sid,
-                        source.title,
+                        canonical_title,
                         source.author,
                         source.license,
                         source.url,
@@ -161,7 +167,8 @@ class Repository:
                     ),
                 )
                 row = conn.execute(
-                    "select id from sources where subject_id=%s and title=%s", (sid, source.title)
+                    "select id from sources where subject_id=%s and title=%s",
+                    (sid, canonical_title),
                 ).fetchone()
                 assert row
                 for alias in group:

@@ -58,7 +58,7 @@ def test_p3_actual_completion_metadata_and_family_scope_drive_p4_gate(
                 "ambiguous": False,
                 "multiple_correct": False,
                 "insufficient_evidence": False,
-                "evidence": [{"chunk_id": str(chunks[0].chunk_id), "quote": chunks[0].content}],
+                "evidence": [{"chunk_id": str(chunks[0].chunk_id), "passage_id": "source-quote-0"}],
                 "reason": "Synthetic unit-test provider reply, not real verification.",
             }
         )

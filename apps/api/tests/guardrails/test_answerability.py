@@ -22,7 +22,7 @@ def test_blind_request_whitelists_fields_and_omits_key_and_metadata() -> None:
     request = blind_request(item, fake.chunks).model_dump(mode="json")
     assert set(request) == {"question", "options", "chunks"}
     assert all(set(o) == {"id", "label"} for o in request["options"])
-    assert all(set(c) == {"chunk_id", "content"} for c in request["chunks"])
+    assert all(set(c) == {"chunk_id", "content", "evidence_options"} for c in request["chunks"])
     result = asyncio.run(verify_item(item, fake.chunks, fake))
     assert result.status == "verified"  # Fake only; not a real quality assertion.
     call = fake.calls[0]
@@ -98,6 +98,31 @@ def test_fabricated_evidence_cannot_verify() -> None:
         ]
     }
     assert asyncio.run(verify_item(fake.item, fake.chunks, fake)).status == "needs_review"
+
+
+@pytest.mark.parametrize("invalid", [None, "invented-id", "wrong-answer", "same-family"])
+def test_source_passage_ids_preserve_exact_math_and_all_answer_gates(invalid: str | None) -> None:
+    fake = FakeGateway()
+    content = "Derivative formula with raw PDF spacing: f'(x) = lim\n h->0 (f(x+h)-f(x))/h."
+    fake.chunks = [fake.chunks[0].model_copy(update={"content": content})]
+    fake.overrides = {
+        "evidence": [
+            {
+                "chunk_id": str(fake.chunks[0].chunk_id),
+                "passage_id": "invented-id" if invalid == "invented-id" else "source-quote-0",
+            }
+        ],
+    }
+    if invalid == "wrong-answer":
+        fake.overrides["selected_option_id"] = "choice-999"
+    if invalid == "same-family":
+        fake.family = fake.item.generator.family
+    result = asyncio.run(verify_item(fake.item, fake.chunks, fake))
+    assert result.status == ("verified" if invalid is None else "needs_review")
+    if invalid is None:
+        assert result.verification is not None
+        assert result.verification.evidence[0].quote == content
+        assert len(fake.calls) == 1
 
 
 @pytest.mark.parametrize("repairable", [True, False])

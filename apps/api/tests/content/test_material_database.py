@@ -72,3 +72,30 @@ def test_concurrent_retry_and_rollback_preserve_stable_ids(repository: Repositor
             "select count(*) from chunks where id=%s", (fresh.chunk_id,)
         ).fetchone() == (0,)
     repository.save_material(subject, sources, chunks)
+
+
+def test_search_title_change_keeps_the_same_url_and_chunk_identity(repository: Repository) -> None:
+    sources, chunks, _, _ = topic()
+    source = sources[0]
+    chunks = [
+        c.model_copy(update={"chunk_id": uuid4()})
+        for c in chunks
+        if c.source_id == source.source_id
+    ]
+    subject = "title-retry-" + uuid4().hex
+    repository.save_material(subject, [source], chunks)
+    with repository.transaction() as conn:
+        before = conn.execute(
+            "select id,source_id,chunk_index from chunks where id=any(%s) order by id",
+            ([c.chunk_id for c in chunks],),
+        ).fetchall()
+    renamed = source.model_copy(update={"title": source.title + " (PDF)"})
+    repository.save_material(subject, [renamed], chunks)
+    with repository.transaction() as conn:
+        after = conn.execute(
+            "select id,source_id,chunk_index from chunks where id=any(%s) order by id",
+            ([c.chunk_id for c in chunks],),
+        ).fetchall()
+        stored_sources, stored_chunks = repository.material(conn, [c.chunk_id for c in chunks])
+    assert before == after
+    assert stored_chunks == chunks and stored_sources == [renamed]

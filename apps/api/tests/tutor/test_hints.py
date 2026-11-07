@@ -79,6 +79,27 @@ def test_literal_answer_blocks_before_model_call() -> None:
     assert len(fake.calls) == before
 
 
+@pytest.mark.parametrize("invalid", [None, "invented-id", "answer-leak"])
+def test_hint_passage_ids_keep_exact_source_and_answer_disclosure_gates(
+    invalid: str | None,
+) -> None:
+    fake, item = prepared()
+    fake.overrides = {
+        "evidence": [
+            {
+                "chunk_id": str(item.chunk_ids[0]),
+                "passage_id": "invented-id" if invalid == "invented-id" else "source-quote-0",
+            }
+        ],
+        "no_answer_leak": invalid != "answer-leak",
+    }
+    draft = HintDraft(hint_vi="Check the source rule before calculating.", chunk_ids=item.chunk_ids)
+    attempt = asyncio.run(verify_hint(item, draft, fake.chunks, item.generator, fake, level=1))
+    assert attempt.verification.status == ("verified" if invalid is None else "needs_review")
+    if invalid is None:
+        assert attempt.verification.evidence[0].quote == fake.chunks[0].content
+
+
 def test_hint_same_family_and_changed_history_block_release() -> None:
     fake, item = prepared()
     sources, _, _, _ = topic()

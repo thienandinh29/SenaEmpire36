@@ -21,9 +21,15 @@ from app.content.models import (
     digest,
     item_hash,
 )
-from app.guardrails.answerability import blind_request, evidence_valid, is_currently_verified
+from app.guardrails.answerability import (
+    PassageEvidence,
+    bind_passages,
+    blind_request,
+    evidence_valid,
+    is_currently_verified,
+)
 
-PROMPT_VERSION = "p4-hint-v4"
+PROMPT_VERSION = "p4-hint-v5"
 LEVELS = {
     1: "Nhắc khái niệm liên quan mà không nêu kết luận của bài.",
     2: "Đặt câu hỏi dẫn dắt hoặc gợi quy trình suy luận; chưa thực hiện bước cuối.",
@@ -79,6 +85,19 @@ class HintAttempt(Record):
     draft: HintDraft
     generator: ModelIdentity
     verification: Verification
+
+
+class PassageHintVerdict(Record):
+    correct: StrictBool
+    supported: StrictBool
+    citations_valid: StrictBool
+    relevant_to_history: StrictBool
+    clear_vietnamese: StrictBool
+    level_appropriate: StrictBool
+    no_answer_leak: StrictBool
+    no_elimination: StrictBool
+    evidence: list[PassageEvidence]
+    reason: str = Field(min_length=1)
 
 
 class Citation(Record):
@@ -158,7 +177,8 @@ async def verify_hint(
         fingerprint = _hint_hash(item, chunks, draft, generator, level, last_answer, history)
         if obvious_leak(item, draft):
             raise ValueError("literal answer disclosure")
-        payload = blind_request(item, chunks).model_dump(mode="json")
+        request = blind_request(item, chunks)
+        payload = request.model_dump(mode="json")
         payload.update(
             {
                 "hint": draft.model_dump(mode="json"),
@@ -174,13 +194,27 @@ async def verify_hint(
                 reply = await gateway.generate(
                     task="verify_hint",
                     tier=tier,
-                    system=VERIFY_SYSTEM,
+                    system=VERIFY_SYSTEM + "\nReturn evidence as chunk_id and passage_id selected "
+                    "from that chunk's evidence_options. Do not transcribe quotations or formulas. "
+                    "The backend binds the original text. All hint criteria must still pass.",
                     payload=payload,
-                    schema=HintVerdict,
+                    schema=PassageHintVerdict,
                     exclude_family=generator.family,
                 )
                 verifier = reply.identity
-                verdict = parse_reply(reply, HintVerdict)
+                try:
+                    selected = parse_reply(reply, PassageHintVerdict)
+                except ValueError:
+                    verdict = parse_reply(reply, HintVerdict)
+                else:
+                    verdict = HintVerdict.model_validate(
+                        {
+                            **selected.model_dump(),
+                            "evidence": [
+                                e.model_dump() for e in bind_passages(selected.evidence, request)
+                            ],
+                        }
+                    )
                 evidence = verdict.evidence
                 criteria = (
                     verdict.correct,
@@ -202,7 +236,7 @@ async def verify_hint(
                     # failed safety rubric, provider error, or same-family verdict.
                     payload["evidence_feedback"] = (
                         "Your previous evidence was not an exact source substring. "
-                        "Reassess all criteria and copy a short exact phrase from a cited chunk."
+                        "Reassess all criteria and select an existing evidence_options passage_id."
                     )
                     continue
                 break
@@ -252,7 +286,7 @@ def release_hint(
             is_currently_verified(item, chunks)
             and level in LEVELS
             and audit.status == "verified"
-            and audit.prompt_version == PROMPT_VERSION
+            and audit.prompt_version in {"p4-hint-v4", PROMPT_VERSION}
             and audit.generator == attempt.generator
             and audit.verifier
             and independent(attempt.generator, audit.verifier)

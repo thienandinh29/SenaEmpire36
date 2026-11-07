@@ -99,5 +99,42 @@ Deep → SQL → xác nhận bản đồ → placement → practice bằng ngư�
 
 Sau các sửa đổi này: toàn bộ **1.508 test pass**, Ruff check/format và mypy pass.
 Một lượt sinh câu hỏi thật đã tạo sáu câu được kiểm chứng trên checkpoint đạo hàm;
-đây chưa đủ để kết luận cả luồng research ổn định. Lượt sinh trước đó lỗi bất ngờ
-không giữ nguyên nhân gốc; log theo stage được bổ sung để chẩn đoán lần tiếp theo.
+đây chưa đủ để kết luận cả luồng research ổn định. Telemetry của lần lỗi đã ghi nhận
+DeepSeek trả 4.096 output token, `deepseek_incomplete_response`, 4.484 input token.
+Task `items` trước đó dùng trần mặc định 4.096 dành cho câu trả lời đơn nên batch
+câu hỏi toán bị cắt. Trần riêng `items` được sửa thành 16.384 như task graph; đây là
+giới hạn tối đa, không phải lượng token buộc dùng. Retry/deadline/verifier không đổi.
+
+Sau khi tăng trần, cùng bước sinh trả đủ 7.045 output token trong khoảng 26 giây.
+Một blocker khác là verifier chép lại công thức LaTeX không đúng nguyên văn, gây
+`invalid_or_missing_evidence` và nhiều cuộc gọi kiểm tra dẫn tới 429. Request blind v3
+cung cấp các đoạn nguồn có ID; verifier chọn ID, backend gắn lại nguyên văn rồi vẫn
+kiểm tra nguồn, đáp án, tính duy nhất và model family như trước. Audit v2 hợp lệ vẫn
+được đọc; manifest diagnostic v2 được giữ nguyên để không thay đổi lịch sử kiểm tra.
+
+Retry còn tái hiện `UniqueViolation`: tiêu đề search đổi nhưng URL vẫn như cũ.
+Repository giữ định danh book hiện hữu cho cùng source ID, tránh insert trùng khóa;
+test PostgreSQL kiểm tra chunk ID/index/provenance được giữ khi tiêu đề thay đổi.
+
+Hint gặp cùng lỗi chép công thức và được sửa bằng cùng cơ chế bind passage ID.
+Schema câu hỏi và hint có trường `passage_id` riêng, tránh model hiểu nhầm ID thành
+văn bản trích dẫn. Audit vẫn lưu quote nguyên văn; ID không tồn tại bị chặn, model
+family độc lập, kiểm tra đáp án và toàn bộ tiêu chí không lộ đáp án của hint giữ nguyên.
+Runner paired evaluation cũng dùng cùng binder, gồm hỗ trợ đọc phản hồi quote v2.
+Diagnostic cũ từ chối request v3 trước khi gọi mạng vì fingerprint không còn khớp
+manifest v2; không gắn nhãn request mới bằng fingerprint lịch sử.
+
+Lượt local `fe153986-f992-44b3-afdd-0ff8d7eff0b2`, mục tiêu “học đạo hàm”, đã đạt
+`ready` qua worker bình thường sau các lần sửa/retry trong quá trình phát triển.
+Bản đồ hiện có ba khái niệm, **11 câu verified thuộc đúng ba khái niệm** (4/4/3).
+Đã chạy qua API proxy của web: learner mới → chặn placement trước xác nhận (409) →
+review/confirm → placement → practice → hint có citation → đáp án sai/đúng → database.
+DB có năm attempts, ba mastery, 14 decision traces, một review card; session ở pha
+practice. Gửi lại cùng client_attempt_id không tạo attempt trùng.
+
+Đây là smoke tích hợp có người học giả lập, không phải kiểm tra bằng thao tác UI hay
+đánh giá sư phạm. Nguồn/search và quota provider vẫn là phụ thuộc bên ngoài; các lần
+retry phát triển không chứng minh tỷ lệ thành công ngay lần đầu cho mọi chủ đề.
+
+Kiểm tra toàn bộ sau thay đổi question/hint: **1.516 test pass**, Ruff check/format
+và mypy pass; regression từ chối diagnostic không khớp cũng pass riêng.

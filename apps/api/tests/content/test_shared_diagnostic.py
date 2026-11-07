@@ -12,10 +12,12 @@ from app.llm.gateway import Message, Route
 from app.llm.providers import _gemini_payload, _thinking_config, diagnostic_transport_timeout
 
 
-def test_manifest_is_exact_blind_gateway_request() -> None:
+def test_manifest_preserves_exact_shared_v2_diagnostic_request() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     _, chunks, _, items = load_topic(Path("../../data/golden/python-conditions"))
-    payload = blind_request(items[0], chunks).model_dump(mode="json")
+    payload = blind_request(items[0], chunks).model_dump(
+        mode="json", exclude={"chunks": {"__all__": {"evidence_options"}}}
+    )
     assert set(payload) == {"question", "options", "chunks"}
     assert all(set(o) == {"id", "label"} for o in payload["options"])
     route = Route(provider="gemini", family="gemini", model=manifest["model"])
@@ -35,6 +37,17 @@ def test_existing_diagnostic_refuses_repeat_without_network(tmp_path: Path) -> N
     output.write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="refusing another attempt"):
         asyncio.run(diagnose(output))
+
+
+def test_v3_request_refuses_frozen_v2_manifest_before_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_network(*args: object, **kwargs: object) -> None:
+        pytest.fail("Changed shared request must be rejected before network access")
+
+    monkeypatch.setattr("app.content.shared_diagnostic.httpx.AsyncClient", unexpected_network)
+    with pytest.raises(ValueError, match="Shared input/model differs"):
+        asyncio.run(diagnose(tmp_path / "new.json"))
 
 
 def test_diagnostic_timeout_requires_explicit_bounded_scope() -> None:

@@ -349,6 +349,7 @@ def test_graph_budget_and_gemini_thinking_configuration(monkeypatch: pytest.Monk
             tiers={
                 "free": {
                     "graph": [Route(provider="deepseek", model="deepseek-test", family="deepseek")],
+                    "items": [Route(provider="deepseek", model="deepseek-test", family="deepseek")],
                     "verify": [Route(provider="gemini", model="gemini-3.8-flash", family="gemini")],
                 }
             }
@@ -358,6 +359,7 @@ def test_graph_budget_and_gemini_thinking_configuration(monkeypatch: pytest.Monk
 
     async def run() -> None:
         await gateway.complete("graph", "free", "s", [{"role": "user", "content": "q"}])
+        await gateway.complete("items", "free", "s", [{"role": "user", "content": "q"}])
         with verification_scope("deepseek"):
             await gateway.complete("verify", "free", "s", [{"role": "user", "content": "q"}])
         assert generation_limits().max_tokens == 4096
@@ -365,7 +367,8 @@ def test_graph_budget_and_gemini_thinking_configuration(monkeypatch: pytest.Monk
     with patch("app.llm.providers._post", post):
         asyncio.run(run())
     assert payloads[0]["max_tokens"] == 16384
-    assert payloads[1]["generationConfig"] == {
+    assert payloads[1]["max_tokens"] == 16384
+    assert payloads[2]["generationConfig"] == {
         "maxOutputTokens": 8192,
         "thinkingConfig": {"thinkingLevel": "LOW"},
     }
