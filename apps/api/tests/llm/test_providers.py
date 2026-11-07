@@ -389,3 +389,40 @@ def test_deepseek_long_multibyte_context_is_rejected_before_paid_request(
         )
     assert not error.value.retryable
     post.assert_not_called()
+
+
+@pytest.mark.parametrize("finish_reason", ["stop", "length"])
+@pytest.mark.parametrize("fenced", [False, True])
+def test_gemini_proxy(monkeypatch: pytest.MonkeyPatch, finish_reason: str, fenced: bool) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-proxy-key")
+    monkeypatch.setenv("GEMINI_BASE_URL", "http://localhost:8081/v1/")
+
+    async def post(url: str, token: str, payload: dict[str, Any]) -> dict[str, Any]:
+        assert url == "http://localhost:8081/v1/chat/completions"
+        assert token == "test-proxy-key"
+        assert payload["model"] == "gemini-3.6-flash"
+        assert payload["response_format"] == {"type": "json_object"}
+        content = '{"text_vi":"ok","count":1}'
+        if fenced:
+            content = "```json\n" + content + "\n```"
+        return {
+            "choices": [{"finish_reason": finish_reason, "message": {"content": content}}],
+            "usage": {"prompt_tokens": 4, "completion_tokens": 2},
+        }
+
+    async def generate() -> Any:
+        return await GeminiAdapter().generate(
+            Route(provider="gemini", model="gemini-3.6-flash", family="gemini"),
+            "system",
+            [Message(role="user", content="q")],
+            Answer,
+        )
+
+    with patch("app.llm.providers._post", post):
+        if finish_reason == "length":
+            with pytest.raises(ProviderError, match="gemini_incomplete_response"):
+                asyncio.run(generate())
+        else:
+            reply = asyncio.run(generate())
+            assert reply.input_tokens == 4 and reply.output_tokens == 2
+            assert Answer.model_validate_json(reply.text).count == 1

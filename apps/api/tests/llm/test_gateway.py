@@ -195,7 +195,7 @@ def test_deepseek_fallback_uses_actual_family_for_verification() -> None:
 def test_default_deepseek_routes_keep_independent_verifiers() -> None:
     for tasks in load_routing().tiers.values():
         for task, candidates in tasks.items():
-            if task == "verify":
+            if task in {"verify", "research"}:
                 assert all(route.family == "gemini" for route in candidates)
             else:
                 assert all(route.provider == "deepseek" for route in candidates)

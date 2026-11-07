@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     openrouter_api_key: SecretStr = SecretStr("")
     deepseek_api_key: SecretStr = SecretStr("")
     gemini_api_key: SecretStr = SecretStr("")
+    gemini_base_url: str = ""
+    gemini_research_model: str = ""
     gemini_verify_model: str = ""
     deepseek_free_model: str = ""
     deepseek_pro_model: str = ""
@@ -70,6 +72,8 @@ class Settings(BaseSettings):
             "openrouter_api_key",
             "deepseek_api_key",
             "gemini_api_key",
+            "gemini_base_url",
+            "gemini_research_model",
             "gemini_verify_model",
             "deepseek_free_model",
             "deepseek_pro_model",

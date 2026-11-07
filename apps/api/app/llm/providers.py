@@ -7,6 +7,7 @@ import re
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
+from dataclasses import replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -217,6 +218,28 @@ def _gemini_reply(data: dict[str, Any], provider: str) -> ProviderReply:
         raise ProviderError(f"{provider}_invalid_response", retryable=True) from None
 
 
+def _chat_reply(data: dict[str, Any], provider: str) -> ProviderReply:
+    try:
+        choice = data["choices"][0]
+        if choice.get("finish_reason") != "stop":
+            raise ProviderError(
+                f"{provider}_incomplete_response",
+                retryable=choice.get("finish_reason") != "length",
+                reply=ProviderReply(
+                    "",
+                    data.get("usage", {}).get("prompt_tokens", 0),
+                    data.get("usage", {}).get("completion_tokens", 0),
+                ),
+            )
+        text = choice["message"]["content"]
+        if not isinstance(text, str):
+            raise TypeError
+        usage = data.get("usage", {})
+        return ProviderReply(text, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+    except (KeyError, IndexError, TypeError):
+        raise ProviderError(f"{provider}_invalid_response", retryable=True) from None
+
+
 class GeminiAdapter:
     async def generate(
         self,
@@ -228,6 +251,29 @@ class GeminiAdapter:
         token = os.environ.get("GEMINI_API_KEY", "")
         if not token:
             raise ProviderError("gemini_key_missing")
+        base_url = os.environ.get("GEMINI_BASE_URL", "").strip()
+        if base_url:
+            payload: dict[str, Any] = {
+                "model": route.model,
+                "max_tokens": generation_limits().max_tokens,
+                "messages": [
+                    {"role": "system", "content": schema_instruction(system, schema)},
+                    *[m.model_dump() for m in messages],
+                ],
+            }
+            if schema:
+                payload["response_format"] = {"type": "json_object"}
+            data = await _post(base_url.rstrip("/") + "/chat/completions", token, payload)
+            reply = _chat_reply(data, "gemini")
+            if schema:
+                # Web-backed proxies may ignore JSON mode and wrap the whole JSON in Markdown.
+                # Strip only a complete outer fence; schema validation still runs in the gateway.
+                fenced = re.fullmatch(
+                    r"```(?:json)?\s*\n(.*?)\n```", reply.text.strip(), re.S | re.I
+                )
+                if fenced:
+                    reply = replace(reply, text=fenced.group(1).strip())
+            return reply
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{quote(route.model, safe='')}:generateContent"
@@ -364,27 +410,7 @@ class OpenRouterAdapter:
                 ],
             },
         )
-        try:
-            choice = data["choices"][0]
-            if choice.get("finish_reason") != "stop":
-                raise ProviderError(
-                    "openrouter_incomplete_response",
-                    retryable=choice.get("finish_reason") != "length",
-                    reply=ProviderReply(
-                        "",
-                        data.get("usage", {}).get("prompt_tokens", 0),
-                        data.get("usage", {}).get("completion_tokens", 0),
-                    ),
-                )
-            text = choice["message"]["content"]
-            if not isinstance(text, str):
-                raise TypeError
-            usage = data.get("usage", {})
-            return ProviderReply(
-                text, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
-            )
-        except (KeyError, IndexError, TypeError):
-            raise ProviderError("openrouter_invalid_response", retryable=True) from None
+        return _chat_reply(data, "openrouter")
 
 
 class DeepSeekAdapter:

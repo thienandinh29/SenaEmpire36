@@ -13,7 +13,8 @@ tiers:
   pro:
     graph: &graph
       - {provider: deepseek, model: '${DEEPSEEK_PRO_MODEL}', family: deepseek}
-    research: *graph
+    research:
+      - {provider: gemini, model: '${GEMINI_RESEARCH_MODEL}', family: gemini}
     items: *graph
     verify: *verify
     tutor: &pro

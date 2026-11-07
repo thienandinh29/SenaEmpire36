@@ -123,6 +123,24 @@ describe("same-origin API proxy", () => {
     expect(response.status).toBe(403);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it("uses the incoming host when the server URL has an internal hostname", async () => {
+    configure();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const response = await POST(
+      new NextRequest("http://localhost:3000/api/backend/uploads", {
+        method: "POST",
+        headers: {
+          host: "127.0.0.1:3000",
+          origin: "http://127.0.0.1:3000",
+        },
+        body: "{}",
+      }),
+      context(["uploads"]),
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
   it("adds a server-only key and forwards only documented query parameters", async () => {
     configure();
     const fetchMock = vi.fn().mockResolvedValue(

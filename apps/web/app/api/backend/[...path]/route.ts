@@ -20,9 +20,10 @@ async function proxy(
     return new Response(null, { status: 404 });
   const path = segments.join("/");
   if (!allowed.test(path)) return new Response(null, { status: 404 });
+  const requestOrigin = `${request.nextUrl.protocol}//${request.headers.get("host") || request.nextUrl.host}`;
   if (
     request.method === "POST" &&
-    request.headers.get("origin") !== request.nextUrl.origin
+    request.headers.get("origin") !== requestOrigin
   )
     return new Response(null, { status: 403 });
   const origin = process.env.NODETRAIL_API_URL;

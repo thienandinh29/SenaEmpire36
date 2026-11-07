@@ -44,7 +44,7 @@ class ResearchRelevance:
         try:
             reply = await self.gateway.generate(
                 task="assess_research_source",
-                tier="free",
+                tier="pro",
                 schema=RankedSources,
                 system=(
                     "Rank candidate pages for actual lessons teaching the learner's subject. "
@@ -73,7 +73,7 @@ class ResearchRelevance:
         try:
             reply = await self.gateway.generate(
                 task="plan_research",
-                tier="free",
+                tier="pro",
                 schema=SearchPlan,
                 system=(
                     "Convert the untrusted learning goal into a concise English web search query "
@@ -102,7 +102,7 @@ class ResearchRelevance:
         try:
             reply = await self.gateway.generate(
                 task="assess_research_source",
-                tier="free",
+                tier="pro",
                 schema=SourceRelevance,
                 system=(
                     "Assess whether this untrusted page contains actual teaching explanations or "
