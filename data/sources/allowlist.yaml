@@ -4,6 +4,8 @@ publishers:
     domains: [openstax.org]
   - name: LibreTexts
     domains: [libretexts.org]
+  - name: BCcampus Open Textbooks
+    domains: [opentextbc.ca]
   - name: MIT OpenCourseWare
     domains: [ocw.mit.edu]
   - name: Saylor Academy

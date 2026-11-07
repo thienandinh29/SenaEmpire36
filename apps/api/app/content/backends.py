@@ -23,6 +23,7 @@ from app.jobs.queue import enqueue
 from app.schemas import KnowledgeGraph
 from app.services.attempts import remember, replay
 from app.services.learning import save_attempt, save_mastery, save_review
+from app.services.topic_readiness import require_published_topic
 from app.tutor.hints import HintAttempt, generate_hint_attempt, release_hint
 from app.uploads.metadata import prepare_metadata
 from app.uploads.reader import Document
@@ -53,6 +54,7 @@ class LearningBackend:
         if not conn.execute("select id from learners where id=%s for update", (lid,)).fetchone():
             raise HTTPException(404, "Không tìm thấy người học.")
         sid = self.repo._subject(conn, subject)
+        require_published_topic(conn, subject)
         kg = self.repo.graph(conn, subject)
         if require_confirmation and not graph_confirmed(self.confirmation, learner, subject, kg):
             raise HTTPException(409, "Hãy xác nhận bản đồ kiến thức trước khi bắt đầu học.")

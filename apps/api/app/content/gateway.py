@@ -13,6 +13,10 @@ from app.content.models import ModelIdentity, Record
 from app.llm.gateway import Completion, verification_scope
 
 TASKS = {
+    "assess_upload": "graph",
+    "plan_research": "graph",
+    "assess_research_source": "graph",
+    "select_library": "graph",
     "extract_graph": "graph",
     "generate_items": "items",
     "generate_hint": "tutor",

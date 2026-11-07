@@ -5,8 +5,11 @@ import { Button } from "./ui/button";
 
 export function errorMessage(error: unknown) {
   if (error instanceof DataError) {
+    if (error.detail) return error.detail;
     if (error.status === 401 || error.status === 403) return t.flow.denied;
     if (error.status === 429) return t.flow.rateLimit;
+    if (error.status === 409) return t.live.stale;
+    if (error.status === 404) return t.live.noMore;
     if (error.code === "contract") return t.flow.contractError;
     if (error.code === "configuration" || error.code === "unsupported")
       return t.flow.configError;

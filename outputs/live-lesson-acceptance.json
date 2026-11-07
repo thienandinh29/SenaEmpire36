@@ -1,0 +1,38 @@
+{
+  "pdf": {
+    "job_id": "3cbb1cf0-ce45-482e-acdb-17567bfdb2bc",
+    "upload_id": "e5df1d4a-7512-4e15-8c1f-226e90ffe268",
+    "status": "ready",
+    "chunks": 4,
+    "embedded_chunks": 4,
+    "pages": [
+      1,
+      2,
+      3
+    ],
+    "verified_questions": 7,
+    "verified_hints": 3,
+    "submitted_answers": 9,
+    "elapsed_seconds_including_retry": 162.660191,
+    "source_sha256": "f489ae2a97e083038fb28d9f57e7d234c87226fb7601e8bb2ebfab09b940512f",
+    "screenshots": [
+      "pdf-lesson-live.png",
+      "pdf-lesson-verified-hint.png"
+    ]
+  },
+  "python": {
+    "job_id": "afd01a9f-0c0d-486d-8a7b-c188c789e872",
+    "mode": "deep",
+    "upload_id": null,
+    "status": "failed",
+    "step": "Chưa đủ 3 nguồn từ 2 nhà xuất bản; hãy thử chế độ Nhanh.",
+    "elapsed_seconds": 90.950924,
+    "chunks": 0,
+    "verified_questions": 0
+  },
+  "embedding": {
+    "model": "BAAI/bge-m3",
+    "dimensions": 1024,
+    "status": "ready"
+  }
+}

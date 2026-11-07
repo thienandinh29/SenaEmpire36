@@ -3,7 +3,9 @@ import { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
-  /^(learners|topics|topics\/[^/]+|graph|placement\/next|attempts|tutor\/hint|uploads|reviews\/due)$/;
+  /^(health|learners|topics|topics\/[^/]+|graph|graph\/review|graph\/confirm|next-item|placement\/next|attempts|tutor\/hint|uploads|reviews\/due)$/;
+const learnerCookie = "nodetrail_learner";
+const sessionToken = /^[A-Za-z0-9_-]{43}$/;
 
 async function proxy(
   request: NextRequest,
@@ -25,9 +27,8 @@ async function proxy(
     return new Response(null, { status: 403 });
   const origin = process.env.NODETRAIL_API_URL;
   const key = process.env.NODETRAIL_API_KEY;
-  const keyHeader = process.env.NODETRAIL_API_KEY_HEADER;
+  const keyHeader = process.env.NODETRAIL_API_KEY_HEADER || "X-API-Key";
   if (
-    process.env.NODETRAIL_DATA_MODE !== "api" ||
     !origin ||
     !key ||
     !keyHeader ||
@@ -51,11 +52,14 @@ async function proxy(
       `${base.pathname.replace(/\/$/, "")}/${path}`,
       base.origin,
     );
-    for (const name of ["learner_id", "subject"]) {
+    for (const name of ["learner_id", "subject", "goal"]) {
       const value = request.nextUrl.searchParams.get(name);
       if (value) target.searchParams.set(name, value);
     }
     const headers = new Headers({ [keyHeader]: key });
+    const token = request.cookies.get(learnerCookie)?.value;
+    if (token && sessionToken.test(token))
+      headers.set("Cookie", `${learnerCookie}=${token}`);
     const contentType = request.headers.get("content-type");
     if (contentType) headers.set("content-type", contentType);
     if (
@@ -71,7 +75,8 @@ async function proxy(
     if (request.method === "POST") {
       const limit =
         path === "uploads"
-          ? Number(process.env.NODETRAIL_MAX_UPLOAD_BYTES) + 64 * 1024
+          ? Number(process.env.NODETRAIL_MAX_UPLOAD_BYTES || 20000000) +
+            64 * 1024
           : 64 * 1024;
       if (
         !Number.isSafeInteger(limit) ||
@@ -108,13 +113,28 @@ async function proxy(
       signal: signals,
       redirect: "error",
     });
+    // A fixture-enabled backend must never appear as real content in this UI.
+    if (response.headers.get("x-data-fixture")?.toLowerCase() === "true")
+      return new Response(null, { status: 503 });
+    const responseHeaders = new Headers({
+      "Content-Type":
+        response.headers.get("content-type") ?? "application/json",
+      "Cache-Control": "no-store",
+    });
+    // Scope the backend credential to this origin; never forward arbitrary cookies.
+    if (path === "learners" && response.ok && request.method === "POST") {
+      const issued = response.headers
+        .get("set-cookie")
+        ?.match(/(?:^|,\s*)nodetrail_learner=([A-Za-z0-9_-]{43})(?:;|$)/)?.[1];
+      if (issued)
+        responseHeaders.set(
+          "Set-Cookie",
+          `${learnerCookie}=${issued}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${request.nextUrl.protocol === "https:" ? "; Secure" : ""}`,
+        );
+    }
     return new Response(response.body, {
       status: response.status,
-      headers: {
-        "Content-Type":
-          response.headers.get("content-type") ?? "application/json",
-        "Cache-Control": "no-store",
-      },
+      headers: responseHeaders,
     });
   } catch {
     return new Response(null, { status: 502 });

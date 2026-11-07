@@ -93,20 +93,44 @@ async def verify_item(
         item = Item.model_validate(item.model_dump(mode="json"))
         fingerprint = item_hash(item, chunks)
         request = blind_request(item, chunks)
-        reply = await asyncio.wait_for(
-            gateway.generate(
-                task="verify_item",
-                tier=tier,
-                system=SYSTEM,
-                payload=request.model_dump(mode="json"),
-                schema=Verdict,
-                exclude_family=item.generator.family,
-            ),
-            timeout=timeout_seconds,
-        )
-        identity = reply.identity
-        verdict = parse_reply(reply, Verdict)
-        evidence = verdict.evidence
+        async with asyncio.timeout(timeout_seconds):
+            for check in range(2):
+                reply = await gateway.generate(
+                    task="verify_item",
+                    tier=tier,
+                    system=SYSTEM
+                    + (
+                        "\nYour previous quotation did not exactly match the raw source. "
+                        "Reassess independently. Copy a short contiguous source phrase "
+                        "verbatim, preserving punctuation and markup; do not recreate a table. "
+                        "Return unsupported if the supplied source does not establish the answer."
+                        if check
+                        else ""
+                    ),
+                    payload=request.model_dump(mode="json"),
+                    schema=Verdict,
+                    exclude_family=item.generator.family,
+                )
+                identity = reply.identity
+                verdict = parse_reply(reply, Verdict)
+                evidence = verdict.evidence
+                if (
+                    check == 0
+                    and independent(item.generator, identity)
+                    and verdict.supported
+                    and verdict.unique_answer
+                    and not verdict.ambiguous
+                    and not verdict.multiple_correct
+                    and not verdict.insufficient_evidence
+                    and verdict.selected_option_id
+                    == next(
+                        f"choice-{i}" for i, o in enumerate(item.options) if o.id == item.answer_id
+                    )
+                    and not evidence_valid(evidence, cited_chunks(item, chunks))
+                ):
+                    continue
+                break
+        assert identity is not None
         if not independent(item.generator, identity):
             reason = "unknown_or_same_model_family"
         elif not evidence_valid(evidence, cited_chunks(item, chunks)):

@@ -1,6 +1,8 @@
 # Secrets
 .env
 .env.*
+.end.p5
+.local/
 !.env.example
 
 # Claude Code personal settings

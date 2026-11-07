@@ -1,6 +1,7 @@
 """Bounded PDF/DOCX/HTML text extraction with page provenance; no OCR."""
 
 import asyncio
+import re
 import unicodedata
 from dataclasses import dataclass
 from io import BytesIO
@@ -11,7 +12,7 @@ from zipfile import BadZipFile, ZipFile
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from app.research.reader import SafeReader, SourceError, html_text
+from app.research.reader import SafeReader, SourceError, html_content, html_text
 
 MAX_BYTES = 20_000_000
 MAX_PAGES = 200
@@ -31,6 +32,7 @@ class Document:
     pages: tuple[Page, ...]
     text_ok: bool
     media_type: str = "text/plain"
+    license_text: str = ""
 
 
 def _document(uri: str, pages: list[Page], media_type: str = "text/plain") -> Document:
@@ -43,7 +45,7 @@ def _document(uri: str, pages: list[Page], media_type: str = "text/plain") -> Do
     return Document(uri, normalized, text_ok, media_type)
 
 
-def read_file(filename: str, body: bytes, source_uri: str) -> Document:
+def read_file(filename: str, body: bytes, source_uri: str, *, query: str | None = None) -> Document:
     if not body or len(body) > MAX_BYTES:
         raise SourceError("Tệp rỗng hoặc vượt giới hạn 20 MB.")
     suffix = PurePosixPath(filename).suffix.lower()
@@ -54,16 +56,47 @@ def read_file(filename: str, body: bytes, source_uri: str) -> Document:
             reader = PdfReader(BytesIO(body))
             if reader.is_encrypted:
                 raise SourceError("PDF được mã hóa; vui lòng dùng tệp không có mật khẩu.")
-            if len(reader.pages) > MAX_PAGES:
-                raise SourceError("Tài liệu vượt giới hạn 200 trang.")
+            selected = list(range(len(reader.pages)))
+            extracted: dict[int, str] = {}
+            if len(selected) > MAX_PAGES:
+                if not query:
+                    raise SourceError(
+                        "Tài liệu dài hơn 200 trang; cần mục tiêu để chọn chương/trang phù hợp."
+                    )
+                terms = {w for w in re.findall(r"\w+", query.casefold()) if len(w) > 3}
+                if not terms:
+                    raise SourceError("Cần mục tiêu cụ thể để chọn trang trong tài liệu dài.")
+                scores = []
+                for i in range(min(len(reader.pages), 2000)):
+                    text = reader.pages[i].extract_text() or ""
+                    score = sum(min(text.casefold().count(w), 8) for w in terms)
+                    if score:
+                        scores.append((score, i, text))
+                best = sorted(scores, reverse=True)[:8]
+                if not best:
+                    raise SourceError(
+                        "Chưa tìm thấy chương phù hợp trong tài liệu dài; "
+                        "hãy chọn tài liệu cụ thể hơn."
+                    )
+                selected = sorted(
+                    set(range(min(6, len(reader.pages))))
+                    | {
+                        p
+                        for _, i, _ in best
+                        for p in range(max(0, i - 1), min(len(reader.pages), i + 2))
+                    }
+                )
+                extracted = {i: text for _, i, text in best}
             pages: list[Page] = []
             size = 0
-            for index, page in enumerate(reader.pages, 1):
-                text = page.extract_text() or ""
+            for index in selected:
+                text = extracted.get(index)
+                if text is None:
+                    text = reader.pages[index].extract_text() or ""
                 size += len(text)
                 if size > MAX_TEXT:
                     raise SourceError("Văn bản vượt giới hạn xử lý.")
-                pages.append(Page(index, text))
+                pages.append(Page(index + 1, text))
             return _document(source_uri, pages, "application/pdf")
         if suffix == ".docx":
             with ZipFile(BytesIO(body)) as archive:
@@ -102,11 +135,15 @@ def read_file(filename: str, body: bytes, source_uri: str) -> Document:
     raise SourceError("Chỉ hỗ trợ tệp PDF hoặc DOCX.")
 
 
-async def read_link(url: str, reader: SafeReader | None = None) -> Document:
+async def read_link(
+    url: str, reader: SafeReader | None = None, *, query: str | None = None
+) -> Document:
     download = await (reader or SafeReader()).fetch(url)
     media = download.content_type.partition(";")[0].strip().lower()
     if media == "application/pdf" or download.body.startswith(b"%PDF-"):
-        return await asyncio.to_thread(read_file, "upload.pdf", download.body, download.url)
+        return await asyncio.to_thread(
+            read_file, "upload.pdf", download.body, download.url, query=query
+        )
     if media == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         return await asyncio.to_thread(read_file, "upload.docx", download.body, download.url)
     if media not in {"text/html", "application/xhtml+xml", "text/plain"}:
@@ -114,6 +151,13 @@ async def read_link(url: str, reader: SafeReader | None = None) -> Document:
     text = (
         download.body.decode("utf-8-sig", errors="replace")
         if media == "text/plain"
-        else html_text(download.body)
+        else html_content(download.body)
     )
-    return _document(download.url, [Page(1, text)], media)
+    document = _document(download.url, [Page(1, text)], media)
+    return Document(
+        document.source_uri,
+        document.pages,
+        document.text_ok,
+        media,
+        html_text(download.body) if media != "text/plain" else text,
+    )

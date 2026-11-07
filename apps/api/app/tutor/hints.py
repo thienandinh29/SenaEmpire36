@@ -23,7 +23,7 @@ from app.content.models import (
 )
 from app.guardrails.answerability import blind_request, evidence_valid, is_currently_verified
 
-PROMPT_VERSION = "p4-hint-v3"
+PROMPT_VERSION = "p4-hint-v4"
 LEVELS = {
     1: "Nhắc khái niệm liên quan mà không nêu kết luận của bài.",
     2: "Đặt câu hỏi dẫn dắt hoặc gợi quy trình suy luận; chưa thực hiện bước cuối.",
@@ -49,6 +49,11 @@ Kiểm tra đúng kiến thức, có căn cứ, phù hợp lựa chọn trước
 đúng cấp gợi ý; phát hiện lộ đáp án trực tiếp, diễn đạt lại đáp án, ký hiệu đáp án hoặc
 loại trừ đến còn một lựa chọn. Nếu không chắc thì không cho qua. Mọi tiêu chí phải đạt.
 Trích bằng chứng nguyên văn ngắn từ chunk (giữ chunk_id). Trả JSON theo schema."""
+)
+VERIFY_SYSTEM += (
+    "\nEvidence quotes must be exact contiguous substrings of raw chunk content, including "
+    "any markup. Prefer a short plain-text phrase without formulas. Never combine passages "
+    "or rewrite notation inside a quote."
 )
 
 
@@ -163,31 +168,45 @@ async def verify_hint(
                 "history": history,
             }
         )
-        reply = await asyncio.wait_for(
-            gateway.generate(
-                task="verify_hint",
-                tier=tier,
-                system=VERIFY_SYSTEM,
-                payload=payload,
-                schema=HintVerdict,
-                exclude_family=generator.family,
-            ),
-            timeout=timeout_seconds,
-        )
-        verifier = reply.identity
-        verdict = parse_reply(reply, HintVerdict)
-        evidence = verdict.evidence
         hint_chunks = [c for c in cited_chunks(item, chunks) if c.chunk_id in draft.chunk_ids]
-        criteria = (
-            verdict.correct,
-            verdict.supported,
-            verdict.citations_valid,
-            verdict.relevant_to_history,
-            verdict.clear_vietnamese,
-            verdict.level_appropriate,
-            verdict.no_answer_leak,
-            verdict.no_elimination,
-        )
+        async with asyncio.timeout(timeout_seconds):
+            for check in range(2):
+                reply = await gateway.generate(
+                    task="verify_hint",
+                    tier=tier,
+                    system=VERIFY_SYSTEM,
+                    payload=payload,
+                    schema=HintVerdict,
+                    exclude_family=generator.family,
+                )
+                verifier = reply.identity
+                verdict = parse_reply(reply, HintVerdict)
+                evidence = verdict.evidence
+                criteria = (
+                    verdict.correct,
+                    verdict.supported,
+                    verdict.citations_valid,
+                    verdict.relevant_to_history,
+                    verdict.clear_vietnamese,
+                    verdict.level_appropriate,
+                    verdict.no_answer_leak,
+                    verdict.no_elimination,
+                )
+                if (
+                    check == 0
+                    and independent(generator, verifier)
+                    and all(criteria)
+                    and not evidence_valid(evidence, hint_chunks)
+                ):
+                    # One evidence correction, within the original deadline. Never retry a
+                    # failed safety rubric, provider error, or same-family verdict.
+                    payload["evidence_feedback"] = (
+                        "Your previous evidence was not an exact source substring. "
+                        "Reassess all criteria and copy a short exact phrase from a cited chunk."
+                    )
+                    continue
+                break
+        assert verifier is not None
         if not independent(generator, verifier):
             reason = "unknown_or_same_model_family"
         elif not evidence_valid(evidence, hint_chunks):

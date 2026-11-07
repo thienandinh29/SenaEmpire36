@@ -88,7 +88,13 @@ def test_sql_library_retrieval_preserves_page_urls_and_bounds_graph_context(
         assert worker_retriever(pool) is worker_retriever(pool)
 
         async def generate(
-            chunks: list[ContentChunk], sources: list[Source], gateway: object, *, tier: str
+            chunks: list[ContentChunk],
+            sources: list[Source],
+            gateway: object,
+            *,
+            tier: str,
+            goal: str | None = None,
+            max_concepts: int | None = None,
         ) -> Graph:
             assert len(chunks) == 12
             return Graph.model_validate(

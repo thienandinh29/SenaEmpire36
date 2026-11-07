@@ -149,7 +149,11 @@ class Gateway:
         self.total_timeout = total_timeout
         self.observe = observe
         self.observe_attempt = observe_attempt
-        self.task_limits = {"graph": GenerationLimits(16384), "verify": GenerationLimits(8192)}
+        self.task_limits = {
+            "graph": GenerationLimits(16384),
+            "items": GenerationLimits(16384),
+            "verify": GenerationLimits(8192),
+        }
         self.task_limits.update(task_limits or {})
         if any(
             v.max_tokens < 1 or not 0 <= v.thinking_budget < v.max_tokens
@@ -233,7 +237,10 @@ class Gateway:
                             if isinstance(exc, ProviderError):
                                 reply = exc.reply or reply
                                 error_code = str(exc)
-                            failures.append(f"{route.provider}:{type(exc).__name__}")
+                            failures.append(
+                                f"{route.provider}:{type(exc).__name__}"
+                                + (f":{error_code}" if error_code else "")
+                            )
                             if isinstance(exc, ProviderError) and not exc.retryable:
                                 break
                             continue

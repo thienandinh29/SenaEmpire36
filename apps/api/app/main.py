@@ -5,7 +5,7 @@ import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,14 +14,21 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
-from app.api import learn, topics, tutor
+from app.api import graph_confirmation, learn, topics, tutor
 from app.config import Settings, get_settings
 from app.db import create_pool, ping
 from app.jobs.queue import snapshot
 from app.observability import configure_logging
 from app.schemas import CachedTopics, TopicState
 from app.services.backend import LearningService
-from app.services.topics import SupabaseStorage, TopicsService
+from app.services.graph_confirmation import GraphConfirmations
+from app.services.learner_sessions import COOKIE_NAME, SESSION_SECONDS, LearnerSessions
+from app.services.topics import LocalUploadStorage, SupabaseStorage, TopicsService
+
+if TYPE_CHECKING:
+    from app.content.gateway import Gateway
+    from app.content.learning import GraphConfirmation
+    from app.content.repository import Repository
 
 logger = logging.getLogger(__name__)
 HEARTBEAT_SECONDS = 15
@@ -34,6 +41,7 @@ class LearnerInput(BaseModel):
 class Health(BaseModel):
     status: str
     db: str
+    embedding: str | None = None
 
 
 def create_app(
@@ -62,6 +70,7 @@ def create_app(
             app.state.pool.close()
 
     app = FastAPI(title="NodeTrail API", lifespan=lifespan)
+    app.state.settings = settings
     app.include_router(
         learn.create_router(learning_backend or LearningService(lambda: app.state.pool))
     )
@@ -72,6 +81,8 @@ def create_app(
             settings.upload_bucket,
         )
         if settings.supabase_url and settings.supabase_service_role_key.get_secret_value()
+        else LocalUploadStorage(settings.local_upload_dir)
+        if settings.demo_uploads_enabled and settings.local_upload_dir
         else None
     )
     app.include_router(
@@ -81,6 +92,7 @@ def create_app(
         )
     )
     app.include_router(tutor.create_router(tutor_backend))
+    app.include_router(graph_confirmation.create_router())
 
     @app.middleware("http")
     async def request_context(
@@ -127,13 +139,29 @@ def create_app(
     )
 
     @app.post("/learners")
-    def create_learner(body: LearnerInput, request: Request) -> dict[str, UUID]:
+    def create_learner(body: LearnerInput, request: Request, response: Response) -> dict[str, UUID]:
         with request.app.state.pool.connection() as conn:
             row = conn.execute(
                 "insert into learners(display_name) values (%s) returning id",
                 (body.display_name.strip(),),
             ).fetchone()
+            sessions = getattr(request.app.state, "learner_sessions", None)
+            token = (
+                sessions.issue(conn, row[0])
+                if isinstance(sessions, LearnerSessions) and row
+                else None
+            )
         assert row is not None
+        if token is not None:
+            response.set_cookie(
+                COOKIE_NAME,
+                token,
+                max_age=SESSION_SECONDS,
+                httponly=True,
+                secure=request.url.scheme == "https",
+                samesite="lax",
+                path="/",
+            )
         return {"learner_id": row[0]}
 
     @app.get("/topics/cached", response_model=CachedTopics)
@@ -193,12 +221,65 @@ def create_app(
             },
         )
 
-    @app.get("/health")
-    def health(request: Request) -> Health:
+    @app.get("/health", response_model_exclude_none=True)
+    async def health(request: Request) -> Health:
         db_ok = ping(request.app.state.pool)
-        return Health(status="ok", db="ok" if db_ok else "down")
+        embedding = None
+        if getattr(request.app.state, "embedding_required", False):
+            from app.services.topic_readiness import embedding_status
+
+            embedding = await embedding_status(settings)
+        return Health(
+            status="ok" if db_ok and embedding in (None, "ready") else "unavailable",
+            db="ok" if db_ok else "down",
+            embedding=embedding,
+        )
 
     return app
+
+
+def create_content_app(
+    settings: Settings | None = None,
+    *,
+    repository: "Repository | None" = None,
+    gateway: "Gateway | None" = None,
+    confirmation: "GraphConfirmation | None" = None,
+) -> FastAPI:
+    """P2 entry point: P4 learning/tutor with P2 queue and private upload storage."""
+    from app.content.backends import LearningBackend, TutorBackend
+    from app.content.gateway import P3Gateway
+    from app.content.repository import Repository
+
+    settings = settings or get_settings()
+    current: FastAPI
+    store = repository if repository is not None else Repository(lambda: current.state.pool)
+    models = gateway if gateway is not None else P3Gateway()
+    confirmations = GraphConfirmations(settings.database_url)
+    learner_sessions = LearnerSessions(settings.database_url)
+    approved = confirmation if confirmation is not None else confirmations
+    current = create_app(
+        settings,
+        learning_backend=LearningBackend(store, approved),
+        tutor_backend=TutorBackend(
+            store, models, approved, demo_uploads_enabled=settings.demo_uploads_enabled
+        ),
+    )
+    platform_lifespan = current.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        async with platform_lifespan(application):
+            await asyncio.to_thread(store.require_schema)
+            await asyncio.to_thread(confirmations.require_schema)
+            await asyncio.to_thread(learner_sessions.require_schema)
+            yield
+
+    current.router.lifespan_context = lifespan
+    current.state.p4_repository = store
+    current.state.graph_confirmations = confirmations
+    current.state.learner_sessions = learner_sessions
+    current.state.embedding_required = True
+    return current
 
 
 app = create_app()

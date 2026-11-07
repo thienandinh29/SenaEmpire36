@@ -15,6 +15,78 @@ from app.uploads.reader import Document, Page
 from tests.research.test_pipeline import Ports, pipeline
 
 
+def test_duplicate_submissions_and_failed_retry_keep_one_job(database_url: str) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    request = TopicInput(goal_vi="Deduplicated real request", mode="quick", tier="free")
+    with create_pool(database_url) as pool:
+        service = TopicsService(lambda: pool)
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(lambda _: service._enqueue(request), range(4)))
+        ids = {result.topic_id for result in results}
+        assert len(ids) == 1
+        topic_id = results[0].topic_id
+        with pool.connection() as conn:
+            conn.execute(
+                "update topic_jobs set status='failed',progress=25 where id=%s", (topic_id,)
+            )
+        assert service._enqueue(request).topic_id == topic_id
+        with pool.connection() as conn:
+            assert conn.execute(
+                "select status,progress from topic_jobs where id=%s", (topic_id,)
+            ).fetchone() == ("queued", 25)
+            conn.execute("delete from topic_jobs where id=%s", (topic_id,))
+
+
+def test_local_private_upload_roundtrip(database_url: str, tmp_path) -> None:
+    from app.services.topics import LocalUploadStorage
+
+    body = b"private test bytes"
+    with create_pool(database_url) as pool:
+        service = TopicsService(lambda: pool, LocalUploadStorage(str(tmp_path)))
+        document = Document(
+            "",
+            (Page(1, "A real document with enough theory text for this storage test."),),
+            True,
+            "application/pdf",
+        )
+        upload_id = asyncio.run(
+            service.persist_upload(document, body, "theory.pdf", demo_consent=True)
+        )
+        assert (tmp_path / upload_id).read_bytes() == body
+        restored = load_upload(database_url, upload_id)
+        assert restored.source_uri == f"storage://uploads/{upload_id}"
+        assert restored.pages == document.pages
+
+
+def test_changed_material_invalidates_graph_but_identical_retry_keeps_it(database_url: str) -> None:
+    from app.content.repository import ContentUnavailable, Repository
+    from tests.content.fakes import topic
+
+    sources, chunks, graph, _ = topic()
+    mapping = {chunk.chunk_id: uuid4() for chunk in chunks}
+    chunks = [c.model_copy(update={"chunk_id": mapping[c.chunk_id]}) for c in chunks]
+    graph = graph.model_copy(deep=True)
+    for concept in graph.concepts:
+        concept.chunk_ids = [mapping[key] for key in concept.chunk_ids]
+    for edge in graph.edges:
+        edge.chunk_ids = [mapping[key] for key in edge.chunk_ids]
+    with create_pool(database_url) as pool:
+        repo = Repository(lambda: pool)
+        repo.save_material("material-checkpoint", sources, chunks)
+        repo.save_graph("material-checkpoint", graph)
+        repo.save_material("material-checkpoint", sources, chunks)
+        with pool.connection() as c:
+            assert repo.graph(c, "material-checkpoint") == graph
+        changed = [
+            chunks[0].model_copy(update={"content": chunks[0].content + " Changed teaching text."}),
+            *chunks[1:],
+        ]
+        repo.save_material("material-checkpoint", sources, changed)
+        with pool.connection() as c, pytest.raises(ContentUnavailable):
+            repo.graph(c, "material-checkpoint")
+
+
 def test_worker_calls_pipeline_and_persists_partial_failure(database_url: str) -> None:
     ports = Ports()
     ports.items[0] = ports.items[0].model_copy(update={"status": "needs_review"})
@@ -25,7 +97,8 @@ def test_worker_calls_pipeline_and_persists_partial_failure(database_url: str) -
         state = snapshot(conn, topic_id)
         assert state is not None
         assert state["status"] == "failed"
-        assert state["graph_ready"] and not state["items_ready"]
+        assert not state["graph_ready"] and not state["items_ready"]
+        assert ports.graph_saved  # private checkpoint, not a published learner graph
         assert state["subject_slug"] == "biology"
         assert state["sources"][0]["publisher"] == "Publisher"
         assert "text" not in state["sources"][0]

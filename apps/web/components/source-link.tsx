@@ -13,6 +13,14 @@ export function SourceLink({
   section?: string;
   page?: number;
 }) {
+  if (url && /^(storage|supabase):\/\//.test(url))
+    return (
+      <span className="source-link">
+        {title || t.flow.uploaded}
+        {section && ` · ${section}`}
+        {page && ` · ${page}`}
+      </span>
+    );
   const href = safeSourceUrl(url, page);
   if (!href)
     return <span className="source-unavailable">{t.flow.sourceMissing}</span>;

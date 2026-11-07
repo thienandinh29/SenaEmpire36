@@ -1,4 +1,66 @@
 export const vi = {
+  senaStates: [
+    "Chào bạn!",
+    "Suỵt, tập trung",
+    "Làm tốt lắm!",
+    "Cùng nhìn lại nhé",
+    "Để mình nghĩ",
+    "Nghỉ một chút nhé",
+  ],
+  live: {
+    badge: "Dữ liệu thật",
+    title: "Học từ nguồn thật, theo mục tiêu của bạn",
+    intro:
+      "Nhập điều bạn muốn học. Sena tìm nguồn, xây bản đồ kiến thức và chỉ đưa ra câu hỏi đã qua kiểm chứng.",
+    checking: "Đang kiểm tra kết nối…",
+    connected: "Đã kết nối dịch vụ học tập",
+    embeddingMismatch:
+      "Dịch vụ embedding đang chạy sai model. Chưa nhận yêu cầu tạo bài; cần kiểm tra cấu hình.",
+    embeddingError:
+      "Chưa kết nối được dịch vụ embedding hoặc dịch vụ đang báo lỗi. Chưa nhận yêu cầu tạo bài; vui lòng kiểm tra lại.",
+    embeddingUnavailable:
+      "Model embedding chưa sẵn sàng hoặc đang tải. Chưa nhận yêu cầu tạo bài; hãy kiểm tra lại khi model sẵn sàng.",
+    unavailable:
+      "Dịch vụ học tập chưa sẵn sàng. Vui lòng khởi động backend và cơ sở dữ liệu, rồi kiểm tra lại.",
+    checkConnection: "Kiểm tra kết nối",
+    newTopic: "Tạo lộ trình học",
+    noTopic: "Chưa có lộ trình học. Hãy nhập mục tiêu để bắt đầu.",
+    research: "Đang xây dựng lộ trình",
+    researchHelp:
+      "Nguồn và tiến độ bên dưới được trả về từ dịch vụ nghiên cứu. Câu hỏi chỉ xuất hiện sau khi được kiểm chứng.",
+    published:
+      "Lộ trình đã sẵn sàng. Hãy xem và xác nhận bản đồ trước khi học.",
+    approve: "Tôi đã xem và đồng ý với lộ trình này",
+    approved: "Đã xác nhận lộ trình",
+    approveFirst: "Xem và xác nhận bản đồ trước khi bắt đầu học.",
+    stale: "Bản đồ đã thay đổi. Hãy tải lại, xem và xác nhận phiên bản mới.",
+    start: "Bắt đầu đánh giá đầu vào",
+    practice: "Luyện tập theo lộ trình",
+    next: "Câu hỏi tiếp theo",
+    noQuestion: "Chưa có câu hỏi đang mở.",
+    noReview: "Chưa có nội dung đến hạn ôn tập.",
+    reviewsHelp: "Lịch ôn tập được lưu theo kết quả học của bạn.",
+    sourcesEmpty: "Chưa có nguồn học liệu cho lộ trình này.",
+    traceEmpty: "Trả lời câu hỏi để xem cách hệ thống điều chỉnh lộ trình.",
+    standard: "Model tiêu chuẩn",
+    advanced: "Model nâng cao",
+    quick: "Từ thư viện đã lập chỉ mục",
+    deep: "Tìm và đọc nguồn trên web",
+    creating: "Đang tạo lộ trình…",
+    noSample:
+      "Ứng dụng chỉ sử dụng dữ liệu từ dịch vụ học tập. Khi dịch vụ chưa sẵn sàng, hệ thống hiển thị lỗi và không thay bằng bài học mẫu.",
+    saved: "Tiến trình và kết quả trả lời được lưu tại cơ sở dữ liệu.",
+    sources: "Nguồn tham khảo",
+    resultCorrect: "Bạn đã trả lời đúng.",
+    resultWrong: "Chưa chính xác. Hãy xem gợi ý và tiếp tục luyện tập.",
+    noMore: "Chưa có câu hỏi tiếp theo phù hợp. Bạn có thể thử lại sau.",
+    sessionExpired:
+      "Phiên học đã hết hạn. Hãy tạo lộ trình mới để bắt đầu lại.",
+  },
+  theme: {
+    switchToLight: "Chuyển sang giao diện sáng",
+    switchToDark: "Chuyển sang giao diện tối",
+  },
   app: "NodeTrail",
   tagline: "Hiểu gốc rễ. Đi xa hơn.",
   workspace: "KHÔNG GIAN HỌC TẬP",
@@ -150,24 +212,6 @@ export const vi = {
   aboutTitle: "Một hành trình đang được xây dựng",
   aboutBody:
     "NodeTrail giúp người học hiểu nền tảng và chọn bước tiếp theo. Bản UI hiện tại dùng dữ liệu mẫu, chưa kết nối API, chưa lưu tiến độ và chưa phân tích tệp tải lên.",
-  concepts: [
-    "Biến & giá trị",
-    "Kiểu dữ liệu",
-    "Toán tử",
-    "Biểu thức Boolean",
-    "Điều kiện if / else",
-    "Vòng lặp",
-    "Hàm",
-  ],
-  conceptDescriptions: [
-    "Đặt tên và lưu trữ một giá trị để sử dụng trong chương trình.",
-    "Phân biệt số, chuỗi và các kiểu giá trị cơ bản.",
-    "Kết hợp các giá trị bằng phép toán.",
-    "Diễn đạt một mệnh đề bằng giá trị đúng hoặc sai.",
-    "Chọn một nhánh thực thi dựa trên điều kiện.",
-    "Lặp lại một khối lệnh theo điều kiện.",
-    "Nhóm các bước xử lý thành một đơn vị có thể tái sử dụng.",
-  ],
   graph: {
     fit: "Vừa khung",
     zoomIn: "Phóng to",
@@ -310,89 +354,4 @@ export const vi = {
     sampleContent:
       "Bài học mẫu biên soạn thủ công · chưa qua pipeline kiểm chứng",
   },
-  lessonFixtures: [
-    {
-      title: "Một cái tên cho một giá trị",
-      body: "Phép gán liên kết tên biến với một giá trị. Sau x = 5, biểu thức x dùng giá trị 5.",
-      question: "Sau x = 5 và y = x + 2, y bằng bao nhiêu?",
-      options: ["5", "7", "2", "x"],
-      hints: [
-        "Thay x bằng giá trị đang được gán trước khi tính y.",
-        "Hãy thực hiện phép cộng ở vế phải trước, rồi gán kết quả cho y.",
-      ],
-      section: "2.1 · Variables",
-    },
-    {
-      title: "Giá trị có kiểu của nó",
-      body: "Số nguyên, số thực và chuỗi là các kiểu khác nhau. Dấu nháy tạo một chuỗi, ngay cả khi bên trong là chữ số.",
-      question: "Giá trị '5' thuộc kiểu nào?",
-      options: ["Số nguyên", "Chuỗi", "Số thực", "Boolean"],
-      hints: [
-        "Quan sát dấu nháy bao quanh chữ số.",
-        "Phân biệt cách viết một số với một chuỗi chứa ký tự số.",
-      ],
-      section: "1 · Programming as a way of thinking",
-    },
-    {
-      title: "Đọc phép toán theo thứ tự",
-      body: "Biểu thức số học kết hợp các giá trị bằng toán tử. Trong một biểu thức, phép nhân được thực hiện trước phép cộng.",
-      question: "Biểu thức 2 + 3 * 4 có giá trị nào?",
-      options: ["20", "14", "24", "9"],
-      hints: [
-        "Tìm toán tử được ưu tiên thực hiện trước.",
-        "Tính phần nhân trước, sau đó mới kết hợp với phép cộng.",
-      ],
-      section: "2 · Variables and Statements",
-    },
-    {
-      title: "Nhìn một mệnh đề dưới dạng đúng hoặc sai",
-      body: "Một biểu thức so sánh có kết quả Boolean: True hoặc False. Toán tử == so sánh bằng; != so sánh khác.",
-      question: "Với x = 5, biểu thức nào có giá trị True?",
-      options: ["x < 3", "x == 5", "x > 10", "x != 5"],
-      hints: [
-        "Thay x bằng 5 rồi xét từng phép so sánh.",
-        "Bạn đang tìm mệnh đề đúng. Hãy diễn giải dấu == và != bằng lời.",
-      ],
-      section: "5.2 · Boolean expressions",
-    },
-    {
-      title: "Để chương trình chọn một nhánh",
-      body: "Câu lệnh if chạy khối lệnh của nó khi điều kiện đúng. Với if/else, nhánh else được chạy khi điều kiện của if sai.",
-      question:
-        "Với x = 2, điều kiện x > 3 là False. Trong if/else, nhánh nào chạy?",
-      options: [
-        "Cả hai nhánh",
-        "Nhánh else",
-        "Chỉ nhánh if",
-        "Không nhánh nào",
-      ],
-      hints: [
-        "Xác định điều kiện đúng hay sai trước khi chọn nhánh.",
-        "Else là trường hợp còn lại khi điều kiện if không đúng.",
-      ],
-      section: "5.4–5.5 · Conditional execution",
-    },
-    {
-      title: "Lặp lại một hành động",
-      body: "Vòng lặp for duyệt lần lượt một dãy giá trị. range(3) cung cấp ba giá trị 0, 1, 2.",
-      question: "Khối lệnh trong for i in range(3) chạy bao nhiêu lần?",
-      options: ["2", "3", "4", "Vô hạn"],
-      hints: [
-        "Liệt kê các giá trị mà range(3) tạo ra.",
-        "Đếm số giá trị thay vì nhìn vào giá trị cuối của dãy.",
-      ],
-      section: "7.1 · Loops and strings",
-    },
-    {
-      title: "Đóng gói các bước thành một hàm",
-      body: "Định nghĩa hàm đặt tên cho một chuỗi câu lệnh. Từ khóa def bắt đầu định nghĩa hàm; lời gọi hàm yêu cầu thực hiện các câu lệnh đó.",
-      question: "Từ khóa nào bắt đầu định nghĩa hàm trong Python?",
-      options: ["if", "def", "for", "import"],
-      hints: [
-        "Phân biệt khai báo một đơn vị xử lý với điều kiện và vòng lặp.",
-        "Quan sát cấu trúc định nghĩa hàm ở nguồn tham khảo, trước tên hàm.",
-      ],
-      section: "3.1 · Defining new functions",
-    },
-  ],
 };

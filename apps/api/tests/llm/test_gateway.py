@@ -12,6 +12,7 @@ from app.llm.gateway import (
     ProviderReply,
     Route,
     Routing,
+    generation_limits,
     load_routing,
     verification_scope,
 )
@@ -19,6 +20,25 @@ from app.llm.gateway import (
 
 class Answer(BaseModel):
     count: int
+
+
+def test_question_batch_has_budget_for_complete_structured_output() -> None:
+    class BatchProvider:
+        async def generate(self, route, system, messages, schema):
+            if generation_limits().max_tokens < 16384:
+                raise ProviderError("deepseek_incomplete_response")
+            return ProviderReply('{"count":6}', 100, 6000)
+
+    result = asyncio.run(
+        Gateway(routes(), {"vertex": BatchProvider()}).complete(
+            "items",
+            "free",
+            "Generate a cited question batch",
+            [{"role": "user", "content": "q"}],
+            Answer,
+        )
+    )
+    assert result == Answer(count=6)
 
 
 def test_unknown_generator_family_rejected() -> None:

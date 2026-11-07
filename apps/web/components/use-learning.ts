@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WebConfig } from "@/lib/config";
-import { createLearningClient, type DemoScenario } from "@/lib/data-client";
-import { graph as sampleGraph } from "@/lib/mock";
+import { createLearningClient } from "@/lib/data-client";
 import type {
   AttemptResult,
   DecisionTrace,
@@ -12,44 +11,65 @@ import type {
   ReviewCard,
   TopicRequest,
   TopicSnapshot,
-  UploadResult,
   Tier,
 } from "@/lib/contracts";
-import { DataError } from "@/lib/decode";
+import {
+  DataError,
+  type GraphReview,
+  type ReviewedConcept,
+} from "@/lib/decode";
 
-export interface LessonState {
-  item: PublicItem | null;
-  done: boolean;
-  traces: DecisionTrace[];
+interface Lesson {
+  item: PublicItem;
   answer: number | null;
+  answerCommitted: boolean;
   result: AttemptResult | null;
   hints: HintResult[];
+  reason: string;
+  concept: string | null;
 }
 const emptyGraph: KnowledgeGraph = { nodes: [], edges: [] };
+const sessionKey = "nodetrail-live-session";
+
 export function useLearning(config: WebConfig) {
   const client = useMemo(() => createLearningClient(config), [config]);
-  const [graph, setGraph] = useState(
-    config.mode === "mock" ? sampleGraph : emptyGraph,
-  );
-  const [selected, setSelected] = useState(
-    config.mode === "mock" ? "boolean-expressions" : "",
-  );
-  const [subject, setSubject] = useState(
-    config.mode === "mock" ? "python-sample" : "",
-  );
-  const [learner, setLearner] = useState(
-    config.mode === "mock" ? "demo-learner" : "",
-  );
+  const [graph, setGraph] = useState(emptyGraph);
+  const [concepts, setConcepts] = useState<ReviewedConcept[]>([]);
+  const [selected, setSelected] = useState("");
+  const [learner, setLearner] = useState("");
+  const [subject, setSubject] = useState("");
   const [topicId, setTopicId] = useState("");
   const [snapshot, setSnapshot] = useState<TopicSnapshot | null>(null);
-  const [upload, setUpload] = useState<UploadResult | null>(null);
-  const [lessons, setLessons] = useState<Record<string, LessonState>>({});
+  const [revision, setRevision] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [placementDone, setPlacementDone] = useState(false);
+  const [lesson, setLesson] = useState<Lesson | null>(null);
+  const [traces, setTraces] = useState<DecisionTrace[]>([]);
   const [reviews, setReviews] = useState<ReviewCard[]>([]);
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [errors, setErrors] = useState<Record<string, unknown>>({});
   const [pollVersion, setPollVersion] = useState(0);
   const epoch = useRef(0);
   const locks = useRef(new Set<string>());
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(sessionKey) || "null");
+      if (
+        saved &&
+        typeof saved.learner === "string" &&
+        typeof saved.topicId === "string" &&
+        /^[a-f0-9-]{36}$/i.test(saved.learner) &&
+        /^[a-f0-9-]{36}$/i.test(saved.topicId)
+      ) {
+        setLearner(saved.learner);
+        setTopicId(saved.topicId);
+      }
+    } catch {
+      /* Browser storage is optional. */
+    }
+  }, []);
+
   function error(key: string, value: unknown = null) {
     setErrors((all) => ({ ...all, [key]: value }));
   }
@@ -65,91 +85,104 @@ export function useLearning(config: WebConfig) {
     try {
       return await task();
     } catch (caught) {
-      if (version === epoch.current) error(key, caught);
+      if (version === epoch.current) {
+        error(key, caught);
+        if (caught instanceof DataError && caught.status === 409) {
+          setConfirmed(false);
+          setLesson(null);
+        }
+        if (caught instanceof DataError && caught.status === 401) {
+          setLearner("");
+          setTopicId("");
+          setConfirmed(false);
+          setLesson(null);
+          try {
+            localStorage.removeItem(sessionKey);
+          } catch {
+            /* Browser storage is optional. */
+          }
+        }
+      }
     } finally {
       locks.current.delete(key);
       setBusy((all) => ({ ...all, [key]: false }));
     }
   }
-  function configureDemo(scenario: DemoScenario) {
-    client.configureDemo(scenario);
-  }
-  async function uploadFile(file: File, consentAccepted: boolean) {
-    setUpload(null);
-    return run("upload", async () => {
-      const received = await client.upload(file, consentAccepted);
-      setUpload(received);
-      return received;
-    });
-  }
-  function clearUpload() {
-    setUpload(null);
-    error("upload");
-  }
+  const applyReview = useCallback((review: GraphReview) => {
+    setGraph(review.graph);
+    setConcepts(review.concepts);
+    setRevision(review.revision);
+    setConfirmed(review.confirmed);
+    setSelected((slug) =>
+      review.graph.nodes.some((n) => n.slug === slug)
+        ? slug
+        : review.graph.nodes[0]?.slug || "",
+    );
+  }, []);
   async function createTopic(input: TopicRequest) {
     return run("create", async () => {
       const id = learner || (await client.learner());
+      setLearner(id);
       const result = await client.createTopic(input);
       epoch.current++;
-      setLearner(id);
       setTopicId(result.topic_id);
+      setPollVersion((value) => value + 1);
       setSnapshot(null);
       setSubject("");
       setGraph(emptyGraph);
+      setConcepts([]);
       setSelected("");
-      setLessons({});
+      setRevision("");
+      setConfirmed(false);
+      setPlacementDone(false);
+      setLesson(null);
+      setTraces([]);
       setReviews([]);
       setErrors({});
+      try {
+        localStorage.setItem(
+          sessionKey,
+          JSON.stringify({ learner: id, topicId: result.topic_id }),
+        );
+      } catch {
+        /* Browser storage is optional. */
+      }
       return result;
     });
   }
   useEffect(() => {
-    if (!topicId) return;
+    if (!topicId || !learner) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
+    const started = Date.now();
     async function poll() {
       setBusy((all) => ({ ...all, research: true }));
       try {
+        if (Date.now() - started > 10 * 60 * 1000)
+          throw new DataError(
+            "failed",
+            undefined,
+            "Tác vụ chưa hoàn tất sau 10 phút. Dữ liệu được giữ; hãy kiểm tra và thử lại.",
+          );
         const next = await client.topic(topicId, controller.signal);
         if (controller.signal.aborted) return;
         setSnapshot(next);
         setErrors((all) => ({ ...all, research: null }));
-        if (next.subject_slug) setSubject(next.subject_slug);
-        if (next.status === "failed") {
-          setErrors((all) => ({ ...all, research: new DataError("failed") }));
-          return;
-        }
+        if (next.status === "failed") throw new DataError("failed");
         if (next.status !== "ready") {
-          timer = setTimeout(poll, config.mode === "mock" ? 650 : 2500);
+          timer = setTimeout(poll, 2500);
           return;
         }
-        if (!next.subject_slug) {
-          setErrors((all) => ({ ...all, research: new DataError("contract") }));
-          return;
-        }
-        setBusy((all) => ({ ...all, graph: true }));
-        try {
-          const result = await client.graph(
-            learner,
-            next.subject_slug,
-            controller.signal,
-          );
-          if (!controller.signal.aborted) {
-            setGraph(result);
-            setSelected(
-              result.nodes.find((n) => !n.mastered)?.slug ??
-                result.nodes[0]?.slug ??
-                "",
-            );
-            setErrors((all) => ({ ...all, graph: null }));
-          }
-        } catch (caught) {
-          if (!controller.signal.aborted)
-            setErrors((all) => ({ ...all, graph: caught }));
-        } finally {
-          if (!controller.signal.aborted)
-            setBusy((all) => ({ ...all, graph: false }));
-        }
+        if (!next.subject_slug || !next.graph_ready || !next.items_ready)
+          throw new DataError("contract");
+        const review = await client.review(
+          learner,
+          next.subject_slug,
+          controller.signal,
+        );
+        if (controller.signal.aborted) return;
+        setSubject(next.subject_slug);
+        applyReview(review);
       } catch (caught) {
         if (!controller.signal.aborted)
           setErrors((all) => ({ ...all, research: caught }));
@@ -163,145 +196,166 @@ export function useLearning(config: WebConfig) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [client, config.mode, learner, topicId, pollVersion]);
+  }, [client, learner, topicId, pollVersion, applyReview]);
 
   async function reloadGraph() {
-    if (!subject) {
-      error("graph", new DataError("configuration"));
-      return;
-    }
+    if (!subject || !learner) return;
     await run("graph", async () => {
       const version = epoch.current;
-      const result = await client.graph(learner, subject);
-      if (version !== epoch.current) return;
-      setGraph(result);
-      setSelected((slug) =>
-        result.nodes.some((node) => node.slug === slug)
-          ? slug
-          : (result.nodes[0]?.slug ?? ""),
-      );
+      const review = await client.review(learner, subject);
+      if (version === epoch.current) {
+        applyReview(review);
+        if (!review.confirmed) setLesson(null);
+      }
     });
   }
-  async function loadLesson(slug = selected, force = false) {
-    if (!slug || !subject || (!force && lessons[slug])) return;
+  async function confirmGraph() {
+    if (!subject || !revision || confirmed) return;
+    const version = epoch.current;
+    await run("confirm", async () => {
+      await client.confirm(subject, revision);
+      if (version === epoch.current) setConfirmed(true);
+    });
+    await reloadGraph();
+  }
+  async function loadLesson() {
     if (
-      locks.current.has(`attempt:${slug}`) ||
-      locks.current.has(`hint:${slug}`)
+      !confirmed ||
+      !learner ||
+      !subject ||
+      locks.current.has("attempt") ||
+      locks.current.has("hint")
     )
       return;
-    await run(`lesson:${slug}`, async () => {
+    await run("lesson", async () => {
       const version = epoch.current;
-      const placement = await client.placement(learner, subject, slug);
-      if (version !== epoch.current) return;
-      const actualSlug =
-        config.mode === "mock" ? slug : placement.trace.concept_slug;
-      if (!graph.nodes.some((n) => n.slug === actualSlug))
-        throw new DataError("contract");
-      setLessons((all) => ({
-        ...all,
-        [actualSlug]: {
-          item: placement.item,
-          done: placement.done,
-          traces: [placement.trace],
-          answer: null,
-          result: null,
-          hints: [],
-        },
-      }));
-      if (config.mode === "api") setSelected(actualSlug);
+      let done = placementDone;
+      if (!done) {
+        const step = await client.placement(learner, subject, selected);
+        if (version !== epoch.current) return;
+        setTraces((all) => [...all, step.trace]);
+        done = step.done;
+        setPlacementDone(done);
+        if (step.item) {
+          setLesson({
+            item: step.item,
+            answer: null,
+            answerCommitted: false,
+            result: null,
+            hints: [],
+            reason: step.trace.rule_vi,
+            concept: step.trace.concept_slug,
+          });
+          setSelected(step.trace.concept_slug);
+          return;
+        }
+      }
+      if (done) {
+        const next = await client.nextItem(learner, subject);
+        if (version === epoch.current)
+          setLesson({
+            item: next.item,
+            answer: null,
+            answerCommitted: false,
+            result: null,
+            hints: [],
+            reason: next.reason_vi,
+            concept: null,
+          });
+      }
     });
   }
-  function setAnswer(slug: string, answer: number | null) {
-    setLessons((all) =>
-      all[slug]
-        ? { ...all, [slug]: { ...all[slug], answer, result: null } }
-        : all,
+  function setAnswer(answer: number) {
+    setLesson((current) =>
+      current && !current.result && !current.answerCommitted
+        ? { ...current, answer }
+        : current,
     );
   }
   async function attempt() {
-    const slug = selected;
-    const lesson = lessons[slug];
-    if (!lesson?.item || lesson.answer === null || lesson.result) return;
-    await run(`attempt:${slug}`, async () => {
+    if (!lesson || lesson.answer === null || lesson.result) return;
+    const current = lesson;
+    setLesson((value) =>
+      value?.item === current.item
+        ? { ...value, answerCommitted: true }
+        : value,
+    );
+    await run("attempt", async () => {
       const version = epoch.current;
       const result = await client.attempt(
         learner,
-        lesson.item!,
-        slug,
-        lesson.answer!,
-        lesson.hints.length,
+        current.item,
+        current.concept || "",
+        current.answer!,
+        current.hints.length,
       );
       if (version !== epoch.current) return;
-      setLessons((all) => ({
-        ...all,
-        [slug]: {
-          ...all[slug],
-          result,
-          traces: [...all[slug].traces, ...result.traces],
-        },
-      }));
-      setGraph((current) => ({
-        ...current,
-        nodes: current.nodes.map((node) =>
-          node.slug === slug
-            ? { ...node, p_known: result.p_known, mastered: result.mastered }
-            : node,
-        ),
-      }));
-      if (result.correct) await loadReviews();
+      setLesson((value) =>
+        value?.item === current.item ? { ...value, result } : value,
+      );
+      setTraces((all) => [...all, ...result.traces]);
+      const graded = result.traces
+        .filter((trace) => trace.kind === "bkt_update")
+        .at(-1)?.concept_slug;
+      if (graded) setSelected(graded);
+      await reloadGraph();
     });
   }
   async function hint(tier: Tier) {
-    const slug = selected;
-    const lesson = lessons[slug];
-    if (!lesson?.item) return;
-    await run(`hint:${slug}`, async () => {
+    if (!lesson || lesson.hints.length >= 3) return;
+    const current = lesson;
+    await run("hint", async () => {
       const version = epoch.current;
-      const result = await client.hint(
+      const response = await client.hint(
         learner,
-        lesson.item!,
-        slug,
-        lesson.hints.length,
+        current.item,
+        current.concept || "",
+        current.hints.length,
         tier,
       );
-      if (!result.hint_vi.trim()) throw new DataError("failed");
+      if (!response.hint_vi.trim() || !response.citations.length)
+        throw new DataError("contract");
       if (version === epoch.current)
-        setLessons((all) => ({
-          ...all,
-          [slug]: { ...all[slug], hints: [...all[slug].hints, result] },
-        }));
+        setLesson((value) =>
+          value?.item === current.item
+            ? { ...value, hints: [...value.hints, response] }
+            : value,
+        );
     });
   }
   async function loadReviews() {
+    if (!learner) return;
     await run("reviews", async () => {
       const version = epoch.current;
-      const result = await client.reviews(learner);
-      if (version === epoch.current) setReviews(result);
+      const cards = await client.reviews(learner);
+      if (version === epoch.current) setReviews(cards);
     });
   }
   return {
     graph,
+    concepts,
     selected,
     setSelected,
     subject,
     topicId,
     snapshot,
-    upload,
-    lessons,
+    confirmed,
+    placementDone,
+    lesson,
+    traces,
     reviews,
     busy,
     errors,
-    configureDemo,
-    uploadFile,
-    clearUpload,
     createTopic,
+    upload: (file: File, consent: boolean, goal?: string) =>
+      run("upload", () => client.upload(file, consent, undefined, goal)),
     reloadGraph,
+    confirmGraph,
     loadLesson,
     setAnswer,
     attempt,
     hint,
     loadReviews,
-    retryResearch: () => setPollVersion((v) => v + 1),
-    error,
+    retryResearch: () => setPollVersion((n) => n + 1),
   };
 }

@@ -1,6 +1,7 @@
 """Worker-callable orchestration. P2 owns claiming jobs; P1/P4 own learning content."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -15,6 +16,8 @@ from app.research.reader import SourceError
 from app.schemas import Citation, KnowledgeGraph
 from app.schemas import Item as ContractItem
 from app.uploads.reader import Document
+
+logger = logging.getLogger(__name__)
 
 
 class PreparedChunk(BaseModel):
@@ -183,9 +186,12 @@ class TopicPipeline:
         subject_slug: str | None = None
         dropped = 0
         summaries: tuple[SourceSummary, ...] = ()
+        last_progress = 0
 
         async def progress(status: Progress) -> None:
+            nonlocal last_progress
             await on_progress(replace(status, sources=summaries))
+            last_progress = status.progress
 
         async def trail(event: dict[str, str]) -> None:
             await on_event({**event, "at": datetime.now(UTC).isoformat()})
@@ -207,18 +213,40 @@ class TopicPipeline:
                     else "Học theo tài liệu đã tải lên"
                 )
                 await progress(Progress("researching", "Đang chọn nguồn học…", 5))
-                if request.mode == "deep":
-                    sources = list(await self.research(goal, trail))
+                upload_sufficient = upload is not None
+                research_goal = goal
+                if upload is not None and hasattr(self.ports, "assess_upload"):
+                    coverage = await self.ports.assess_upload(goal, upload)
+                    upload_sufficient = coverage.sufficient_for_first_lesson
+                    await trail(
+                        {"kind": "read", "text_vi": coverage.reason_vi, "url": upload.source_uri}
+                    )
+                    if not upload_sufficient and coverage.missing_topics:
+                        research_goal = goal + "\n" + "; ".join(coverage.missing_topics)
+                if upload_sufficient:
+                    sources = []
+                elif request.mode == "deep":
+                    sources = list(await self.research(research_goal, trail))
                     if len({s.url for s in sources}) < 3 or len({s.publisher for s in sources}) < 2:
                         raise SourceError("Nghiên cứu chưa đủ 3 nguồn từ 2 nhà xuất bản.")
                 else:
                     # An upload is sufficient; Free mode never invokes web search.
-                    sources = [] if upload else list(await self.ports.quick_sources(goal))
+                    sources = list(await self.ports.quick_sources(research_goal))
                 if not sources and upload is None:
                     raise SourceError("Thư viện chưa có nguồn phù hợp; hãy tải tài liệu lên.")
                 summaries = tuple(
                     SourceSummary(s.title, s.publisher, s.url, s.license) for s in sources
                 )
+                if upload:
+                    summaries = (
+                        SourceSummary(
+                            "Tài liệu người học",
+                            "Người cung cấp",
+                            upload.source_uri,
+                            "User-provided with model-use permission",
+                        ),
+                        *summaries,
+                    )
                 await progress(Progress("indexing", "Đang chuẩn bị nguồn trích dẫn…", 25))
                 chunks = list(await self.ports.index(sources, upload))
                 if not chunks or len({c.id for c in chunks}) != len(chunks):
@@ -238,13 +266,13 @@ class TopicPipeline:
                 ):
                     raise SourceError("Sơ đồ tham chiếu nguồn ngoài nội dung đã truy xuất.")
                 await self.ports.save_graph(graph)
-                graph_ready, subject_slug = True, graph.subject_slug
+                subject_slug = graph.subject_slug
                 await progress(
                     Progress(
                         "graph",
-                        "Đã có sơ đồ kiến thức.",
+                        "Đang kiểm chứng câu hỏi cho bản đồ nháp.",
                         60,
-                        True,
+                        False,
                         False,
                         subject_slug,
                     )
@@ -282,7 +310,7 @@ class TopicPipeline:
                 if len(verified) < self.first_items:
                     raise SourceError("Chưa đủ câu hỏi đã kiểm chứng để bắt đầu đánh giá.")
                 await self.ports.save_items(subject_slug, verified)
-                items_ready = True
+                graph_ready = items_ready = True
                 await progress(
                     Progress(
                         "items",
@@ -312,8 +340,18 @@ class TopicPipeline:
             # P2 owns cancellation/reclaim status. Do not turn worker shutdown into job failure.
             raise
         except Exception as exc:
+            if not isinstance(exc, (SourceError, TimeoutError)):
+                logger.exception("Topic pipeline stage failed", extra={"progress": last_progress})
+            from app.content.gateway import GatewayError as ContentGatewayError
+            from app.llm.gateway import GatewayError as ModelGatewayError
+            from app.rag.embed import EmbeddingError
+
             message = (
-                "Đã hết thời gian xây lộ trình; hãy thử lại."
+                "Dịch vụ embedding chưa xử lý được tài liệu; hãy kiểm tra trạng thái model."
+                if isinstance(exc, EmbeddingError)
+                else "Dịch vụ AI chưa tạo được nội dung hợp lệ; hãy thử lại."
+                if isinstance(exc, (ModelGatewayError, ContentGatewayError))
+                else "Đã hết thời gian xây lộ trình; hãy thử lại."
                 if isinstance(exc, TimeoutError)
                 else str(exc)
                 if isinstance(exc, SourceError)
@@ -325,7 +363,7 @@ class TopicPipeline:
                         Progress(
                             "failed",
                             message,
-                            0,
+                            last_progress,
                             graph_ready,
                             items_ready,
                             subject_slug,

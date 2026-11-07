@@ -1,0 +1,66 @@
+{
+  "scope": "Synthetic route smoke, not canonical topic/H8 acceptance",
+  "status": "failed",
+  "error_type": "GatewayError",
+  "attempts": [
+    {
+      "task": "items",
+      "tier": "free",
+      "route": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "family": "deepseek"
+      },
+      "number": 1,
+      "latency_ms": 1202.999999979511,
+      "status": "success",
+      "input_tokens": 148,
+      "output_tokens": 18,
+      "thoughts_tokens": 0,
+      "error_code": null
+    },
+    {
+      "task": "verify",
+      "tier": "free",
+      "route": {
+        "provider": "gemini",
+        "model": "gemini-3.8-flash",
+        "family": "gemini"
+      },
+      "number": 1,
+      "latency_ms": 30344.00000004098,
+      "status": "provider_error",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thoughts_tokens": 0,
+      "error_code": "transport_or_json_error"
+    },
+    {
+      "task": "verify",
+      "tier": "free",
+      "route": {
+        "provider": "gemini",
+        "model": "gemini-3.8-flash",
+        "family": "gemini"
+      },
+      "number": 2,
+      "latency_ms": 5047.000000020489,
+      "status": "provider_error",
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "thoughts_tokens": 0,
+      "error_code": "http_503"
+    }
+  ],
+  "successful_calls": [
+    {
+      "task": "items",
+      "route": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "family": "deepseek"
+      },
+      "latency_ms": 1202.999999979511
+    }
+  ]
+}

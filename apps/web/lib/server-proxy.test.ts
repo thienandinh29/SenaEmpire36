@@ -14,6 +14,45 @@ function configure() {
 }
 const context = (path: string[]) => ({ params: Promise.resolve({ path }) });
 describe("same-origin API proxy", () => {
+  it("rejects upstream fixture responses instead of displaying them as live data", async () => {
+    configure();
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response('{"status":"ready"}', {
+            headers: { "X-Data-Fixture": "true" },
+          }),
+        ),
+    );
+    const response = await GET(
+      new NextRequest("http://localhost:3000/api/backend/topics/test"),
+      context(["topics", "test"]),
+    );
+    expect(response.status).toBe(503);
+  });
+  it("forwards the practice and health endpoints through the real upstream", async () => {
+    configure();
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(new Response("{}")));
+    vi.stubGlobal("fetch", fetchMock);
+    for (const path of ["next-item", "health"])
+      expect(
+        (
+          await GET(
+            new NextRequest(
+              `http://localhost:3000/api/backend/${path}?learner_id=l&subject=s`,
+            ),
+            context([path]),
+          )
+        ).status,
+      ).toBe(200);
+    expect(fetchMock.mock.calls[0][0].toString()).toBe(
+      "https://backend.example/v1/next-item?learner_id=l&subject=s",
+    );
+  });
   it.each([null, "other", "demo-v1"])(
     "preserves only explicit upload consent %s",
     async (consent) => {
@@ -43,7 +82,7 @@ describe("same-origin API proxy", () => {
     },
   );
   it("fails closed with missing configuration and rejects noncontract routes", async () => {
-    vi.stubEnv("NODETRAIL_DATA_MODE", "mock");
+    vi.stubEnv("NODETRAIL_API_URL", "");
     expect(
       (
         await GET(
@@ -113,5 +152,79 @@ describe("same-origin API proxy", () => {
     expect(response.headers.get("X-Test-Api-Key")).toBeNull();
     expect(response.headers.get("Set-Cookie")).toBeNull();
     expect(await response.json()).toEqual({ nodes: [], edges: [] });
+  });
+});
+
+describe("graph confirmation session proxy", () => {
+  const token = "a".repeat(43);
+  it("issues only the learner cookie at the public origin", async () => {
+    configure();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("{}", {
+          headers: {
+            "Set-Cookie": `nodetrail_learner=${token}; Path=/; Domain=backend.example; HttpOnly`,
+          },
+        }),
+      ),
+    );
+    const response = await POST(
+      new NextRequest("https://demo.example/api/backend/learners", {
+        method: "POST",
+        headers: { origin: "https://demo.example" },
+        body: "{}",
+      }),
+      context(["learners"]),
+    );
+    expect(response.headers.get("set-cookie")).toBe(
+      `nodetrail_learner=${token}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax; Secure`,
+    );
+  });
+  it.each(["review", "confirm"])(
+    "forwards only the session for graph %s",
+    async (action) => {
+      configure();
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response("{}", {
+          headers: { "Set-Cookie": "unrelated=secret" },
+        }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const url = `http://localhost:3000/api/backend/graph/${action}?subject=python`;
+      const headers = {
+        origin: "http://localhost:3000",
+        cookie: `other=secret; nodetrail_learner=${token}`,
+      };
+      const response =
+        action === "review"
+          ? await GET(
+              new NextRequest(url, { headers }),
+              context(["graph", action]),
+            )
+          : await POST(
+              new NextRequest(url, { method: "POST", headers, body: "{}" }),
+              context(["graph", action]),
+            );
+      expect(response.status).toBe(200);
+      expect(
+        new Headers(fetchMock.mock.calls[0][1].headers).get("cookie"),
+      ).toBe(`nodetrail_learner=${token}`);
+      expect(response.headers.get("set-cookie")).toBeNull();
+    },
+  );
+  it("drops malformed session cookies", async () => {
+    configure();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    await GET(
+      new NextRequest("http://localhost:3000/api/backend/graph/review", {
+        headers: { cookie: "nodetrail_learner=forged; other=secret" },
+      }),
+      context(["graph", "review"]),
+    );
+    expect(
+      new Headers(fetchMock.mock.calls[0][1].headers).get("cookie"),
+    ).toBeNull();
   });
 });

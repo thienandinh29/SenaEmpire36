@@ -10,14 +10,15 @@ import type {
   Tier,
   PublicItem,
 } from "./contracts";
+import type { GraphReview } from "./decode";
 import type { WebConfig } from "./config";
 import { vi as t } from "@/messages/vi";
-import { graph as sampleGraph } from "./mock";
-import { fixtureTrace, getLessonFixture } from "./fixtures";
 import {
   DataError,
   parseAttempt,
   parseGraph,
+  parseGraphReview,
+  parseItem,
   parseHint,
   parsePlacement,
   parseReviews,
@@ -27,22 +28,34 @@ import {
   string,
 } from "./decode";
 
-export type DemoScenario = "normal" | "fail-once" | "empty";
-export type DemoOperation =
-  "topic" | "upload" | "graph" | "lesson" | "attempt" | "hint" | "reviews";
 export interface LearningClient {
-  configureDemo(scenario: DemoScenario): void;
   learner(signal?: AbortSignal): Promise<string>;
   upload(
     file: File,
     consentAccepted: boolean,
     signal?: AbortSignal,
+    goal?: string,
   ): Promise<UploadResult>;
   createTopic(
     input: TopicRequest,
     signal?: AbortSignal,
   ): Promise<{ topic_id: string; cached: boolean }>;
   topic(id: string, signal?: AbortSignal): Promise<TopicSnapshot>;
+  review(
+    learner: string,
+    subject: string,
+    signal?: AbortSignal,
+  ): Promise<GraphReview>;
+  confirm(
+    subject: string,
+    revision: string,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  nextItem(
+    learner: string,
+    subject: string,
+    signal?: AbortSignal,
+  ): Promise<{ item: PublicItem; reason_vi: string }>;
   graph(
     learner: string,
     subject: string,
@@ -73,171 +86,7 @@ export interface LearningClient {
   reviews(learner: string, signal?: AbortSignal): Promise<ReviewCard[]>;
 }
 
-async function wait(signal?: AbortSignal) {
-  await new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new DOMException("Aborted", "AbortError"));
-      return;
-    }
-    const abort = () => {
-      clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", abort);
-      resolve();
-    }, 400);
-    signal?.addEventListener("abort", abort, { once: true });
-  });
-}
 export function createLearningClient(config: WebConfig): LearningClient {
-  if (config.mode === "api") return apiClient(config);
-  let scenario: DemoScenario = "normal";
-  const failed = new Set<DemoOperation>();
-  let graph = structuredClone(sampleGraph);
-  const jobs = new Map<string, number>();
-  const reviews = new Set<string>();
-  let topicSequence = 0;
-  async function operation(kind: DemoOperation, signal?: AbortSignal) {
-    await wait(signal);
-    if (scenario === "fail-once" && !failed.has(kind)) {
-      failed.add(kind);
-      throw new DataError("network");
-    }
-  }
-  return {
-    configureDemo(next) {
-      scenario = next;
-      failed.clear();
-    },
-    async learner(signal) {
-      await wait(signal);
-      return "demo-learner";
-    },
-    async upload(_file, consentAccepted, signal) {
-      if (!consentAccepted) throw new DataError("configuration");
-      await operation("upload", signal);
-      return { upload_id: "demo-upload", pages: 0, text_ok: true };
-    },
-    async createTopic(_input, signal) {
-      await operation("topic", signal);
-      const topic_id = `demo-topic-${++topicSequence}`;
-      jobs.set(topic_id, 0);
-      graph = structuredClone(sampleGraph);
-      reviews.clear();
-      return { topic_id, cached: false };
-    },
-    async topic(id, signal) {
-      await operation("topic", signal);
-      const current = jobs.get(id);
-      if (current === undefined) throw new DataError("failed");
-      const step = Math.min(current, 4);
-      jobs.set(id, step + 1);
-      return {
-        status:
-          step === 4
-            ? "ready"
-            : step === 0
-              ? "queued"
-              : step === 3
-                ? "graph"
-                : "researching",
-        step_vi: step === 4 ? t.flow.researchDone : t.researchSteps[step],
-        progress: step / 4,
-        subject_slug: "python-sample",
-        graph_ready: step >= 3,
-        items_ready: step === 4,
-        sources:
-          step > 0 && scenario !== "empty"
-            ? [
-                {
-                  title: t.sourceBook,
-                  publisher: "Green Tea Press",
-                  url: "https://allendowney.github.io/ThinkPython/",
-                  license: "CC BY-NC-SA 4.0",
-                },
-              ]
-            : [],
-        trail:
-          scenario === "empty"
-            ? []
-            : t.researchSteps.slice(0, step).map((text_vi, index) => ({
-                at: new Date().toISOString(),
-                kind: index === 0 ? "search" : "read",
-                text_vi,
-              })),
-      };
-    },
-    async graph(_learner, _subject, signal) {
-      await operation("graph", signal);
-      return scenario === "empty"
-        ? { nodes: [], edges: [] }
-        : structuredClone(graph);
-    },
-    async placement(_learner, _subject, slug, signal) {
-      await operation("lesson", signal);
-      const lesson = getLessonFixture(slug);
-      const node = graph.nodes.find((n) => n.slug === slug);
-      return {
-        item: scenario === "empty" ? null : (lesson?.item ?? null),
-        done: scenario === "empty" || !lesson,
-        trace: fixtureTrace(slug, node?.p_known ?? 0),
-      };
-    },
-    async attempt(_learner, item, slug, answer, _hints, signal) {
-      await operation("attempt", signal);
-      if (
-        item.id !== `sample-${slug}` ||
-        !Number.isInteger(answer) ||
-        answer < 0 ||
-        answer >= item.options.length
-      )
-        throw new DataError("contract");
-      const node = graph.nodes.find((n) => n.slug === slug);
-      if (!node) throw new DataError("contract");
-      const correct = answer === 1;
-      const trace = fixtureTrace(slug, node.p_known, correct);
-      if (trace.posterior === null) throw new DataError("contract");
-      node.p_known = trace.posterior;
-      node.mastered = node.p_known >= 0.85;
-      if (correct) reviews.add(slug);
-      const prerequisite = graph.edges.find((edge) => edge.to === slug)?.from;
-      return {
-        correct,
-        p_known: node.p_known,
-        mastered: node.mastered,
-        traces: [trace],
-        ...(!correct && prerequisite
-          ? {
-              remediation: {
-                concept_slug: prerequisite,
-                reason_vi: t.flow.mockRemediation,
-              },
-            }
-          : {}),
-      };
-    },
-    async hint(_learner, _item, slug, level, _tier, signal) {
-      await operation("hint", signal);
-      const lesson = getLessonFixture(slug);
-      if (!lesson) throw new DataError("unsupported");
-      return {
-        hint_vi:
-          scenario === "empty" ? "" : (lesson.hints[level] ?? t.hintLimit),
-        citations: [lesson.citation],
-      };
-    },
-    async reviews(_learner, signal) {
-      await operation("reviews", signal);
-      return [...reviews].map((concept_slug) => ({
-        concept_slug,
-        due_at: new Date().toISOString(),
-      }));
-    },
-  };
-}
-
-function apiClient(config: WebConfig): LearningClient {
   const attemptIds = new WeakMap<PublicItem, string>();
   async function request(
     path: string,
@@ -250,11 +99,25 @@ function apiClient(config: WebConfig): LearningClient {
         cache: "no-store",
         signal: init.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
       });
-      if (!response.ok)
+      if (!response.ok) {
+        let detail: string | undefined;
+        try {
+          const body = await response.json();
+          detail =
+            typeof body.detail === "string"
+              ? body.detail
+              : typeof body.detail?.message === "string"
+                ? body.detail.message
+                : undefined;
+        } catch {
+          /* Some proxy failures have no JSON body. */
+        }
         throw new DataError(
           response.status === 503 ? "configuration" : "failed",
           response.status,
+          detail,
         );
+      }
       return await response.json();
     } catch (error) {
       if (
@@ -273,25 +136,27 @@ function apiClient(config: WebConfig): LearningClient {
       signal,
     });
   return {
-    configureDemo() {},
     async learner(signal) {
       return string(
         record(await post("learners", { display_name: t.learner }, signal))
           .learner_id,
       );
     },
-    async upload(file, consentAccepted, signal) {
+    async upload(file, consentAccepted, signal, goal) {
       if (!consentAccepted || !config.uploadField || !config.uploadMaxBytes)
         throw new DataError("configuration");
       const form = new FormData();
       form.append(config.uploadField, file);
       return parseUpload(
-        await request("uploads", {
-          method: "POST",
-          body: form,
-          headers: { "X-Demo-Upload-Consent": "demo-v1" },
-          signal,
-        }),
+        await request(
+          "uploads" + (goal ? `?goal=${encodeURIComponent(goal)}` : ""),
+          {
+            method: "POST",
+            body: form,
+            headers: { "X-Demo-Upload-Consent": "demo-v1" },
+            signal,
+          },
+        ),
       );
     },
     async createTopic(input, signal) {
@@ -310,6 +175,37 @@ function apiClient(config: WebConfig): LearningClient {
           signal,
         }),
       );
+    },
+    async review(learner_id, subject, signal) {
+      const raw = await request(
+        `graph/review?${new URLSearchParams({ subject })}`,
+        { signal },
+      );
+      const graph = await this.graph(learner_id, subject, signal);
+      return parseGraphReview(raw, graph, learner_id, subject);
+    },
+    async confirm(subject, graph_revision, signal) {
+      const value = record(
+        await post("graph/confirm", { subject, graph_revision }, signal),
+      );
+      if (
+        value.confirmed !== true ||
+        value.subject !== subject ||
+        value.graph_revision !== graph_revision
+      )
+        throw new DataError("contract");
+    },
+    async nextItem(learner_id, subject, signal) {
+      const value = record(
+        await request(
+          `next-item?${new URLSearchParams({ learner_id, subject })}`,
+          { signal },
+        ),
+      );
+      return {
+        item: parseItem(value.item),
+        reason_vi: string(value.reason_vi),
+      };
     },
     async placement(learner_id, subject, _slug, signal) {
       return parsePlacement(

@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.jobs.queue import claim, enqueue, snapshot
+from app.jobs.queue import claim, enqueue, finish, snapshot
 from app.jobs.worker import run_once
 from app.main import create_app
 from app.services.learning import save_attempt, save_mastery, save_review
@@ -134,10 +134,16 @@ def test_sse_heartbeat_and_progress(database_url: str, monkeypatch: pytest.Monke
         topic_id = enqueue(conn, "Heartbeat fixture", "free", fixture=True)
 
     def complete() -> None:
-        run_once(database_url, allow_fixture=True)
+        with psycopg.connect(database_url) as conn:
+            conn.execute("update topic_jobs set status='researching' where id=%s", (topic_id,))
+            finish(conn, topic_id, fixture=True)
 
     with TestClient(
-        create_app(Settings(database_url=database_url, allow_unauthenticated_local_dev=True))
+        create_app(
+            Settings(
+                _env_file=None, database_url=database_url, allow_unauthenticated_local_dev=True
+            )
+        )
     ) as client:
         timer = Timer(0.2, complete)
         timer.start()

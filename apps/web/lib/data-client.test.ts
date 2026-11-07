@@ -1,120 +1,160 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLearningClient } from "./data-client";
 import type { WebConfig } from "./config";
-import { parseGraph, parseTrace, parseItem } from "./decode";
+import {
+  parseGraph,
+  parseTrace,
+  parseItem,
+  parseHint,
+  parseGraphReview,
+} from "./decode";
+import { getWebConfig } from "./config";
 import { safeSourceUrl, validateFile } from "./safety";
 
 const config: WebConfig = {
-  mode: "mock",
+  mode: "api",
   uploadField: null,
   uploadMaxBytes: 10 * 1024 * 1024,
   answerEncoding: null,
   hintFirstLevel: null,
 };
-async function finish<T>(promise: Promise<T>) {
-  await vi.runAllTimersAsync();
-  return promise;
-}
-beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
-  vi.useRealTimers();
   vi.unstubAllGlobals();
-});
-
-describe("quick demo learning journey", () => {
-  it("supports upload, research, a selected-node item, remediation, hints, mastery and a review", async () => {
-    const client = createLearningClient(config);
-    const received = await finish(
-      client.upload(new File(["demo"], "syllabus.pdf"), true),
-    );
-    const created = await finish(
-      client.createTopic({
-        upload_id: received.upload_id,
-        goal_vi: "Python",
-        mode: "quick",
-        tier: "free",
-      }),
-    );
-    let snapshot = await finish(client.topic(created.topic_id));
-    expect(snapshot.status).toBe("queued");
-    for (let i = 0; i < 4; i++)
-      snapshot = await finish(client.topic(created.topic_id));
-    expect(snapshot.status).toBe("ready");
-    expect(snapshot.sources.length).toBeGreaterThan(0);
-    const graph = await finish(
-      client.graph("demo-learner", snapshot.subject_slug!),
-    );
-    for (const node of graph.nodes) {
-      const placement = await finish(
-        client.placement("demo-learner", snapshot.subject_slug!, node.slug),
-      );
-      expect(placement.item?.id).toBe(`sample-${node.slug}`);
-      expect(placement.trace.concept_slug).toBe(node.slug);
-    }
-    const slug = "conditionals";
-    const placement = await finish(
-      client.placement("demo-learner", snapshot.subject_slug!, slug),
-    );
-    const wrong = await finish(
-      client.attempt("demo-learner", placement.item!, slug, 0, 0),
-    );
-    expect(wrong.correct).toBe(false);
-    expect(
-      graph.edges.some(
-        (edge) =>
-          edge.from === wrong.remediation?.concept_slug && edge.to === slug,
-      ),
-    ).toBe(true);
-    const hint = await finish(
-      client.hint("demo-learner", placement.item!, slug, 0, "free"),
-    );
-    expect(hint.hint_vi).toBeTruthy();
-    expect(
-      hint.citations.every((citation) => safeSourceUrl(citation.url)),
-    ).toBe(true);
-    const correct = await finish(
-      client.attempt("demo-learner", placement.item!, slug, 1, 1),
-    );
-    expect(correct.p_known).toBeGreaterThan(wrong.p_known);
-    const refreshed = await finish(
-      client.graph("demo-learner", snapshot.subject_slug!),
-    );
-    expect(refreshed.nodes.find((node) => node.slug === slug)?.p_known).toBe(
-      correct.p_known,
-    );
-    expect(await finish(client.reviews("demo-learner"))).toEqual([
-      expect.objectContaining({ concept_slug: slug }),
-    ]);
-  });
-  it("retries a failed request without advancing a research job or inventing a result", async () => {
-    const client = createLearningClient(config);
-    const { topic_id } = await finish(
-      client.createTopic({ mode: "quick", tier: "free", goal_vi: "Python" }),
-    );
-    client.configureDemo("fail-once");
-    const failed = expect(client.topic(topic_id)).rejects.toMatchObject({
-      code: "network",
-    });
-    await vi.runAllTimersAsync();
-    await failed;
-    expect((await finish(client.topic(topic_id))).status).toBe("queued");
-    client.configureDemo("empty");
-    expect(await finish(client.graph("demo-learner", "python-sample"))).toEqual(
-      { nodes: [], edges: [] },
-    );
-  });
-  it("aborts pending mock operations", async () => {
-    const controller = new AbortController();
-    const client = createLearningClient(config);
-    const pending = expect(
-      client.topic("irrelevant", controller.signal),
-    ).rejects.toMatchObject({ name: "AbortError" });
-    controller.abort();
-    await pending;
-  });
+  vi.unstubAllEnvs();
 });
 
 describe("live data boundary", () => {
+  const node = {
+    slug: "cells",
+    name_vi: "Tế bào",
+    p_known: 0.2,
+    mastered: false,
+  };
+  const review = {
+    learner_id: "learner",
+    subject: "biology",
+    graph_revision: "a".repeat(64),
+    confirmed: false,
+    graph: {
+      concepts: [
+        {
+          slug: "cells",
+          name_vi: "Tế bào",
+          description_vi: "Nguồn kiến thức",
+          sources: ["https://example.com/cells"],
+        },
+      ],
+      edges: [],
+    },
+  };
+  it("always uses API mode, including when old configuration requests mock mode", () => {
+    vi.stubEnv("NODETRAIL_DATA_MODE", "mock");
+    expect(getWebConfig().mode).toBe("api");
+  });
+  it("loads the reviewed graph and server mastery without automatically confirming", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(review)))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ nodes: [node], edges: [] })),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await createLearningClient(config).review(
+      "learner",
+      "biology",
+    );
+    expect(result.revision).toBe(review.graph_revision);
+    expect(result.confirmed).toBe(false);
+    expect(result.concepts[0].description_vi).toBe("Nguồn kiến thức");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/backend/graph/review?subject=biology",
+      "/api/backend/graph?learner_id=learner&subject=biology",
+    ]);
+    expect(
+      fetchMock.mock.calls.every(([, init]) => init.method !== "POST"),
+    ).toBe(true);
+  });
+  it("rejects a revision paired with another learner, subject or topology", () => {
+    const graph = { nodes: [node], edges: [] };
+    expect(() => parseGraphReview(review, graph, "other", "biology")).toThrow(
+      "contract",
+    );
+    expect(() => parseGraphReview(review, graph, "learner", "other")).toThrow(
+      "contract",
+    );
+    expect(() =>
+      parseGraphReview(
+        { ...review, graph_revision: "invalid" },
+        graph,
+        "learner",
+        "biology",
+      ),
+    ).toThrow("contract");
+    expect(() =>
+      parseGraphReview(
+        review,
+        { nodes: [{ ...node, slug: "changed" }], edges: [] },
+        "learner",
+        "biology",
+      ),
+    ).toThrow("failed");
+  });
+  it("posts explicit confirmation and preserves stale-revision errors", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      createLearningClient(config).confirm("biology", review.graph_revision),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      subject: "biology",
+      graph_revision: review.graph_revision,
+    });
+  });
+  it("fetches the real next-item and does not invent one when unavailable", async () => {
+    const item = {
+      id: "verified-item",
+      kind: "mcq",
+      prompt_vi: "Câu hỏi đã kiểm chứng",
+      options: [{ label: "A" }, { label: "B" }],
+      answer: 1,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ item, reason_vi: "Do bộ máy học tập chọn" }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createLearningClient(config);
+    const next = await client.nextItem("learner", "biology");
+    expect(next.item.id).toBe(item.id);
+    expect(next.item).not.toHaveProperty("answer");
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/backend/next-item?learner_id=learner&subject=biology",
+    );
+    await expect(client.nextItem("learner", "biology")).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+  it("accepts real tutor citations with optional sections and PDF pages", () => {
+    expect(
+      parseHint({
+        hint_vi: "Gợi ý có nguồn",
+        citations: [
+          {
+            title: "Giáo trình",
+            section: null,
+            url: "https://example.com/book.pdf",
+            page: 8,
+          },
+        ],
+      }).citations[0],
+    ).toMatchObject({ page: 8 });
+  });
   it("keeps an attempt key on network retry and rotates it only after success", async () => {
     const result = { correct: true, p_known: 0.6, mastered: false, traces: [] };
     const fetchMock = vi

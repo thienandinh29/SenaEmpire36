@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import PurePosixPath
 from typing import Literal, Protocol
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import Field, HttpUrl, ValidationError, model_validator
 from starlette.datastructures import UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
@@ -123,9 +123,13 @@ def create_router(
         return backend
 
     @router.post("/topics", response_model=TopicResponse)
-    async def topics_route(request: TopicInput) -> TopicResponse:
+    async def topics_route(request: TopicInput, http_request: Request) -> TopicResponse:
         if request.upload_id and not demo_uploads_enabled:
             raise HTTPException(403, "Tải tài liệu lên chỉ dành cho bản demo.")
+        if getattr(http_request.app.state, "embedding_required", False):
+            from app.services.topic_readiness import require_embedding_ready
+
+            await require_embedding_ready(http_request.app.state.settings)
         return await service().enqueue(request)
 
     @router.post(
@@ -147,7 +151,9 @@ def create_router(
             },
         },
     )
-    async def uploads_route(request: Request) -> UploadResponse:
+    async def uploads_route(
+        request: Request, goal: str | None = Query(default=None, max_length=500)
+    ) -> UploadResponse:
         if not demo_uploads_enabled:
             raise HTTPException(403, "Tải tài liệu lên chỉ dành cho bản demo.")
         if request.headers.get("x-demo-upload-consent") != "demo-v1":
@@ -170,7 +176,7 @@ def create_router(
                 document = await link_reader(str(link.url))
             elif content_type == "multipart/form-data":
                 filename, body = await _upload_file(request)
-                document = await asyncio.to_thread(read_file, filename, body, "")
+                document = await asyncio.to_thread(read_file, filename, body, "", query=goal)
             else:
                 raise HTTPException(415, "Dùng JSON chứa url hoặc multipart chứa file.")
         except MultiPartException:

@@ -1,11 +1,33 @@
+import asyncio
 from io import BytesIO
 from zipfile import ZipFile
 
 import pytest
 from pypdf import PdfWriter
 
-from app.research.reader import SourceError
-from app.uploads.reader import MAX_BYTES, read_file
+from app.research.reader import Download, SourceError
+from app.uploads.reader import MAX_BYTES, read_file, read_link
+
+
+def test_link_keeps_license_evidence_outside_clean_lesson() -> None:
+    class Reader:
+        async def fetch(self, url):
+            return Download(
+                url,
+                (
+                    b'<header>Catalog navigation</header><section class="mt-content-container">'
+                    b"<p>Python variables hold values. "
+                    b"Assign a value using the equals operator.</p>"
+                    b"</section><footer>CC BY-SA 4.0</footer>"
+                ),
+                "text/html",
+            )
+
+    document = asyncio.run(read_link("https://example.com/lesson", Reader()))
+    assert document.text_ok
+    assert "Catalog navigation" not in document.pages[0].text
+    assert "CC BY-SA 4.0" in document.license_text
+    assert document.source_uri == "https://example.com/lesson"
 
 
 def docx(xml: str) -> bytes:
@@ -50,6 +72,33 @@ def test_pdf_page_limit() -> None:
     writer.write(buffer)
     with pytest.raises(SourceError, match="200 trang"):
         read_file("big.pdf", buffer.getvalue(), "storage/big.pdf")
+
+
+def test_long_pdf_selects_relevant_pages_without_renumbering(monkeypatch) -> None:
+    class TextPage:
+        def __init__(self, text):
+            self.text = text
+
+        def extract_text(self):
+            return self.text
+
+    class Book:
+        is_encrypted = False
+
+        def __init__(self):
+            self.pages = [TextPage("Unrelated introduction") for _ in range(250)]
+
+    book = Book()
+    book.pages[220] = TextPage(
+        "Quadratic inequalities: use the signs on both sides of the two roots. " * 4
+    )
+    monkeypatch.setattr("app.uploads.reader.PdfReader", lambda _: book)
+    document = read_file(
+        "book.pdf", b"%PDF-test", "https://books.example/book.pdf", query="quadratic inequalities"
+    )
+    assert document.text_ok
+    assert [page.number for page in document.pages] == [1, 2, 3, 4, 5, 6, 220, 221, 222]
+    assert document.source_uri == "https://books.example/book.pdf"
 
 
 @pytest.mark.parametrize(

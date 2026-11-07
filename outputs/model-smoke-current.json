@@ -1,0 +1,69 @@
+{
+  "scope": "Synthetic route smoke, not canonical topic/H8 acceptance",
+  "status": "ok",
+  "generator": {
+    "provider": "deepseek",
+    "model": "deepseek-flash",
+    "family": "deepseek"
+  },
+  "verifier": {
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "family": "gemini"
+  },
+  "generator_answer_excluded": true,
+  "attempts": [
+    {
+      "task": "items",
+      "tier": "free",
+      "route": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "family": "deepseek"
+      },
+      "number": 1,
+      "latency_ms": 891.0000000614673,
+      "status": "success",
+      "input_tokens": 148,
+      "output_tokens": 18,
+      "thoughts_tokens": 0,
+      "error_code": null
+    },
+    {
+      "task": "verify",
+      "tier": "free",
+      "route": {
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "family": "gemini"
+      },
+      "number": 1,
+      "latency_ms": 968.9999999245629,
+      "status": "success",
+      "input_tokens": 101,
+      "output_tokens": 16,
+      "thoughts_tokens": 0,
+      "error_code": null
+    }
+  ],
+  "successful_calls": [
+    {
+      "task": "items",
+      "route": {
+        "provider": "deepseek",
+        "model": "deepseek-flash",
+        "family": "deepseek"
+      },
+      "latency_ms": 891.0000000614673
+    },
+    {
+      "task": "verify",
+      "route": {
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "family": "gemini"
+      },
+      "latency_ms": 968.9999999245629
+    }
+  ]
+}

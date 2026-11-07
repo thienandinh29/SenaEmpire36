@@ -78,7 +78,7 @@ def test_quick_upload_pipeline_never_searches_and_publishes_only_after_persisten
 
     async def progress(value: Progress) -> None:
         if value.graph_ready:
-            assert ports.graph_saved
+            assert ports.graph_saved and ports.items_saved
         if value.items_ready:
             assert ports.items_saved
         states.append(value)
@@ -125,6 +125,7 @@ def test_pipeline_does_not_publish_invalid_items_or_graph(failure: str) -> None:
             )
         )
     assert states[-1].status == "failed" and not ports.items_saved
+    assert all(not state.graph_ready for state in states)
     assert all(not state.items_ready for state in states)
 
 
@@ -370,6 +371,7 @@ def test_pipeline_rejects_bad_canonical_content_before_publication(failure: str)
     if failure != "item-source":
         assert not ports.graph_saved
     assert states[-1].status == "failed"
+    assert states[-1].progress == states[-2].progress > 0
 
 
 def test_pipeline_calls_injected_retriever_before_graph() -> None:
@@ -408,6 +410,78 @@ def pipeline(ports: Ports, **kwargs: Any) -> TopicPipeline:
     )
     kwargs.setdefault("retrieval_subject", "biology")
     return TopicPipeline(ports, **kwargs)
+
+
+def test_sufficient_uploaded_theory_skips_deep_source_quota() -> None:
+    from app.research.relevance import UploadCoverage
+
+    class UploadedTheory(Ports):
+        async def assess_upload(self, goal, upload):
+            return UploadCoverage(
+                kind="lesson",
+                sufficient_for_first_lesson=True,
+                missing_topics=[],
+                reason_vi="Contains explanation and worked example",
+            )
+
+    async def forbidden_search(goal, event):
+        pytest.fail("Sufficient learner theory must not trigger outside-source collection")
+
+    states = []
+
+    async def progress(value):
+        states.append(value)
+
+    async def event(value):
+        pass
+
+    result = asyncio.run(
+        pipeline(UploadedTheory(), research_runner=forbidden_search).run(
+            TopicInput(goal_vi="One small lesson", upload_id="u1", mode="deep", tier="pro"),
+            progress,
+            event,
+        )
+    )
+    assert len(result.item_ids) == 6
+    assert states[-1].status == "ready"
+
+
+def test_outline_upload_searches_for_missing_teaching_content() -> None:
+    from app.research.relevance import UploadCoverage
+
+    class Outline(Ports):
+        async def assess_upload(self, goal, upload):
+            return UploadCoverage(
+                kind="outline",
+                sufficient_for_first_lesson=False,
+                missing_topics=["worked examples"],
+                reason_vi="Only a table of contents",
+            )
+
+    goals = []
+
+    async def search(goal, event):
+        goals.append(goal)
+        return [
+            ChosenSource("A", "A", "https://a.example/1", "CC BY 4.0", "theory"),
+            ChosenSource("B", "B", "https://b.example/2", "CC BY 4.0", "theory"),
+            ChosenSource("C", "B", "https://b.example/3", "CC BY 4.0", "theory"),
+        ]
+
+    async def progress(value):
+        pass
+
+    async def event(value):
+        pass
+
+    asyncio.run(
+        pipeline(Outline(), research_runner=search).run(
+            TopicInput(goal_vi="Original goal", upload_id="u1", mode="deep", tier="pro"),
+            progress,
+            event,
+        )
+    )
+    assert goals == ["Original goal\nworked examples"]
 
 
 def test_pipeline_cannot_be_constructed_without_retrieval() -> None:

@@ -6,6 +6,56 @@ import pytest
 
 from app.research.agent import ResearchAgent, SearchResult
 from app.research.reader import Allowlist, Publisher, SafeReader, SourceError
+from app.research.relevance import SearchPlan
+
+
+def test_failed_early_publishers_do_not_exhaust_reads_before_alternatives() -> None:
+    allowlist = Allowlist(
+        publishers=[Publisher(name=str(i), domains=[f"p{i}.example"]) for i in range(7)]
+    )
+    reads = []
+
+    class Relevance:
+        async def plan(self, goal):
+            return SearchPlan(query="Python beginner", scope_vi="Python")
+
+        async def rank(self, goal, results):
+            return results
+
+        async def supports(self, goal, source):
+            return True
+
+    async def search(query, domains):
+        return [SearchResult("Lesson", f"https://{domains[0]}/{i}") for i in range(4)]
+
+    async def event(data):
+        pass
+
+    async def resolve(host):
+        return ["93.184.216.34"]
+
+    def handler(request):
+        host = request.headers["host"]
+        reads.append(host)
+        return httpx.Response(
+            200 if host in {"p5.example", "p6.example"} else 403,
+            headers={"content-type": "text/html"},
+            text=(
+                "<p>Python variables store values and expressions compute results. CC BY-SA 4.0</p>"
+            ),
+        )
+
+    reader = SafeReader(
+        allowlist=allowlist, resolver=resolve, transport=httpx.MockTransport(handler)
+    )
+    sources = asyncio.run(
+        ResearchAgent(search, allowlist=allowlist, reader=reader, relevance=Relevance()).research(
+            "Python", event
+        )
+    )
+    assert len(sources) == 3
+    assert {s.publisher for s in sources} == {"5", "6"}
+    assert len(reads) <= 12
 
 
 def test_research_selects_three_sources_from_two_publishers() -> None:

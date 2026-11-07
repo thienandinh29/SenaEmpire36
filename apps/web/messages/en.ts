@@ -1,5 +1,9 @@
 // Secondary navigation strings; the demo's learning content defaults to Vietnamese.
 export const en = {
+  theme: {
+    switchToLight: "Switch to light mode",
+    switchToDark: "Switch to dark mode",
+  },
   app: "NodeTrail",
   nav: {
     overview: "Overview",

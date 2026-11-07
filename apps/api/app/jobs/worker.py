@@ -119,6 +119,8 @@ def main() -> None:
         from app.research.runtime import retrieval_configuration, worker_retriever
 
         retrieval_subject, retrieval_k = retrieval_configuration()
+        from app.services.topic_readiness import require_embedding_ready
+
         with create_pool(database_url) as pool:
             repository = Repository(lambda: pool)
             repository.require_schema()
@@ -133,11 +135,17 @@ def main() -> None:
                         job,
                         retriever=retriever,
                         retrieval_subject=retrieval_subject,
-                        retrieval_k=retrieval_k,
+                        retrieval_k=min(retrieval_k, 6),
+                        max_concepts=3,
                     )
                 )
 
-            loop(database_url, allow_fixture=args.fixture, processor=process)
+            loop(
+                database_url,
+                allow_fixture=args.fixture,
+                processor=process,
+                readiness=lambda: asyncio.run(require_embedding_ready(settings)),
+            )
         return
     loop(database_url, allow_fixture=args.fixture, pipeline_factory=pipeline_factory)
 
@@ -148,9 +156,12 @@ def loop(
     allow_fixture: bool,
     pipeline_factory: Callable[[str], TopicPipeline] | None = None,
     processor: Callable[[dict[str, Any]], None] | None = None,
+    readiness: Callable[[], None] | None = None,
 ) -> None:
     while True:
         try:
+            if readiness is not None:
+                readiness()
             if not run_once(
                 database_url,
                 allow_fixture=allow_fixture,
@@ -159,7 +170,7 @@ def loop(
             ):
                 time.sleep(1)
         except Exception:
-            logger.exception("worker database failure")
+            logger.exception("worker job processing failed")
             time.sleep(2)
 
 

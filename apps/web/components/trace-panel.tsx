@@ -33,19 +33,19 @@ export function TracePanel({
       <p className="trace-concept">
         {t.flow.traceFor}: <strong>{name(trace.concept_slug)}</strong>
       </p>
-      {(trace.prior !== null || trace.posterior !== null) && (
+      {(trace.prior != null || trace.posterior != null) && (
         <div className="trace-scores">
           <div>
             <span>{t.before}</span>
             <strong>
-              {trace.prior === null ? "—" : `${Math.round(trace.prior * 100)}%`}
+              {trace.prior == null ? "—" : `${Math.round(trace.prior * 100)}%`}
             </strong>
           </div>
           <ArrowRight size={22} />
           <div>
             <span>{t.after}</span>
             <strong>
-              {trace.posterior === null
+              {trace.posterior == null
                 ? "—"
                 : `${Math.round(trace.posterior * 100)}%`}
             </strong>

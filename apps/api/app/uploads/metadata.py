@@ -12,7 +12,7 @@ from app.uploads.reader import MAX_BYTES, MAX_PAGES, MAX_TEXT, Document, Page
 
 class StoredPage(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    number: int = Field(ge=1, le=MAX_PAGES)
+    number: int = Field(ge=1)
     text: str
 
 
@@ -41,8 +41,9 @@ class UploadMetadata(BaseModel):
             raise ValueError("Unsupported upload media type")
         if not self.source_uri.strip() or self.page_count != len(self.pages):
             raise ValueError("Canonical source URI and matching page count are required")
-        if [page.number for page in self.pages] != list(range(1, self.page_count + 1)):
-            raise ValueError("Pages must be contiguous and one-based")
+        numbers = [page.number for page in self.pages]
+        if numbers != sorted(set(numbers)):
+            raise ValueError("Page numbers must be unique and retain document order")
         if sum(len(page.text) for page in self.pages) > MAX_TEXT:
             raise ValueError("Extracted text exceeds the upload limit")
         if self.sha256 is not None and (

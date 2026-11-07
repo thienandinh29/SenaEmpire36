@@ -45,6 +45,12 @@ def claim(conn: psycopg.Connection[Any]) -> dict[str, Any] | None:
 
 
 def snapshot(conn: psycopg.Connection[Any], topic_id: UUID) -> dict[str, Any] | None:
+    conn.execute(
+        "update topic_jobs set status='failed',step_vi=%s,updated_at=now() "
+        "where id=%s and status in ('researching','indexing','graph','items') "
+        "and updated_at < now() - interval '10 minutes'",
+        ("Tác vụ đã hết thời gian chờ worker; hãy thử lại từ dữ liệu đã lưu.", topic_id),
+    )
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(f"select {FIELDS} from topic_jobs where id=%s", (topic_id,))
         state = cur.fetchone()

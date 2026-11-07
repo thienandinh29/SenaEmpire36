@@ -5,6 +5,20 @@ Install Docker Desktop with Linux containers, Git, Python and uv first. If `uv`
 is not on PATH, use `python -m uv` in place of `uv` (install with
 `python -m pip install uv`). `uv sync --python 3.12` downloads Python 3.12 if needed.
 
+## P2 durable confirmation integration (local ptest2)
+
+The new P2 application entry point is `app.main:create_content_app --factory`.
+It binds P4 learning/tutor to P2 private upload storage and queue, using the durable
+GraphConfirmations callback by default. Apply reviewed migration0012 to the private
+local database before starting this factory. No public confirmation route or P1
+DTO was changed; P3/P5 must connect an authenticated explicit learner action.
+
+See [P2 confirmation handoff](../specs/p2-graph-confirmation/handoff.md) for the
+service interface, graph snapshot/revision requirements, rollout and remaining
+contract/UI work. Validation: 1,436 full API tests pass with real PostgreSQL;
+Ruff/format/mypy pass. Storage/models in automated tests remain fakes. The local
+0012 migration is applied; no learner was automatically confirmed.
+
 ## Configuration and startup
 
 Copy the environment template yourself, only if `.env` does not exist:

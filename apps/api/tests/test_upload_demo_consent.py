@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Sequence
 from uuid import uuid4
 
 import pytest
@@ -10,6 +11,13 @@ from app.research.agent import ChosenSource
 from app.services.topics import TopicsService
 from app.uploads.reader import Document, Page
 from tests.content.fakes import FakeGateway
+
+
+class TestVectors:
+    dim = 1024
+
+    async def aembed(self, texts: Sequence[str]) -> list[list[float]]:
+        return [[1.0] + [0.0] * 1023 for _ in texts]
 
 
 @pytest.mark.parametrize("demo_enabled", [False, True])
@@ -50,10 +58,16 @@ def test_upload_material_never_becomes_a_curated_source(database_url: str, subje
     with create_pool(database_url) as pool:
         repo = Repository(lambda: pool)
         demo = ContentPorts(
-            repo, FakeGateway(), subject + uuid4().hex, upload_model_permission=True
+            repo,
+            FakeGateway(),
+            subject + uuid4().hex,
+            upload_model_permission=True,
+            embedder=TestVectors(),
         )
         asyncio.run(demo.index([], document))
-        ordinary = ContentPorts(repo, FakeGateway(), "public-fallback-" + uuid4().hex)
+        ordinary = ContentPorts(
+            repo, FakeGateway(), "public-fallback-" + uuid4().hex, embedder=TestVectors()
+        )
         assert not asyncio.run(ordinary.quick_sources("topic user upload"))
         public = ChosenSource(
             title="Public source",

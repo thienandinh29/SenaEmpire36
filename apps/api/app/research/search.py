@@ -1,4 +1,4 @@
-"""Brave Web Search adapter; provider filtering plus independent local domain checks."""
+"""Search adapters; provider filtering plus independent local domain checks."""
 
 import argparse
 import asyncio
@@ -17,6 +17,7 @@ from app.research.reader import SourceError, validate_url
 class _Result(BaseModel):
     title: str = Field(min_length=1)
     url: str = Field(min_length=1)
+    content: str = ""
 
 
 class _Web(BaseModel):
@@ -26,6 +27,10 @@ class _Web(BaseModel):
 class _Response(BaseModel):
     model_config = ConfigDict(extra="ignore")
     web: _Web = Field(default_factory=_Web)
+
+
+class _TavilyResponse(BaseModel):
+    results: list[_Result]
 
 
 class BraveSearch:
@@ -90,52 +95,133 @@ class BraveSearch:
                 any(host == domain or host.endswith("." + domain) for domain in domains)
                 and entry.url not in seen
             ):
-                results.append(SearchResult(entry.title, entry.url))
+                results.append(SearchResult(entry.title, entry.url, entry.content))
                 seen.add(entry.url)
         return results
 
 
-def default_agent() -> ResearchAgent:
+class TavilySearch:
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        count: int = 12,
+        timeout: float = 15,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        if not api_key or not 1 <= count <= 20 or timeout <= 0:
+            raise ValueError("Tavily API key and valid search limits are required")
+        self.api_key, self.count, self.timeout = api_key, count, timeout
+        self.transport = transport
+
+    async def __call__(self, query: str, domains: Sequence[str]) -> list[SearchResult]:
+        if not domains or any(not re.fullmatch(r"[a-z0-9]+(?:[.-][a-z0-9]+)*", d) for d in domains):
+            raise SourceError("Danh sách miền tìm kiếm không hợp lệ.")
+        # Scope comes only from configuration, never learner-supplied query operators.
+        clean = " ".join(re.findall(r"[^\W_]+", query, flags=re.UNICODE))[:400].strip()
+        if not clean:
+            raise SourceError("Mục tiêu tìm kiếm không hợp lệ.")
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout, trust_env=False, transport=self.transport
+            ) as client:
+                # Fixed basic depth and no retries prevent unbounded credit spending.
+                response = await client.post(
+                    "https://api.tavily.com/search",
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json={
+                        "query": clean,
+                        "include_domains": list(dict.fromkeys(domains)),
+                        "include_domains_mode": "restrict",
+                        "max_results": self.count,
+                        "search_depth": "basic",
+                        "auto_parameters": False,
+                        "include_answer": False,
+                        "include_raw_content": False,
+                        "include_usage": True,
+                    },
+                )
+                response.raise_for_status()
+                parsed = _TavilyResponse.model_validate_json(response.content)
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            raise SourceError(
+                f"Dịch vụ tìm kiếm trả về lỗi HTTP {status}.",
+                retryable=status == 429 or status >= 500,
+            ) from None
+        except (httpx.RequestError, ValidationError):
+            raise SourceError("Dịch vụ tìm kiếm tạm thời không khả dụng.", retryable=True) from None
+        results: list[SearchResult] = []
+        seen: set[str] = set()
+        for entry in parsed.results[: self.count]:
+            try:
+                host = validate_url(entry.url)
+            except SourceError:
+                continue
+            if (
+                any(host == domain or host.endswith("." + domain) for domain in domains)
+                and entry.url not in seen
+            ):
+                results.append(SearchResult(entry.title, entry.url, entry.content))
+                seen.add(entry.url)
+        return results
+
+
+def configured_search() -> BraveSearch | TavilySearch:
     provider = os.environ.get("SEARCH_PROVIDER", "brave")
-    if provider != "brave":
+    if provider not in {"brave", "tavily"}:
         raise SourceError("Nhà cung cấp tìm kiếm chưa được hỗ trợ.")
     key = os.environ.get("SEARCH_API_KEY", "")
     if not key:
         raise SourceError("Dịch vụ tìm kiếm chưa được cấu hình.")
-    return ResearchAgent(BraveSearch(key))
+    return TavilySearch(key) if provider == "tavily" else BraveSearch(key)
+
+
+def default_agent() -> ResearchAgent:
+    from app.content.gateway import P3Gateway
+    from app.research.relevance import ResearchRelevance
+
+    return ResearchAgent(configured_search(), relevance=ResearchRelevance(P3Gateway()))
 
 
 def configuration() -> dict[str, str | bool]:
     """Process configuration only; never read credential files or expose key values."""
     provider = os.environ.get("SEARCH_PROVIDER", "brave")
     return {
-        "provider": "brave" if provider == "brave" else "unsupported",
+        "provider": provider if provider in {"brave", "tavily"} else "unsupported",
         "api_key_present": bool(os.environ.get("SEARCH_API_KEY")),
     }
 
 
-async def probe(search: BraveSearch) -> dict[str, str | int]:
+async def probe(search: BraveSearch | TavilySearch) -> dict[str, str | int]:
     results = await search("biology cells textbook", ["bio.libretexts.org"])
     if not results:
         raise SourceError("Search probe returned no allowed results")
-    return {"provider": "brave", "status": "ok", "allowed_results": len(results)}
+    return {
+        "provider": "tavily" if isinstance(search, TavilySearch) else "brave",
+        "status": "ok",
+        "allowed_results": len(results),
+    }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Brave check; no network without --live")
+    from app.config import get_settings
+
+    get_settings().export_worker_environment()
+    parser = argparse.ArgumentParser(description="Search check; no network without --live")
     parser.add_argument("--live", action="store_true")
     args = parser.parse_args()
     config = configuration()
     if not args.live:
         print(json.dumps({"live": False, **config}))
         return
-    if config["provider"] != "brave" or not config["api_key_present"]:
+    if config["provider"] == "unsupported" or not config["api_key_present"]:
         print(json.dumps({"live": False, "status": "unconfigured"}))
         raise SystemExit(1)
     try:
-        print(json.dumps(asyncio.run(probe(BraveSearch(os.environ["SEARCH_API_KEY"])))))
+        print(json.dumps(asyncio.run(probe(configured_search()))))
     except SourceError:
-        print(json.dumps({"provider": "brave", "status": "failed"}))
+        print(json.dumps({"provider": config["provider"], "status": "failed"}))
         raise SystemExit(1) from None
 
 

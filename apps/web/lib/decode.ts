@@ -21,8 +21,9 @@ export class DataError extends Error {
       | "failed"
       | "upload",
     public status?: number,
+    public detail?: string,
   ) {
-    super(code);
+    super(detail || code);
   }
 }
 export function record(value: unknown): Record<string, unknown> {
@@ -80,6 +81,62 @@ export function parseGraph(value: unknown): KnowledgeGraph {
   const graph = { nodes, edges };
   if (!isAcyclic(graph)) throw new DataError("contract");
   return graph;
+}
+export interface ReviewedConcept {
+  slug: string;
+  name_vi: string;
+  description_vi: string;
+  sources: string[];
+}
+export interface GraphReview {
+  graph: KnowledgeGraph;
+  concepts: ReviewedConcept[];
+  revision: string;
+  confirmed: boolean;
+}
+export function parseGraphReview(
+  value: unknown,
+  graph: KnowledgeGraph,
+  learner: string,
+  subject: string,
+): GraphReview {
+  const d = record(value);
+  const revision = string(d.graph_revision);
+  if (
+    d.learner_id !== learner ||
+    d.subject !== subject ||
+    !/^[a-f0-9]{64}$/.test(revision)
+  )
+    throw new DataError("contract");
+  const canonical = record(d.graph);
+  const concepts = list(canonical.concepts, (value) => {
+    const c = record(value);
+    return {
+      slug: string(c.slug),
+      name_vi: string(c.name_vi),
+      description_vi: c.description_vi == null ? "" : string(c.description_vi),
+      sources: list(c.sources, string),
+    };
+  });
+  // Mastery is read separately. Refuse to attach a revision to a different graph.
+  const signature = (
+    nodes: { slug: string; name_vi: string }[],
+    edges: { from: string; to: string }[],
+  ) =>
+    JSON.stringify({
+      nodes: nodes.map((n) => [n.slug, n.name_vi]).sort(),
+      edges: edges.map((e) => [e.from, e.to]).sort(),
+    });
+  const edges = list(canonical.edges, (value) => {
+    const e = record(value);
+    return { from: string(e.from), to: string(e.to) };
+  });
+  if (
+    !concepts.length ||
+    signature(concepts, edges) !== signature(graph.nodes, graph.edges)
+  )
+    throw new DataError("failed", 409);
+  return { graph, concepts, revision, confirmed: bool(d.confirmed) };
 }
 export function parseTrace(value: unknown): DecisionTrace {
   const data = record(value);
@@ -225,8 +282,9 @@ export function parseHint(value: unknown): HintResult {
       const c = record(value);
       return {
         title: string(c.title),
-        section: string(c.section),
+        section: c.section == null ? undefined : string(c.section),
         url: string(c.url),
+        page: c.page == null ? undefined : number(c.page),
       };
     }),
   };

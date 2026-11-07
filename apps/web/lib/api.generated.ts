@@ -174,6 +174,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/graph/review": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Review */
+    get: operations["review_graph_review_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/graph/confirm": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Confirm */
+    post: operations["confirm_graph_confirm_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/learners": {
     parameters: {
       query?: never;
@@ -263,7 +297,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
-    /** Alternative */
+    /**
+     * Alternative
+     * @description A candidate the rule considered and did not pick.
+     */
     Alternative: {
       /** Concept Slug */
       concept_slug: string;
@@ -293,27 +330,33 @@ export interface components {
     };
     /** AttemptInput */
     AttemptInput: {
+      /** Client Attempt Id */
+      client_attempt_id?: string | null;
       /** Learner Id */
       learner_id: string;
       /** Item Id */
       item_id: string;
+      /** Answer */
       answer: number;
-      /** Hints Used */
+      /**
+       * Hints Used
+       * @default 0
+       */
       hints_used: number;
     };
-    /** AttemptResponse */
-    AttemptResponse: {
+    /** AttemptResult */
+    AttemptResult: {
+      /** Correct */
+      correct: boolean;
+      /** Misconception Vi */
+      misconception_vi?: string | null;
       /** P Known */
       p_known: number;
       /** Mastered */
       mastered: boolean;
-      /** Misconception Vi */
-      misconception_vi?: string | null;
       remediation?: components["schemas"]["Remediation"] | null;
       /** Traces */
       traces: components["schemas"]["DecisionTrace"][];
-      /** Correct */
-      correct: boolean;
     };
     /** CachedTopic */
     CachedTopic: {
@@ -332,12 +375,34 @@ export interface components {
       /** Title */
       title: string;
       /** Section */
-      section: string;
-      /**
-       * Url
-       * Format: uri
-       */
+      section?: string | null;
+      /** Url */
       url: string;
+      /** Page */
+      page?: number | null;
+    };
+    /** Concept */
+    Concept: {
+      /** Slug */
+      slug: string;
+      /** Name Vi */
+      name_vi: string;
+      /** Name En */
+      name_en: string;
+      /**
+       * Description Vi
+       * @default
+       */
+      description_vi: string;
+      /** Sources */
+      sources: string[];
+    };
+    /** ConfirmationInput */
+    ConfirmationInput: {
+      /** Subject */
+      subject: string;
+      /** Graph Revision */
+      graph_revision: string;
     };
     /** DecisionTrace */
     DecisionTrace: {
@@ -355,18 +420,50 @@ export interface components {
        */
       at: string;
       /** Prior */
-      prior: number | null;
+      prior?: number | null;
+      /** @default {} */
       evidence: components["schemas"]["Evidence"];
       /** Posterior */
-      posterior: number | null;
+      posterior?: number | null;
       /** Rule */
       rule: string;
       /** Rule Vi */
       rule_vi: string;
-      /** Alternatives */
+      /**
+       * Alternatives
+       * @default []
+       */
       alternatives: components["schemas"]["Alternative"][];
     };
-    /** Evidence */
+    /** DueCard */
+    DueCard: {
+      /** Concept Slug */
+      concept_slug: string;
+      /**
+       * Due At
+       * Format: date-time
+       */
+      due_at: string;
+    };
+    /** DueReviews */
+    DueReviews: {
+      /** Cards */
+      cards: components["schemas"]["DueCard"][];
+    };
+    /**
+     * Edge
+     * @description prerequisite -> concept: `from_` must be learned before `to`.
+     */
+    Edge: {
+      /** From */
+      from: string;
+      /** To */
+      to: string;
+    };
+    /**
+     * Evidence
+     * @description What the decision was based on; all optional, since not every kind has an item.
+     */
     Evidence: {
       /** Item Id */
       item_id?: string | null;
@@ -403,17 +500,28 @@ export interface components {
        */
       exam_date: string;
     };
-    /** ExamResponse */
-    ExamResponse: {
+    /** ExamPlan */
+    ExamPlan: {
       /** Days */
       days: components["schemas"]["ExamDay"][];
     };
-    /** GraphEdge */
-    GraphEdge: {
-      /** From */
-      from: string;
-      /** To */
-      to: string;
+    /** GraphConfirmed */
+    GraphConfirmed: {
+      /**
+       * Learner Id
+       * Format: uuid
+       */
+      learner_id: string;
+      /** Subject */
+      subject: string;
+      /** Graph Revision */
+      graph_revision: string;
+      /**
+       * Confirmed
+       * @default true
+       * @constant
+       */
+      confirmed: true;
     };
     /** GraphNode */
     GraphNode: {
@@ -426,12 +534,27 @@ export interface components {
       /** Mastered */
       mastered: boolean;
     };
-    /** GraphResponse */
-    GraphResponse: {
+    /** GraphReview */
+    GraphReview: {
+      /**
+       * Learner Id
+       * Format: uuid
+       */
+      learner_id: string;
+      /** Subject */
+      subject: string;
+      /** Graph Revision */
+      graph_revision: string;
+      graph: components["schemas"]["KnowledgeGraph"];
+      /** Confirmed */
+      confirmed: boolean;
+    };
+    /** GraphView */
+    GraphView: {
       /** Nodes */
       nodes: components["schemas"]["GraphNode"][];
       /** Edges */
-      edges: components["schemas"]["GraphEdge"][];
+      edges: components["schemas"]["Edge"][];
     };
     /** HTTPValidationError */
     HTTPValidationError: {
@@ -468,14 +591,45 @@ export interface components {
       /** Citations */
       citations: components["schemas"]["Citation"][];
     };
-    JsonValue: unknown;
+    /** KnowledgeGraph */
+    KnowledgeGraph: {
+      /** Concepts */
+      concepts: components["schemas"]["Concept"][];
+      /**
+       * Edges
+       * @default []
+       */
+      edges: components["schemas"]["Edge"][];
+    };
     /** LearnerInput */
     LearnerInput: {
       /** Display Name */
       display_name: string;
     };
-    /** LearnerItem */
-    LearnerItem: {
+    /** LearnerSubject */
+    LearnerSubject: {
+      /** Learner Id */
+      learner_id: string;
+      /** Subject */
+      subject: string;
+    };
+    /** NextItem */
+    NextItem: {
+      item: components["schemas"]["PublicItem"];
+      /** Reason Vi */
+      reason_vi: string;
+    };
+    /** PlacementStep */
+    PlacementStep: {
+      item: components["schemas"]["PublicItem"] | null;
+      /** Done */
+      done: boolean;
+      /** Gap Slug */
+      gap_slug?: string | null;
+      trace: components["schemas"]["DecisionTrace"];
+    };
+    /** PublicItem */
+    PublicItem: {
       /** Id */
       id: string;
       /**
@@ -486,34 +640,12 @@ export interface components {
       /** Prompt Vi */
       prompt_vi: string;
       /** Options */
-      options: components["schemas"]["LearnerOption"][];
+      options: components["schemas"]["PublicOption"][];
     };
-    /** LearnerOption */
-    LearnerOption: {
+    /** PublicOption */
+    PublicOption: {
       /** Label */
       label: string;
-    };
-    /** LearnerSubject */
-    LearnerSubject: {
-      /** Learner Id */
-      learner_id: string;
-      /** Subject */
-      subject: string;
-    };
-    /** NextResponse */
-    NextResponse: {
-      item: components["schemas"]["LearnerItem"];
-      /** Reason Vi */
-      reason_vi: string;
-    };
-    /** PlacementResponse */
-    PlacementResponse: {
-      item: components["schemas"]["LearnerItem"] | null;
-      /** Done */
-      done: boolean;
-      /** Gap Slug */
-      gap_slug?: string | null;
-      trace: components["schemas"]["DecisionTrace"];
     };
     /** Remediation */
     Remediation: {
@@ -521,21 +653,6 @@ export interface components {
       concept_slug: string;
       /** Reason Vi */
       reason_vi: string;
-    };
-    /** ReviewCard */
-    ReviewCard: {
-      /** Concept Slug */
-      concept_slug: string;
-      /**
-       * Due At
-       * Format: date-time
-       */
-      due_at: string;
-    };
-    /** ReviewsResponse */
-    ReviewsResponse: {
-      /** Cards */
-      cards: components["schemas"]["ReviewCard"][];
     };
     /** TopicInput */
     TopicInput: {
@@ -673,7 +790,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["GraphResponse"];
+          "application/json": components["schemas"]["GraphView"];
         };
       };
       /** @description Validation Error */
@@ -706,7 +823,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["PlacementResponse"];
+          "application/json": components["schemas"]["PlacementStep"];
         };
       };
       /** @description Validation Error */
@@ -738,7 +855,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["NextResponse"];
+          "application/json": components["schemas"]["NextItem"];
         };
       };
       /** @description Validation Error */
@@ -771,7 +888,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["AttemptResponse"];
+          "application/json": components["schemas"]["AttemptResult"];
         };
       };
       /** @description Validation Error */
@@ -802,7 +919,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ReviewsResponse"];
+          "application/json": components["schemas"]["DueReviews"];
         };
       };
       /** @description Validation Error */
@@ -835,7 +952,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ExamResponse"];
+          "application/json": components["schemas"]["ExamPlan"];
         };
       };
       /** @description Validation Error */
@@ -969,6 +1086,70 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["AskResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  review_graph_review_get: {
+    parameters: {
+      query: {
+        subject: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GraphReview"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  confirm_graph_confirm_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConfirmationInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GraphConfirmed"];
         };
       };
       /** @description Validation Error */

@@ -1,9 +1,11 @@
 """Short topic requests and private upload persistence; generation belongs to the worker."""
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 from urllib.parse import quote
 from uuid import UUID, uuid4
@@ -25,6 +27,25 @@ logger = logging.getLogger(__name__)
 class UploadStorage(Protocol):
     async def put(self, upload_id: UUID, body: bytes, media_type: str) -> str: ...
     async def remove(self, upload_id: UUID) -> None: ...
+
+
+class LocalUploadStorage:
+    """Private local demo objects; never mounted by the web server."""
+
+    def __init__(self, directory: str) -> None:
+        self.directory = Path(directory).resolve()
+
+    async def put(self, upload_id: UUID, body: bytes, media_type: str) -> str:
+        def write() -> None:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            with (self.directory / str(upload_id)).open("xb") as target:
+                target.write(body)
+
+        await asyncio.to_thread(write)
+        return f"storage://uploads/{upload_id}"
+
+    async def remove(self, upload_id: UUID) -> None:
+        await asyncio.to_thread((self.directory / str(upload_id)).unlink, missing_ok=True)
 
 
 class SupabaseStorage:
@@ -79,6 +100,9 @@ class TopicsService:
             except ValueError:
                 raise HTTPException(422, "Mã tài liệu không hợp lệ.") from None
         with self.pool().connection() as conn:
+            # Serialize identical submissions, including requests from different tabs.
+            fingerprint = hashlib.sha256(request.model_dump_json().encode()).hexdigest()
+            conn.execute("select pg_advisory_xact_lock(hashtextextended(%s,0))", (fingerprint,))
             if upload_id:
                 row = conn.execute(
                     "select text_ok from uploads where id=%s", (upload_id,)
@@ -95,6 +119,26 @@ class TopicsService:
             ).fetchone()
             if cached:
                 return TopicResponse(topic_id=str(cached[0]), cached=True)
+            active = conn.execute(
+                "select id from topic_jobs where goal_vi=%s and tier=%s and mode=%s "
+                "and upload_id is not distinct from %s and not fixture "
+                "and status not in ('ready','failed') order by created_at desc limit 1",
+                (request.goal_vi or "", request.tier, request.mode, upload_id),
+            ).fetchone()
+            if active:
+                return TopicResponse(topic_id=str(active[0]), cached=False)
+            retry = conn.execute(
+                "select id from topic_jobs where goal_vi=%s and tier=%s and mode=%s "
+                "and upload_id is not distinct from %s and not fixture and status='failed' "
+                "order by created_at desc limit 1",
+                (request.goal_vi or "", request.tier, request.mode, upload_id),
+            ).fetchone()
+            if retry:
+                conn.execute(
+                    "update topic_jobs set status='queued',step_vi=%s,updated_at=now() where id=%s",
+                    ("Đang thử lại từ nguồn đã lưu", retry[0]),
+                )
+                return TopicResponse(topic_id=str(retry[0]), cached=False)
             topic_id = enqueue(
                 conn,
                 request.goal_vi or "",
