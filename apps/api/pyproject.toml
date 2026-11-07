@@ -3,11 +3,14 @@ name = "nodetrail-api"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.43.126",
     "fastapi>=0.156.8",
     "fsrs>=6.3.2",
+    "google-auth>=2.62.1",
     "httpx>=0.28.1",
     "psycopg[binary,pool]>=3.3.6",
     "pydantic-settings>=2.16.1",
+    "pyyaml>=6.0.3",
     "uvicorn[standard]>=0.54.0",
 ]
 

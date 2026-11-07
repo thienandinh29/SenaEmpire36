@@ -150,6 +150,13 @@ whether to relax the target.
     Claude on Bedrock verifies), so a model never grades its own output (self-preference bias). Enforced in
     `routing.yaml`.
   - *Socratic tutor:* Pro = Claude on Bedrock, Free = a cheap model; confirmed or changed by the H8 Vietnamese test.
+  **Approved routing update (P1/P3/P2, 2026-11-07):** DeepSeek API is now an optional first
+  candidate for generation in both tiers (`DEEPSEEK_FREE_MODEL` / `DEEPSEEK_PRO_MODEL`).
+  The existing Vertex/Bedrock/OpenRouter generation routes remain fallbacks. Default
+  verifiers remain Gemini/Claude and exclude the actual generator family after fallback.
+  This supersedes the provider-order examples above, not the H8 quality gates. Model
+  IDs and credentials still need configuration and live acceptance; see
+  `apps/api/app/llm/README.md` and `specs/deepseek-gateway/`.
 - **Observability (24 h, P2):** `structlog` JSON logs (`request_id`, `topic_id`, `tier`) + Langfuse for every LLM call
   (model, latency, cost); the Langfuse dashboard is shown at the end of the demo. After the contest:
   OpenTelemetry → Grafana Cloud, Sentry.
