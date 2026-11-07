@@ -32,6 +32,8 @@ from app.schemas import (
     ExamDay,
     ExamPlan,
     ExamPlanRequest,
+    GraphConfirm,
+    GraphConfirmed,
     GraphNode,
     GraphView,
     HintRequest,
@@ -130,6 +132,9 @@ CITATION = CitationRef(
 )
 
 
+GRAPH_REVISION = "rev-3f9a1c7e2b64"  # opaque; the real value comes from the generated graph
+
+
 def _graph_view() -> GraphView:
     return GraphView(
         nodes=[
@@ -137,6 +142,7 @@ def _graph_view() -> GraphView:
             for s, n in CONCEPTS.items()
         ],
         edges=[Edge(from_=a, to=b) for a, b in EDGES],
+        revision=GRAPH_REVISION,
     )
 
 
@@ -304,6 +310,10 @@ def mocks() -> dict[str, BaseModel]:
         "uploads.request-link": UploadLink(url="https://example.org/giao-trinh.pdf"),
         "uploads.response": UploadCreated(upload_id="upl_3a9f", pages=42, text_ok=True),
         "graph.response": _graph_view(),
+        "graph-confirm.request": GraphConfirm(
+            learner_id=LEARNER, subject=SUBJECT, revision=GRAPH_REVISION
+        ),
+        "graph-confirm.response": GraphConfirmed(confirmed=True, revision=GRAPH_REVISION),
         "placement-next.request": PlacementRequest(learner_id=LEARNER, subject=SUBJECT),
         "placement-next.question": _placement_first(),
         "placement-next.done": _placement_done(),

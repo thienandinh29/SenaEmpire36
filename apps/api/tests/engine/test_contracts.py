@@ -10,6 +10,8 @@ from pydantic import ValidationError
 from app.engine.trace import Alternative, DecisionTrace, Evidence
 from app.schemas import (
     AttemptCreate,
+    GraphConfirm,
+    GraphConfirmed,
     GraphView,
     ItemSet,
     KnowledgeGraph,
@@ -229,3 +231,27 @@ def test_api_responses_embed_trace_and_graph() -> None:
         }
     )
     assert view.model_dump(mode="json")["edges"] == [{"from": "a", "to": "b"}]
+
+
+def test_graph_view_revision_is_optional_and_round_trips() -> None:
+    nodes = [{"slug": "a", "name_vi": "A", "p_known": 0.2, "mastered": False}]
+    legacy = GraphView.model_validate({"nodes": nodes, "edges": []})
+    assert legacy.revision is None
+    shown = GraphView.model_validate({"nodes": nodes, "edges": [], "revision": "rev-abc"})
+    assert GraphView.model_validate(shown.model_dump(mode="json")) == shown
+    for bad in ("", "x" * 129):
+        with pytest.raises(ValidationError):
+            GraphView.model_validate({"nodes": nodes, "edges": [], "revision": bad})
+
+
+def test_graph_confirm_binds_learner_subject_and_the_revision_shown() -> None:
+    body = {"learner_id": "l1", "subject": "python-co-ban", "revision": "rev-abc"}
+    assert GraphConfirm.model_validate(body).revision == "rev-abc"
+    for bad in (
+        {**body, "revision": ""},  # an empty revision confirms nothing
+        {**body, "extra": 1},  # unknown keys are rejected like every other body
+        {k: v for k, v in body.items() if k != "revision"},  # no implicit "latest"
+    ):
+        with pytest.raises(ValidationError):
+            GraphConfirm.model_validate(bad)
+    assert GraphConfirmed.model_validate({"confirmed": True, "revision": "rev-abc"}).confirmed
