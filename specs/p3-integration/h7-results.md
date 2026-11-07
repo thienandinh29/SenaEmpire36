@@ -139,6 +139,26 @@ The board ticks only the completed library/runtime/schema/model-configuration wo
 P1 label-existence checking is complete. Semantic k=12 graph review, rotated-key live
 measurements and full deployment acceptance remain unticked.
 
-The P2 index receipt at 12:54 UTC still lists 2,764 Python chunks (pre-cleaning).
-Regenerate/reindex the clean export before accepting that index; this P3 session
-did not interrupt or modify P2's running index process on its host.
+The earlier P2 index snapshot (12:54 UTC) listed 2,764 pre-cleaning Python chunks.
+The newer receipt at 13:09 UTC (`915b231`) confirms Python completed with **391**
+chunks, matching the cleaned export; Logic completed with 331 chunks and Statistics
+was in progress. Do not reindex Python solely because of the obsolete snapshot.
+This session did not interrupt P2's process; current P2 host state remains P2-owned.
+
+
+## Verification of the final integrated code
+
+Verified at `b7b6619c50e60e8b1c21655dc32c78100d7e9eca`, including P2's retry/demo updates through `915b231`:
+
+| Check | Result |
+|---|---|
+| API Ruff lint / format | Pass; 166 files formatted |
+| API mypy | Pass; 159 source files |
+| API tests | 1,394 passed; one existing Starlette/httpx deprecation warning |
+| Web lint / typecheck | Pass |
+| Web tests | 46 passed across six files |
+| P1 source labels | 10/10 snippets and 10/10 intended sections confirmed |
+| Actual P3 live graph/items and k=12 quality | Not run; no invented token/latency/quality score |
+
+P2's separate `docker/p2-live-gateway.json` is synthetic route evidence: DeepSeek
+answered, but Gemini returned HTTP 503. It is not P3's canonical-topic acceptance.

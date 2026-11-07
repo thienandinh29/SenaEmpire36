@@ -33,5 +33,22 @@
     "reachable": false,
     "error_type": "ConnectTimeout"
   },
-  "query_label_audit": "data/sources/p3-python-query-label-audit.json"
+  "query_label_audit": "data/sources/p3-python-query-label-audit.json",
+  "verified_code_revision": "b7b6619c50e60e8b1c21655dc32c78100d7e9eca",
+  "verification": {
+    "api_ruff": "pass",
+    "api_mypy": "pass (159 files)",
+    "api_tests_passed": 1394,
+    "web_lint": "pass",
+    "web_typecheck": "pass",
+    "web_tests_passed": 46,
+    "p1_label_snippets_present": 10,
+    "p1_expected_sections_present": 10
+  },
+  "p2_index_receipt": {
+    "artifact": "data/sources/p2-index-progress.json",
+    "snapshot_at": "2026-11-07T13:09:04.951519+00:00",
+    "python_completed_chunks": 391,
+    "note": "P2 host receipt; not a local P3 embedding/DB measurement"
+  }
 }
