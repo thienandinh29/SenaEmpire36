@@ -17,3 +17,7 @@ Mock mode gets a lesson/question/hint fixture for each graph node, per-node sess
 ## Reference-driven frontend implementation
 
 Use ui-ux-pro-max for visual hierarchy, keyboard focus and Next.js guidance. Adapt its minimal dashboard recommendation to the supplied cream/indigo brand; reject its landing-page layout. Extend the existing workspace with isolated mock practice and study-tools components, local persistence for notes, a pure scheduling/routing simulator and reference-inspired vector Sena states. No new dependencies or backend calls. Keep all new Vietnamese copy in messages. Validate lint, types, meaningful rule tests, production build and browser flows.
+
+## Field journal visual direction
+
+Replace only the overview presentation with a focused atlas and a contextual guide. Keep the existing learning hook, clients, contracts and navigation callbacks. Use self-hosted Dancing Script for expressive Vietnamese display titles, Be Vietnam Pro for small headings, and Lora for journal annotations. Include upstream font licenses; add no package dependencies. Restyle the shared graph with mastery rings and add a reversible focused/all camera. Preserve dagre layout and keyboard support. Apply the editorial shell consistently across screens with explicit light/dark tokens and reduced-motion support.

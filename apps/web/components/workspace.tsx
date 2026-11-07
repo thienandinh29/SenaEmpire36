@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Sena } from "./sena";
 import { ThemeToggle } from "./theme-toggle";
+import { JournalOverview } from "./journal-overview";
 import { PracticeStudio, PlacementStudio } from "./practice-studio";
 import {
   NoteStudio,
@@ -24,10 +25,8 @@ import {
   CheckCheck,
   ChevronRight,
   CircleHelp,
-  Clock3,
   Compass,
   GitBranch,
-  GraduationCap,
   Layers3,
   Leaf,
   Lightbulb,
@@ -220,7 +219,7 @@ export function Workspace({ config }: { config: WebConfig }) {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell journal-ui">
       <a className="skip-link" href="#main-content">
         {t.flow.skip}
       </a>
@@ -374,182 +373,22 @@ export function Workspace({ config }: { config: WebConfig }) {
             <p className="mode-notice">{t.flow.apiNotice}</p>
           )}
           {screen === "overview" && (
-            <>
-              <section className="brand-hero">
-                <div className="hero-copy">
-                  <p className="eyebrow">
-                    <span className="live-dot" />
-                    {st.eyebrow}
-                  </p>
-                  <h1>
-                    {st.hero}
-                    <br />
-                    <em>{st.heroAccent}</em>
-                  </h1>
-                  <p>{st.heroBody}</p>
-                  <div className="hero-actions">
-                    <Button onClick={() => navigate("learn")}>
-                      {st.heroCta}
-                      <ArrowRight size={17} />
-                    </Button>
-                    <span>
-                      <Clock3 size={15} />
-                      {st.daily}
-                    </span>
-                  </div>
-                </div>
-                <div className="hero-art">
-                  <div className="hero-orbit" />
-                  <span className="orbit-label orbit-top">
-                    <Check size={15} />
-                    {st.planned}
-                  </span>
-                  <Sena size={265} />
-                  <span className="orbit-label orbit-bottom">
-                    <Sparkles size={15} />
-                    {st.states[0]}
-                  </span>
-                </div>
-              </section>
-              <section className="welcome">
-                <div>
-                  <p className="eyebrow">
-                    <span className="sun-mark">✳</span>
-                    {t.hello}
-                  </p>
-                  <h2>{st.today}</h2>
-                </div>
-                <Button variant="secondary" onClick={() => setTopicOpen(true)}>
-                  <Plus size={17} />
-                  {t.newTopic}
-                </Button>
-              </section>
-              <section className="path-summary">
-                <div className="subject-icon">
-                  <GraduationCap size={26} />
-                </div>
-                <div className="subject-name">
-                  <p className="eyebrow">{t.myPath}</p>
-                  <h2>{subjectTitle}</h2>
-                  <span>{config.mode === "mock" ? t.subject : t.flow.api}</span>
-                </div>
-                <div className="path-stat">
-                  <strong>{graph.nodes.length}</strong>
-                  <span>{t.conceptCount}</span>
-                </div>
-                <div className="path-stat">
-                  <strong>
-                    {graph.nodes.filter((n) => n.mastered).length}
-                    <span>/{graph.nodes.length}</span>
-                  </strong>
-                  <span>{t.mastered}</span>
-                </div>
-                <div className="path-progress">
-                  <div className="progress-track">
-                    <span
-                      style={{
-                        width: `${graph.nodes.length ? (graph.nodes.filter((n) => n.mastered).length / graph.nodes.length) * 100 : 0}%`,
-                      }}
-                    />
-                  </div>
-                  <span>{t.date}</span>
-                </div>
-                <Button disabled={!selected} onClick={() => navigate("learn")}>
-                  {t.continue}
-                  <ArrowRight size={16} />
-                </Button>
-              </section>
-              <div className="overview-grid">
-                <section className="panel map-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <p className="eyebrow">
-                        <GitBranch size={14} />
-                        {t.nav.map}
-                      </p>
-                      <h2>{t.mapTitle}</h2>
-                      <p>{t.mapSubtitle}</p>
-                    </div>
-                    <button
-                      className="text-button"
-                      onClick={() => navigate("map")}
-                    >
-                      {t.viewMap}
-                      <ArrowRight size={15} />
-                    </button>
-                  </div>
-                  {
-                    <MapContent
-                      graph={graph}
-                      selected={selected}
-                      loading={busy.graph}
-                      error={errors.graph}
-                      onRetry={() => void learning.reloadGraph()}
-                      onSelect={(slug) => {
-                        selectNode(slug);
-                        navigate("map");
-                      }}
-                    />
-                  }
-                  <div className="map-bottom">
-                    <Legend />
-                    <span className="subtle-label">{subjectTitle}</span>
-                  </div>
-                </section>
-                <aside className="next-card">
-                  <span className="next-icon">
-                    <Sprout size={23} />
-                  </span>
-                  <p className="eyebrow">{t.next}</p>
-                  <h2>{concept?.name_vi || t.topicTitle}</h2>
-                  <p>
-                    {config.mode === "mock" ? t.nextBody : t.flow.noLessonApi}
-                  </p>
-                  <span className="duration">
-                    <Clock3 size={14} />
-                    {config.mode === "mock" ? t.minutes : t.flow.api}
-                  </span>
-                  <Button
-                    onClick={() =>
-                      selected ? navigate("learn") : setTopicOpen(true)
-                    }
-                  >
-                    {selected ? t.start : t.newTopic}
-                    <ArrowRight size={16} />
-                  </Button>
-                  <button className="why-button" onClick={showTrace}>
-                    <CircleHelp size={14} />
-                    {t.why}
-                  </button>
-                </aside>
-                <section className="sena-card">
-                  <div className="sena-portrait">
-                    <Sena size={118} />
-                  </div>
-                  <div>
-                    <p className="eyebrow">{t.sena}</p>
-                    <p className="sena-quote">“{t.senaQuote}”</p>
-                  </div>
-                  <Sparkles className="sena-spark" size={24} />
-                </section>
-                <section className="review-card">
-                  <div className="review-icon">
-                    <RotateCcw size={20} />
-                  </div>
-                  <div>
-                    <h3>{t.reviewTitle}</h3>
-                    <p>{t.reviewBody}</p>
-                    <button
-                      className="text-button"
-                      onClick={() => navigate("reviews")}
-                    >
-                      {t.reviewCta}
-                      <ArrowRight size={14} />
-                    </button>
-                  </div>
-                </section>
-              </div>
-            </>
+            <JournalOverview
+              graph={graph}
+              selected={selected}
+              subject={subjectTitle}
+              approved={approved}
+              mock={config.mode === "mock"}
+              notes={notebook.notes}
+              cardCount={notebook.cards.length}
+              loading={busy.graph}
+              error={errors.graph}
+              onSelect={selectNode}
+              onRetry={() => void learning.reloadGraph()}
+              onNavigate={navigate}
+              onNewTopic={() => setTopicOpen(true)}
+              onWhy={showTrace}
+            />
           )}
 
           {screen === "notes" && config.mode === "mock" && (
