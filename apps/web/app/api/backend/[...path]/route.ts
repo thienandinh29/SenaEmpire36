@@ -3,7 +3,9 @@ import { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
-  /^(learners|topics|topics\/[^/]+|graph|placement\/next|attempts|tutor\/hint|uploads|reviews\/due)$/;
+  /^(learners|topics|topics\/[^/]+|graph|graph\/review|graph\/confirm|placement\/next|attempts|tutor\/hint|uploads|reviews\/due)$/;
+const learnerCookie = "nodetrail_learner";
+const sessionToken = /^[A-Za-z0-9_-]{43}$/;
 
 async function proxy(
   request: NextRequest,
@@ -56,6 +58,9 @@ async function proxy(
       if (value) target.searchParams.set(name, value);
     }
     const headers = new Headers({ [keyHeader]: key });
+    const token = request.cookies.get(learnerCookie)?.value;
+    if (token && sessionToken.test(token))
+      headers.set("Cookie", `${learnerCookie}=${token}`);
     const contentType = request.headers.get("content-type");
     if (contentType) headers.set("content-type", contentType);
     if (
@@ -108,13 +113,25 @@ async function proxy(
       signal: signals,
       redirect: "error",
     });
+    const responseHeaders = new Headers({
+      "Content-Type":
+        response.headers.get("content-type") ?? "application/json",
+      "Cache-Control": "no-store",
+    });
+    // Scope the backend credential to this origin; never forward arbitrary cookies.
+    if (path === "learners" && response.ok && request.method === "POST") {
+      const issued = response.headers
+        .get("set-cookie")
+        ?.match(/(?:^|,\s*)nodetrail_learner=([A-Za-z0-9_-]{43})(?:;|$)/)?.[1];
+      if (issued)
+        responseHeaders.set(
+          "Set-Cookie",
+          `${learnerCookie}=${issued}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${request.nextUrl.protocol === "https:" ? "; Secure" : ""}`,
+        );
+    }
     return new Response(response.body, {
       status: response.status,
-      headers: {
-        "Content-Type":
-          response.headers.get("content-type") ?? "application/json",
-        "Cache-Control": "no-store",
-      },
+      headers: responseHeaders,
     });
   } catch {
     return new Response(null, { status: 502 });

@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
-from app.api import learn, topics, tutor
+from app.api import graph_confirmation, learn, topics, tutor
 from app.config import Settings, get_settings
 from app.db import create_pool, ping
 from app.jobs.queue import snapshot
@@ -22,6 +22,7 @@ from app.observability import configure_logging
 from app.schemas import CachedTopics, TopicState
 from app.services.backend import LearningService
 from app.services.graph_confirmation import GraphConfirmations
+from app.services.learner_sessions import COOKIE_NAME, SESSION_SECONDS, LearnerSessions
 from app.services.topics import SupabaseStorage, TopicsService
 
 if TYPE_CHECKING:
@@ -87,6 +88,7 @@ def create_app(
         )
     )
     app.include_router(tutor.create_router(tutor_backend))
+    app.include_router(graph_confirmation.create_router())
 
     @app.middleware("http")
     async def request_context(
@@ -133,13 +135,29 @@ def create_app(
     )
 
     @app.post("/learners")
-    def create_learner(body: LearnerInput, request: Request) -> dict[str, UUID]:
+    def create_learner(body: LearnerInput, request: Request, response: Response) -> dict[str, UUID]:
         with request.app.state.pool.connection() as conn:
             row = conn.execute(
                 "insert into learners(display_name) values (%s) returning id",
                 (body.display_name.strip(),),
             ).fetchone()
+            sessions = getattr(request.app.state, "learner_sessions", None)
+            token = (
+                sessions.issue(conn, row[0])
+                if isinstance(sessions, LearnerSessions) and row
+                else None
+            )
         assert row is not None
+        if token is not None:
+            response.set_cookie(
+                COOKIE_NAME,
+                token,
+                max_age=SESSION_SECONDS,
+                httponly=True,
+                secure=request.url.scheme == "https",
+                samesite="lax",
+                path="/",
+            )
         return {"learner_id": row[0]}
 
     @app.get("/topics/cached", response_model=CachedTopics)
@@ -224,6 +242,7 @@ def create_content_app(
     store = repository if repository is not None else Repository(lambda: current.state.pool)
     models = gateway if gateway is not None else P3Gateway()
     confirmations = GraphConfirmations(settings.database_url)
+    learner_sessions = LearnerSessions(settings.database_url)
     approved = confirmation if confirmation is not None else confirmations
     current = create_app(
         settings,
@@ -239,11 +258,13 @@ def create_content_app(
         async with platform_lifespan(application):
             await asyncio.to_thread(store.require_schema)
             await asyncio.to_thread(confirmations.require_schema)
+            await asyncio.to_thread(learner_sessions.require_schema)
             yield
 
     current.router.lifespan_context = lifespan
     current.state.p4_repository = store
     current.state.graph_confirmations = confirmations
+    current.state.learner_sessions = learner_sessions
     return current
 
 

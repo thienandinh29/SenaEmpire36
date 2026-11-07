@@ -27,6 +27,9 @@ def runtime(monkeypatch: pytest.MonkeyPatch) -> tuple[Settings, Mock, Mock, Mock
     pool = Mock()
     monkeypatch.setattr("app.main.create_pool", lambda url: pool)
     monkeypatch.setattr(
+        "app.services.learner_sessions.LearnerSessions.require_schema", lambda self: None
+    )
+    monkeypatch.setattr(
         "app.services.graph_confirmation.GraphConfirmations.require_schema", lambda self: None
     )
     monkeypatch.setattr(
