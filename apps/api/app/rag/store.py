@@ -16,9 +16,9 @@ class SourceInfo:
     subject_name_vi: str
     subject_name_en: str
     title: str
-    author: str
+    author: str | None
     license: str
-    url: str
+    url: str | None
     version: str
 
 
@@ -66,8 +66,8 @@ def replace_chunks(
             with conn.cursor() as cur:
                 cur.executemany(
                     "insert into chunks (source_id, chunk_index, chapter_no, chapter, section,"
-                    " kind, content, url, embedding)"
-                    " values (%s, %s, %s, %s, %s, %s, %s, %s, %s::vector)",
+                    " kind, content, source_uri, page, embedding)"
+                    " values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::halfvec(1024))",
                     [
                         (
                             source_id,
@@ -77,10 +77,29 @@ def replace_chunks(
                             c.section,
                             c.kind,
                             c.content,
-                            c.url,
+                            c.source_uri,
+                            c.page,
                             to_pgvector(v),
                         )
                         for i, (c, v) in enumerate(zip(batch, vectors, strict=True))
                     ],
                 )
     return len(chunks)
+
+
+# HNSW over halfvec, built once after bulk loading (migration 0003 drops it). m/ef_construction are
+# pgvector's defaults; raising them buys recall at the cost of build time and index size.
+_INDEX_SQL = (
+    "create index if not exists chunks_embedding_idx"
+    " on chunks using hnsw (embedding halfvec_cosine_ops)"
+)
+
+
+def build_vector_index(conn: psycopg.Connection) -> None:
+    """Build the similarity index; idempotent. Run after loading a library, not per book."""
+    conn.execute(_INDEX_SQL)
+
+
+def drop_vector_index(conn: psycopg.Connection) -> None:
+    """Drop the index before a large reload, then call `build_vector_index` once at the end."""
+    conn.execute("drop index if exists chunks_embedding_idx")
