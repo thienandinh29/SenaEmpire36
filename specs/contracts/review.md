@@ -17,3 +17,7 @@ the choices the code makes where `TEAM.md` is silent. Each needs an answer befor
 | 9 | `retrieve.search` returns `Citation{chunk_id, source_title, publisher?, license, chapter?, section?, source_uri, page?, content, score}` | P3, P4 |
 | 10 | SSE `GET /topics/{id}/events` sends `TopicState` as the event payload; event names `state` and `heartbeat` | P2, P5 |
 | 11 | Migration `0003` drops the HNSW index; `app.rag.store.build_vector_index(conn)` rebuilds it after bulk loading | P2 |
+| 12 | `placement.gap(...)` returns `str \| None` (None = no gap found, e.g. top question answered correctly), matching the optional `gap_slug` | P3 |
+| 13 | Placement is stateless: P3 loads the learner's placement answers `[(concept_slug, correct, item_id)]` and calls `next_question(graph, answers)`; P2 persists `placement.seed_mastery(...)` as the starting `p_known` | P2, P3 |
+| 14 | An item is attached to a concept (`ItemSet.concept`), so P3 picks an unserved `verified` item of the slug placement returns | P3, P4 |
+

@@ -16,7 +16,7 @@ Need a different mock? Ask P1.
 | `topics-cached.response` | `GET /topics/cached` | |
 | `uploads.request-link` / `.response` | `POST /uploads` (link body) | file upload is multipart; response shape is the same |
 | `graph.response` | `GET /graph` | `edges` use the key `from`; node brightness = `p_known` |
-| `placement-next.request` / `.question` / `.done` | `POST /placement/next` | `.done` has `gap_slug` and `item: null` |
+| `placement-next.request` / `.question` / `.done` | `POST /placement/next` | `.question` and `.done` are real `placement.next_question` output; `.done` (4 questions, learner's real gap = booleans) has `gap_slug` and `item: null` |
 | `next-item.response` | `GET /next-item` | |
 | `attempts.request` | `POST /attempts` | `answer` = 0-based option index |
 | `attempts.wrong` | `POST /attempts` | wrong on loops → `remediation` to booleans; traces `bkt_update` + `root_cause` |

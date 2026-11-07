@@ -13,8 +13,11 @@ Window per `TEAM.md` timeline. `[x]` done. Tests in `apps/api/tests/engine/`.
 - [x] T6 `graph.root_cause` + tests (nearest weak prerequisite, ties, no weak prerequisite, alternatives listed)
 
 ## H3–H7
-- [ ] T7 `placement.py`: inference, `next_question`, `gap` + tests (stops ≤ 6, deterministic)
-- [ ] T8 Simulated-learner test: planted gap located ≥ 90% across golden topics #1–3 (seeded)
+- [x] T7 `placement.py`: inference, `next_question`, `gap`, `seed_mastery`, opt-in `verify` + tests (stops ≤ 6, deterministic)
+- [~] T8 Simulated-learner test. **Noiseless: gap located exactly, ≤ 6 questions, every planted gap on 4 shapes (met).
+  With slip 0.10 / guess 0.25 noise the ≥ 90% criterion is NOT met** (seeded, 400 runs per planted gap):
+  plain 43–55% exact (mean 2.5–4.7 questions), `verify=True` 56–64% (3.2–5.6 questions). Decision needed from P1:
+  relax the criterion, make `verify` the default, or move to probabilistic placement (see spec.md note)
 - [ ] T9 Traces on every engine output; hand the trace list to P3's `/attempts` and `/placement/next`
 
 ## H8–H11

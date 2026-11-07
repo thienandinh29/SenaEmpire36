@@ -1,20 +1,20 @@
 {
   "item": {
-    "id": "loop-003",
+    "id": "list-001",
     "kind": "mcq",
-    "prompt_vi": "Đoạn mã `for i in range(3): print(i)` in ra những giá trị nào?",
+    "prompt_vi": "Sau `t = [1, 2, 3]` rồi `t.append(4)`, `len(t)` bằng bao nhiêu?",
     "options": [
       {
-        "label": "0, 1, 2"
-      },
-      {
-        "label": "1, 2, 3"
-      },
-      {
-        "label": "0, 1, 2, 3"
-      },
-      {
         "label": "3"
+      },
+      {
+        "label": "4"
+      },
+      {
+        "label": "5"
+      },
+      {
+        "label": "Gây lỗi"
       }
     ]
   },
@@ -22,7 +22,7 @@
   "gap_slug": null,
   "trace": {
     "kind": "placement_step",
-    "concept_slug": "vong-lap",
+    "concept_slug": "danh-sach",
     "at": "2026-11-07T09:30:00Z",
     "prior": 0.2,
     "evidence": {
@@ -34,12 +34,22 @@
     },
     "posterior": null,
     "rule": "placement.start_advanced",
-    "rule_vi": "Bắt đầu từ «Vòng lặp» (nâng cao): đúng thì kiến thức nền coi như đã biết",
+    "rule_vi": "Bắt đầu từ «Danh sách», khái niệm nâng cao nhất: trả lời đúng thì các kiến thức nền coi như đã biết, sai thì ta lần ngược về nền tảng (đúng → 7 khái niệm được xem là đã biết; sai → 1 khái niệm được xem là chưa biết)",
     "alternatives": [
       {
-        "concept_slug": "danh-sach",
+        "concept_slug": "vong-lap",
         "p_known": 0.2,
-        "why_not_vi": "Cần cả «Vòng lặp» và «Hàm»; hỏi «Vòng lặp» trước thu hẹp nhanh hơn"
+        "why_not_vi": "Khái niệm kém nâng cao hơn"
+      },
+      {
+        "concept_slug": "cau-lenh-dieu-kien",
+        "p_known": 0.2,
+        "why_not_vi": "Khái niệm kém nâng cao hơn"
+      },
+      {
+        "concept_slug": "bieu-thuc-boolean",
+        "p_known": 0.2,
+        "why_not_vi": "Khái niệm kém nâng cao hơn"
       }
     ]
   }

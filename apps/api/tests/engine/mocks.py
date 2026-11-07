@@ -14,8 +14,8 @@ from pydantic import BaseModel
 
 from app.engine.bkt import DEFAULT_PARAMS, update_traced
 from app.engine.graph import Graph, root_cause
+from app.engine.placement import Answer, next_question
 from app.engine.srs import make_scheduler, new_card, review_traced
-from app.engine.trace import Alternative, DecisionTrace
 from app.schemas import (
     AskRequest,
     AskResponse,
@@ -111,6 +111,17 @@ BOOL_ITEM = PublicItem(
         PublicOption(label="None"),
     ],
 )
+LIST_ITEM = PublicItem(
+    id="list-001",
+    kind="mcq",
+    prompt_vi="Sau `t = [1, 2, 3]` rồi `t.append(4)`, `len(t)` bằng bao nhiêu?",
+    options=[
+        PublicOption(label="3"),
+        PublicOption(label="4"),
+        PublicOption(label="5"),
+        PublicOption(label="Gây lỗi"),
+    ],
+)
 CITATION = CitationRef(
     title="Think Python (3rd edition)",
     section="Chương 5 — Boolean expressions",
@@ -179,22 +190,21 @@ def _topic_state_ready() -> TopicState:
     )
 
 
-def _placement_trace() -> DecisionTrace:
-    return DecisionTrace(
-        kind="placement_step",
-        concept_slug="vong-lap",
-        at=NOW,
-        prior=0.2,
-        rule="placement.start_advanced",
-        rule_vi="Bắt đầu từ «Vòng lặp» (nâng cao): đúng thì kiến thức nền coi như đã biết",
-        alternatives=[
-            Alternative(
-                concept_slug="danh-sach",
-                p_known=0.2,
-                why_not_vi="Cần cả «Vòng lặp» và «Hàm»; hỏi «Vòng lặp» trước thu hẹp nhanh hơn",
-            )
-        ],
-    )
+def _placement_first() -> PlacementStep:
+    slug, trace = next_question(GRAPH, [], now=NOW)
+    assert slug == "danh-sach"  # the item below is written for this concept
+    return PlacementStep(item=LIST_ITEM, done=False, trace=trace)
+
+
+def _placement_done() -> PlacementStep:
+    """Run the engine against a learner whose real gap is booleans, noiseless."""
+    unknown = {"bieu-thuc-boolean", *GRAPH.descendants("bieu-thuc-boolean")}
+    answers: list[Answer] = []
+    while (slug := next_question(GRAPH, answers, now=NOW)[0]) is not None:
+        answers.append(Answer(slug, slug not in unknown))
+    _, trace = next_question(GRAPH, answers, now=NOW)
+    assert trace.concept_slug == "bieu-thuc-boolean"
+    return PlacementStep(item=None, done=True, gap_slug=trace.concept_slug, trace=trace)
 
 
 def _attempt_wrong() -> AttemptResult:
@@ -284,25 +294,8 @@ def mocks() -> dict[str, BaseModel]:
         "uploads.response": UploadCreated(upload_id="upl_3a9f", pages=42, text_ok=True),
         "graph.response": _graph_view(),
         "placement-next.request": PlacementRequest(learner_id=LEARNER, subject=SUBJECT),
-        "placement-next.question": PlacementStep(
-            item=LOOP_ITEM, done=False, trace=_placement_trace()
-        ),
-        "placement-next.done": PlacementStep(
-            item=None,
-            done=True,
-            gap_slug="bieu-thuc-boolean",
-            trace=DecisionTrace(
-                kind="placement_step",
-                concept_slug="bieu-thuc-boolean",
-                at=NOW,
-                prior=0.31,
-                rule="placement.gap_located",
-                rule_vi=(
-                    "Sai ở «Câu lệnh điều kiện» mà «Biểu thức boolean» chưa vững (0,31) "
-                    "→ lỗ hổng nằm ở «Biểu thức boolean»"
-                ),
-            ),
-        ),
+        "placement-next.question": _placement_first(),
+        "placement-next.done": _placement_done(),
         "next-item.response": NextItem(
             item=BOOL_ITEM, reason_vi="Củng cố «Biểu thức boolean» — phần nền còn yếu nhất"
         ),

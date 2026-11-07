@@ -37,3 +37,10 @@ deterministic rules over the Knowledge Graph and BKT mastery, never from the LLM
 
 ## Out of scope (demo)
 Elo difficulty calibration, fitted BKT parameters (defaults from the literature), exam-plan scheduling (H8–H11).
+
+## Measured status (H3–H7, placement.py)
+The success criterion above is **not yet met under noise**. Seeded simulation, slip 0.10 / guess 0.25, one planted gap
+per concept: exact gap located in 43–55% of runs (56–64% with `verify=True`); noiseless runs are exact on all shapes.
+Cause: one lucky MCQ guess (25%) settles whole branches by inference. Options, cheapest first: (1) accept
+"within one concept" as the criterion, (2) default `verify=True`, (3) probabilistic placement (per-concept BKT
+posteriors, ask the highest-entropy concept; more work than the demo window allows).

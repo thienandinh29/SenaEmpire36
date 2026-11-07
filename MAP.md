@@ -29,7 +29,7 @@ Planned entries are marked _(planned)_ until they exist.
 | `apps/api/app/schemas.py` | Contracts (P1): Knowledge Graph + Items YAML models with validators, `Citation`, every API body |
 | `apps/api/app/engine/` | Pure, tested decision logic: `bkt.py` (mastery), `srs.py` (FSRS review scheduling); traced wrappers `update_traced`/`review_traced`; `trace.py` (`DecisionTrace`) |
 | `apps/api/app/engine/graph.py` | `Graph` (prerequisite DAG: topological order, depth, ancestors/descendants) + `root_cause` to the weakest prerequisite, traced |
-| `apps/api/app/engine/placement.py` _(planned, P1)_ | Graph-walk placement: next question, located gap |
+| `apps/api/app/engine/placement.py` | Graph-walk placement: `next_question`, `gap`, `seed_mastery`; stateless, traced; opt-in `verify` mode |
 | `apps/api/app/graders/` _(planned, P3)_ | MCQ grading |
 | `apps/api/app/tutor/` _(planned, P4)_ | Socratic hint ladder |
 | `apps/api/app/research/` _(planned, P3)_ | Deep Research agent (allowlisted web search and reading) |
