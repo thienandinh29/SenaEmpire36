@@ -56,6 +56,13 @@ learners. Tutor hints go through the same check against their cited chunks befor
 - Vietnamese-first UI and tutor language; English secondary.
 - Every explanation traceable to a source chunk.
 - Learner data private by default (Supabase RLS).
+- **Uploads in the demo (P1 decision, 2026-11-07):** a judge's uploaded file is read, chunked and sent to the model APIs
+  (DeepSeek generates, Gemini verifies), so it leaves our servers. Allowed **for the competition demo only**, never for
+  real learners, and only with a notice shown before the upload and accepted by the user (Vietnamese, in the `vi` i18n
+  file): *"Tệp bạn tải lên sẽ được gửi tới dịch vụ AI bên thứ ba (DeepSeek, Gemini) để tạo lộ trình. Chỉ tải tài liệu
+  công khai hoặc không chứa thông tin cá nhân. Dữ liệu demo sẽ được xóa sau buổi trình bày."* Uploaded files and the
+  chunks derived from them are deleted after the demo. Before any real-learner release this needs a privacy review
+  (provider data terms, consent, retention, or a self-hosted model).
 
 ## Competition demo (24-hour team build — see `TEAM.md`)
 No subject is prepared in advance. A judge names **any** topic, or uploads their own file, and NodeTrail builds a

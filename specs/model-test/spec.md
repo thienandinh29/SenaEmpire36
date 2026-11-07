@@ -1,5 +1,13 @@
 # Feature: H8 Vietnamese model test
 
+> **Status (2026-11-07): the stack is decided** (team, including P1): generation = DeepSeek (no fallback to another family),
+> verification = Gemini (Developer API), embedding = BAAI/bge-m3. The test below is therefore a **validation of that stack against the same gates**, not a selection
+> among candidates; the candidate list shrinks to the generator, the verifier and the fallbacks actually used. What it still
+> decides: (1) whether one DeepSeek model suffices for Free and Pro or Pro needs a stronger one (compare on the gates and the
+> blind rating; the list prices differ by about 12x); (2) whether having no generation fallback is acceptable for the
+> demo (it fails explicitly; the pre-generated topics are the fallback); (3) whether graph extraction fits DeepSeek's input limit or must go chapter by chapter; (4) the tutor, at
+> H12–H18. A gate that fails changes the stack for that task only, by P1's decision.
+
 Lane P1 designs and decides; P3 runs it through the gateway; P4 supplies cases; two Vietnamese speakers rate.
 Contracts: `TEAM.md` → "LLM (P3)" model roles, "Two modes", H8 checkpoint ("Pick Free/Pro models from the Vietnamese
 test"). Nothing here changes a contract.

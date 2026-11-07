@@ -67,6 +67,7 @@ with one upstream Starlette/httpx deprecation warning. No web app is included.
 | `apps/api/app/evalkit/model_checks.py` | Offline H8 G1–G4 screening against P1 contracts; mandatory review remains explicit (`specs/model-test/offline-checks.md`) |
 | `apps/api/app/evalkit/model_metrics.py` | H8 receipt scoring: verifier catches/false alarms with intervals, p95 latency, task and combined topic cost; missing evidence remains explicit (`specs/model-test/receipts.md`) |
 | `specs/contracts/p1-h7-review.md` | P1 source review, H7 engine acceptance sequence, library issues and placement limitation |
+| `specs/contracts/h7-run-sheet.md` | P1's run sheet for the H7 end-to-end run: go/no-go list, 12 steps with expected results, what to record, a blank result table |
 | `apps/api/tests/engine/test_learning_flow.py` | JSON-replayed placement/remediation/mastery/review flow; optional P3 real grader on an integration checkout; no live DB/worker claim |
 | `apps/api/app/engine/path.py` | The next step when nothing just went wrong (`next_step`: resume, overdue review, continue, learn, confirm, done) with a target difficulty; traced |
 | `apps/api/app/engine/remediation.py` | Remediation rules after a wrong answer (`remediate`: weakest prerequisite, repeated misconception, practise again) and `resume`; traced |
