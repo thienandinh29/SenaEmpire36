@@ -6,6 +6,7 @@ never drift from `app/schemas.py`. Traces are real engine output (`update_traced
 `review_traced`) with a fixed clock; the placement trace is hand-built until `placement.py` lands.
 """
 
+import hashlib
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -26,6 +27,7 @@ from app.schemas import (
     CachedTopic,
     CachedTopics,
     CitationRef,
+    Concept,
     DueCard,
     DueReviews,
     Edge,
@@ -35,9 +37,11 @@ from app.schemas import (
     GraphConfirm,
     GraphConfirmed,
     GraphNode,
+    GraphReview,
     GraphView,
     HintRequest,
     HintResponse,
+    KnowledgeGraph,
     LearnerCreate,
     LearnerCreated,
     NextItem,
@@ -47,6 +51,7 @@ from app.schemas import (
     PublicOption,
     TopicCreate,
     TopicCreated,
+    TopicMetrics,
     TopicSource,
     TopicState,
     TrailEvent,
@@ -132,7 +137,19 @@ CITATION = CitationRef(
 )
 
 
-GRAPH_REVISION = "rev-3f9a1c7e2b64"  # opaque; the real value comes from the generated graph
+# The backend sets this to the sha256 of the generated map; the mock derives it from the demo graph.
+GRAPH_REVISION = hashlib.sha256(
+    json.dumps([CONCEPTS, EDGES], ensure_ascii=False, sort_keys=True).encode("utf-8")
+).hexdigest()
+CONCEPTS_EN = {
+    "bien": "Variables and assignment",
+    "bieu-thuc": "Expressions and operators",
+    "bieu-thuc-boolean": "Boolean expressions",
+    "cau-lenh-dieu-kien": "Conditional statements",
+    "vong-lap": "Loops",
+    "ham": "Functions",
+    "danh-sach": "Lists",
+}
 
 
 def _graph_view() -> GraphView:
@@ -142,7 +159,22 @@ def _graph_view() -> GraphView:
             for s, n in CONCEPTS.items()
         ],
         edges=[Edge(from_=a, to=b) for a, b in EDGES],
-        revision=GRAPH_REVISION,
+    )
+
+
+def _graph_review() -> GraphReview:
+    return GraphReview(
+        learner_id=LEARNER,
+        subject=SUBJECT,
+        graph_revision=GRAPH_REVISION,
+        graph=KnowledgeGraph(
+            concepts=[
+                Concept(slug=s, name_vi=n, name_en=CONCEPTS_EN[s], sources=[f"{BOOK}/chap05.html"])
+                for s, n in CONCEPTS.items()
+            ],
+            edges=[Edge(from_=a, to=b) for a, b in EDGES],
+        ),
+        confirmed=False,
     )
 
 
@@ -310,10 +342,19 @@ def mocks() -> dict[str, BaseModel]:
         "uploads.request-link": UploadLink(url="https://example.org/giao-trinh.pdf"),
         "uploads.response": UploadCreated(upload_id="upl_3a9f", pages=42, text_ok=True),
         "graph.response": _graph_view(),
-        "graph-confirm.request": GraphConfirm(
-            learner_id=LEARNER, subject=SUBJECT, revision=GRAPH_REVISION
+        "graph-review.response": _graph_review(),
+        "graph-confirm.request": GraphConfirm(subject=SUBJECT, graph_revision=GRAPH_REVISION),
+        "graph-confirm.response": GraphConfirmed(
+            learner_id=LEARNER, subject=SUBJECT, graph_revision=GRAPH_REVISION
         ),
-        "graph-confirm.response": GraphConfirmed(confirmed=True, revision=GRAPH_REVISION),
+        "topic-metrics.response": TopicMetrics(
+            topic_id="topic_7c1e",
+            elapsed_seconds=142.6,
+            cost_usd=None,
+            items_generated=12,
+            items_verified=9,
+            items_dropped=3,
+        ),
         "placement-next.request": PlacementRequest(learner_id=LEARNER, subject=SUBJECT),
         "placement-next.question": _placement_first(),
         "placement-next.done": _placement_done(),
