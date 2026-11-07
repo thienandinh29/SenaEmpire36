@@ -41,7 +41,7 @@ Planned entries are marked _(planned)_ until they exist.
 | `data/golden/` _(planned, P4)_ | 2–3 hand-checked golden topics (chunks, graph, items): test data, labelled sample, demo fallback |
 | `apps/api/app/jobs/` _(planned, P2)_ | `topic_jobs` queue in Postgres, background worker, SSE progress with heartbeat |
 | `apps/api/app/observability/` _(planned, P2)_ | structlog + Langfuse setup (OpenTelemetry, Sentry after the contest) |
-| `apps/api/app/rag/` | `notebook.py` (ipynb → chunks), `store.py` (`build_vector_index` after bulk load), `embed.py` (`TeiEmbedder` sync + async, local bge-m3, `make_embedder`; managed-API fallback planned), `retrieve.py` (`Retriever.search` → `Citation`s), `ingest.py` CLI; optional `rerank.py` planned (P1) |
+| `apps/api/app/rag/` | `notebook.py` (ipynb → chunks), `store.py` (`build_vector_index` after bulk load), `embed.py` (`TeiEmbedder` sync + async, local bge-m3, `make_embedder`; managed-API fallback planned), `retrieve.py` (`Retriever.search` → `Citation`s), `ingest.py` CLI (`--embedder tei|local`, `--build-index`); optional `rerank.py` planned (P1) |
 | `data/raw/thinkpython/` | Downloaded Think Python 3e notebooks + `SOURCE_SHA` (git-ignored; re-download to rebuild) |
 | `apps/api/app/llm/` _(planned, P3)_ | LLM gateway (Vertex AI, Bedrock, OpenRouter adapters) + `routing.yaml` (tier × task → ordered provider:model list) |
 | `data/sources/` _(planned, P3)_ | Allowlist of open-education sites + library manifest |

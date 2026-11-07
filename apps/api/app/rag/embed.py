@@ -6,6 +6,7 @@ container holds bge-m3; `TeiEmbedder` talks to it over HTTP and implements both.
 """
 
 import asyncio
+import importlib
 import time
 import unicodedata
 from collections.abc import Sequence
@@ -162,17 +163,20 @@ class BgeM3Embedder:
     """BAAI/bge-m3 dense vectors: multilingual, so Vietnamese questions match English text.
 
     Needs the optional `embed` extra (`uv sync --extra embed`). First use downloads ~2.3 GB.
+    Uses an NVIDIA GPU when PyTorch can see one (see `pick_device`), otherwise the CPU.
     """
 
     model_name = "BAAI/bge-m3"
     dim = EMBEDDING_DIM
 
-    def __init__(self, batch_size: int = 16) -> None:
+    def __init__(self, batch_size: int | None = None, device: str | None = None) -> None:
         # Imported here so the API and CI run without PyTorch installed.
         from sentence_transformers import SentenceTransformer
 
-        self._model: Any = SentenceTransformer(self.model_name, device="cpu")
-        self._batch_size = batch_size
+        self.device = device or pick_device()
+        # A GPU digests big batches far faster; on a CPU big batches only cost memory.
+        self._batch_size = batch_size or (64 if self.device.startswith("cuda") else 16)
+        self._model: Any = SentenceTransformer(self.model_name, device=self.device)
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         vectors = self._model.encode(
@@ -182,6 +186,19 @@ class BgeM3Embedder:
             show_progress_bar=len(texts) > 64,
         )
         return [[float(x) for x in v] for v in vectors]
+
+
+def pick_device() -> str:
+    """ "cuda" when PyTorch can see an NVIDIA GPU, else "cpu" (also when PyTorch is not installed).
+
+    A pip install of PyTorch on Windows is CPU-only unless the CUDA build is chosen on purpose, so a
+    GPU machine can still land on "cpu": check `device` on the embedder if indexing is slow.
+    """
+    try:
+        torch = importlib.import_module("torch")
+    except ImportError:
+        return "cpu"
+    return "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def to_pgvector(vector: Sequence[float]) -> str:
