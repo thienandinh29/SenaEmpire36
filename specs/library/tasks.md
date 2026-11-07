@@ -8,3 +8,8 @@
 - [ ] T6 P3 + P1 at H5: one real HTML book and one real PDF end to end; chunk-size spread; 10-question spot check
 - [ ] T7 P2: run `python -m app.rag.library <library> --tei-url ... --build-index` on the host GPU (H5–H7)
 - [ ] T8 Tidy: let `notebook.py` use `chunker.py` (not needed for the demo)
+
+P1 source review: `../contracts/p1-h7-review.md` (P3 `acb048b`). T5 is partly
+implemented on P3's branch; reading-order and Vietnamese subject-label issues
+remain. T6/T7 still require real files, TEI and DB receipts; schema-valid exports
+alone do not complete them.

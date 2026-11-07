@@ -22,8 +22,9 @@ class ReviewResult:
     due_at: datetime
 
 
-def make_scheduler(*, fuzz: bool = True) -> Scheduler:
-    # Fuzzing spreads due dates so reviews don't pile up on one day; tests turn it off.
+def make_scheduler(*, fuzz: bool = False) -> Scheduler:
+    # Deterministic by default, including service retries/replays. Callers may explicitly
+    # opt into randomized date spreading with fuzz=True outside the deterministic flow.
     return Scheduler(
         desired_retention=DESIRED_RETENTION,
         learning_steps=(),

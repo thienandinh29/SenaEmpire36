@@ -2,6 +2,18 @@
 
 Spec: `specs/model-test/spec.md`. Runs in H6–H8 of `TEAM.md`'s timeline, so P3 can fill `routing.yaml` at H8.
 
+Offline implementation: `app/evalkit/model_checks.py` uses existing P1 contracts
+for G1, format screening for G2, input-reference membership for G3, and literal
+hint leakage screening for G4. See `offline-checks.md` for input, output and
+mandatory semantic review. Tests cover retries, hallucinated citations, cycles,
+missing misconceptions, Unicode and leaks. No gateway or shared contract changes.
+
+Receipt scoring: `app/evalkit/model_metrics.py` computes G5 counts with exact
+intervals, nearest-rank sample p95 for G6, and declared-volume USD projections
+for G7. `receipts.md` defines the input and missing-evidence rules. Counts come
+from the existing protocol: graph 3, items 15, hint 12, verification 10+10.
+No model calls or automatic model selection; P3 owns measured receipts.
+
 ## Candidates
 Slots, not names: exact IDs are whatever P3's gateway can reach at H6 and are recorded in the results file.
 - **Free:** a cheap Gemini Flash-class model (Vertex), a cheap Claude-class model (Bedrock), one cheap OpenRouter model
