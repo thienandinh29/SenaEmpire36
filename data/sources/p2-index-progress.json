@@ -1,20 +1,23 @@
 {
-  "stage": "think-python-2e",
-  "status": "running",
   "order": [
     "think-python-2e",
     "logic-critical-thinking",
     "introductory-statistics",
     "P4 golden"
   ],
-  "expected_book_chunks": [
-    2764,
-    700,
-    1156
+  "completed": [
+    {
+      "book": "think-python-2e",
+      "chunks": 391,
+      "reused": false
+    },
+    {
+      "book": "logic-critical-thinking",
+      "chunks": 331,
+      "reused": false
+    }
   ],
-  "golden_chunks": 15,
-  "completed": [],
   "vector_index_built": false,
-  "updated_at": "2026-11-07T12:54:40.574768+00:00",
-  "runner_log": "data/raw/p2-index-runner.log"
+  "stage": "introductory-statistics",
+  "updated_at": "2026-11-07T13:09:04.951519+00:00"
 }

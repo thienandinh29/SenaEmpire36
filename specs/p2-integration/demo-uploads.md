@@ -20,3 +20,23 @@ Validation: API upload policy and persisted-consent/worker tests cover file and
 link rejection, accepted uploads, missing consent, and disabled demo mode. Web
 client/proxy tests cover refusal before consent and exact consent forwarding.
 This does not establish provider privacy terms or authorize real-learner uploads.
+
+
+After the demo, stop the worker, then from `apps/api` run:
+
+```powershell
+uv run python -m app.uploads.purge --all-demo
+# Or delete a single upload:
+uv run python -m app.uploads.purge --upload-id <UUID>
+```
+
+Purge rejects active jobs, deletes queued/finished upload-owned topics and their
+chunks, attempts, mastery, reviews, traces, caches, audits and retry receipts, then
+removes the private object and upload row. Object-storage failure rolls back the
+DB transaction; retrying an absent upload is safe. Curated library subjects remain.
+
+`POST /attempts` accepts optional `client_attempt_id` (UUID, additive contract).
+Clients must preserve the same ID and body across network retries, and allocate a
+new ID for a new submitted answer. Requests omitting it retain legacy per-request
+behavior. A conflicting body under an existing ID returns 409; a matching retry
+returns the entire original result even if the question was later changed/withdrawn.
