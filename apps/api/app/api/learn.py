@@ -1,16 +1,85 @@
 """P3 learning routes, ready for adapters to P1 engine and P2 persistence.
 
-Local DTOs align with P1 ml-core 5245e56; see specs/p3-integration/contract-review.md.
+HTTP responses reuse app.schemas; strict request subclasses preserve existing validation.
 Backend protocols describe P3's needs; they do not redefine another lane's API.
 """
 
-from datetime import date
-from typing import Literal, Protocol
+from typing import Protocol
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.graders.mcq import Grade, Item, LearnerItem, grade, learner_item
+from app.engine.trace import Alternative as Alternative
+from app.engine.trace import Evidence as Evidence
+from app.graders.mcq import Grade, Item, grade, learner_item
+from app.schemas import (
+    AttemptCreate,
+    DueCard,
+    Edge,
+    ExamPlanRequest,
+    PlacementRequest,
+    PublicItem,
+)
+from app.schemas import (
+    AttemptResult as AttemptResponse,
+)
+from app.schemas import (
+    DecisionTrace as DecisionTrace,
+)
+from app.schemas import (
+    DueReviews as ReviewsResponse,
+)
+from app.schemas import (
+    ExamDay as ExamDay,
+)
+from app.schemas import (
+    ExamPlan as ExamResponse,
+)
+from app.schemas import (
+    GraphNode as GraphNode,
+)
+from app.schemas import (
+    GraphView as GraphResponse,
+)
+from app.schemas import (
+    NextItem as NextResponse,
+)
+from app.schemas import (
+    PlacementStep as PlacementResponse,
+)
+from app.schemas import (
+    Remediation as Remediation,
+)
+
+GraphEdge = Edge
+ReviewCard = DueCard
+
+__all__ = [
+    "Alternative",
+    "AttemptInput",
+    "AttemptResponse",
+    "AttemptUpdate",
+    "DecisionTrace",
+    "Evidence",
+    "ExamDay",
+    "ExamInput",
+    "ExamResponse",
+    "GraphEdge",
+    "GraphNode",
+    "GraphResponse",
+    "Input",
+    "LearnerSubject",
+    "LearningBackend",
+    "NextResponse",
+    "NextSelection",
+    "Output",
+    "PlacementResponse",
+    "PlacementSelection",
+    "Remediation",
+    "ReviewCard",
+    "ReviewsResponse",
+    "create_router",
+]
 
 
 class Input(BaseModel):
@@ -21,63 +90,15 @@ class Output(BaseModel):
     model_config = ConfigDict(extra="ignore", allow_inf_nan=False)
 
 
-class LearnerSubject(Input):
+class LearnerSubject(PlacementRequest):
+    model_config = Input.model_config
+
     learner_id: str = Field(min_length=1, max_length=200)
     subject: str = Field(min_length=1, max_length=200)
 
 
-class Evidence(Output):
-    item_id: str | None = None
-    correct: bool | None = None
-    misconception: str | None = None
-    slip: float | None = Field(default=None, ge=0, le=1)
-    guess: float | None = Field(default=None, ge=0, le=1)
-
-
-class Alternative(Output):
-    concept_slug: str
-    p_known: float = Field(ge=0, le=1)
-    why_not_vi: str
-
-
-class DecisionTrace(Output):
-    kind: Literal["bkt_update", "placement_step", "root_cause", "next_item", "review"]
-    concept_slug: str
-    at: AwareDatetime
-    prior: float | None = Field(default=None, ge=0, le=1)
-    evidence: Evidence = Field(default_factory=Evidence)
-    posterior: float | None = Field(default=None, ge=0, le=1)
-    rule: str
-    rule_vi: str
-    alternatives: list[Alternative] = Field(default_factory=list)
-
-
-class GraphNode(Output):
-    slug: str
-    name_vi: str
-    p_known: float = Field(ge=0, le=1)
-    mastered: bool
-
-
-class GraphEdge(Output):
-    from_: str = Field(alias="from")
-    to: str
-
-
-class GraphResponse(Output):
-    nodes: list[GraphNode]
-    edges: list[GraphEdge]
-
-
 class PlacementSelection(Output):
     item: Item | None
-    done: bool
-    gap_slug: str | None = None
-    trace: DecisionTrace
-
-
-class PlacementResponse(Output):
-    item: LearnerItem | None
     done: bool
     gap_slug: str | None = None
     trace: DecisionTrace
@@ -88,22 +109,14 @@ class NextSelection(Output):
     reason_vi: str
 
 
-class NextResponse(Output):
-    item: LearnerItem
-    reason_vi: str
+class AttemptInput(AttemptCreate):
+    model_config = Input.model_config
 
-
-class AttemptInput(Input):
     learner_id: str = Field(min_length=1, max_length=200)
     item_id: str = Field(min_length=1, max_length=200)
     # P1: zero-based index in the exact public options order.
     answer: int = Field(ge=0, strict=True)
     hints_used: int = Field(default=0, ge=0, strict=True)
-
-
-class Remediation(Output):
-    concept_slug: str
-    reason_vi: str
 
 
 class AttemptUpdate(Output):
@@ -114,31 +127,8 @@ class AttemptUpdate(Output):
     traces: list[DecisionTrace]
 
 
-class AttemptResponse(AttemptUpdate):
-    correct: bool
-
-
-class ReviewCard(Output):
-    concept_slug: str
-    due_at: AwareDatetime
-
-
-class ReviewsResponse(Output):
-    cards: list[ReviewCard]
-
-
-class ExamInput(LearnerSubject):
-    exam_date: date
-
-
-class ExamDay(Output):
-    date: date
-    concept_slugs: list[str]
-    minutes: int = Field(ge=0)
-
-
-class ExamResponse(Output):
-    days: list[ExamDay]
+class ExamInput(ExamPlanRequest, LearnerSubject):
+    pass
 
 
 class LearningBackend(Protocol):
@@ -162,9 +152,9 @@ class LearningBackend(Protocol):
     async def exam_plan(self, request: ExamInput) -> ExamResponse: ...
 
 
-def _safe_item(item: Item) -> LearnerItem:
+def _safe_item(item: Item) -> PublicItem:
     try:
-        return learner_item(item)
+        return PublicItem.model_validate(learner_item(item).model_dump())
     except ValueError:
         raise HTTPException(503, "Câu hỏi đang chờ kiểm chứng.") from None
 

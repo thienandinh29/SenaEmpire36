@@ -88,7 +88,9 @@ class FakeBackend:
     ) -> learn.AttemptUpdate:
         self.attempts.append((request, result))
         trace = self.trace()
-        trace.evidence.correct = result.correct
+        trace = trace.model_copy(
+            update={"evidence": trace.evidence.model_copy(update={"correct": result.correct})}
+        )
         return learn.AttemptUpdate(
             p_known=0.4,
             mastered=False,
