@@ -64,6 +64,8 @@ Earlier findings 2, 3, 4, 5, 7, 8 were still open at `ee5bc3f` (P2 says the `/ne
 - **Correction by P1 (the lead, 2026-11-07):** Deep Research is the team's signature and the demo's opening in `SPEC.md`, so it is **not** a bonus. The fallback chain in `SPEC.md` stays (Deep Research over 8 min, then Nhanh for the same topic, then a pre-generated topic said openly, then the backup video). The failed live run recorded above ran on P4's `mtri` branch, which lacks 7 `ptest2` commits (including the overnight research-discovery fixes), so Deep Research's status on the `ptest2` head is **unknown until it is run live there**; run it right after path A.
 - **Proposed by P1, not yet agreed by the team:** move the feature freeze from H18 to about H20 for integration and bug fixes only, no new features; park `p5-curriculum-class` until after the contest.
 
+**Uploaded documents (P1, 2026-11-07, agreed with the team):** one uploaded PDF that teaches enough for a small lesson is the source and no external search runs; gaps are filled from the library (Quick) or the web (Deep); the 3-source rule is for external research only. This is what P4's `mtri` branch does (`outputs/live-lesson-acceptance.md`); it is not on `ptest2` yet, so it lands with the `mtri` merge. Now written in `SPEC.md`. To verify live: a PDF that is thin on one topic must show the outline naming the gap and the supplement being cited, which no run has shown yet.
+
 **How to use the board (every lane, and every lane's agent):**
 1. **Read it first.** At the start of a session, and before you wait on anyone, read your row and any `⏳` line that
    names you. Your agent checks the board to confirm the thing you are waiting for is not already done.
