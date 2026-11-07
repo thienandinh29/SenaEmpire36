@@ -17,6 +17,19 @@ integration run H7–H8, feature freeze at H18). If this summary and `TEAM.md` d
 Already on `main` before the contest (reuse only if the organizers allow pre-contest code): schema 0001–0002,
 BKT + FSRS engine, Think Python ingestion pipeline.
 
+P1 H7 preparation (2026-11-07, local branch): engine/library handoff review in
+`specs/contracts/p1-h7-review.md`; offline model screening in
+`specs/model-test/offline-checks.md`. Live host/indexing, P4 cases, integrated
+persistence and H7 acceptance remain pending. No checkpoint completion is implied.
+
+P1 offline H8 tooling also scores measured verifier/latency/cost receipts via
+`app/evalkit/model_metrics.py` (`specs/model-test/receipts.md`). P3's real gateway
+receipts, P4's held-out cases and P1's frozen budget are still required for selection.
+
+P1 review hardening: unique item IDs, exact cost-cap arithmetic, complete verifier
+labels and deterministic default review scheduling. Algorithm flow replay is
+covered in `tests/engine/test_learning_flow.py`; live H7 acceptance is still pending.
+
 ## After the contest
 | When | Goal |
 |---|---|

@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fsrs import Rating
 
-from app.engine.srs import is_due, make_scheduler, new_card, rating_for, review
+from app.engine.srs import is_due, make_scheduler, new_card, rating_for, review, review_traced
 
 NOW = datetime(2026, 10, 22, 9, 0, tzinfo=UTC)
 SCHED = make_scheduler(fuzz=False)
@@ -74,3 +74,18 @@ def test_naive_datetime_rejected() -> None:
 def test_non_utc_time_is_normalised() -> None:
     vn = datetime(2026, 10, 22, 16, 0, tzinfo=UTC).astimezone()  # same instant, local tz
     assert new_card(vn).due_at == datetime(2026, 10, 22, 16, 0, tzinfo=UTC)
+
+
+def test_default_scheduler_replays_identically_without_mutating_state() -> None:
+    first = review(new_card(NOW).state, True, NOW)
+    second = review(first.state, True, first.due_at)
+    before = json.dumps(second.state, sort_keys=True)
+    expected = review(second.state, True, second.due_at)
+    assert make_scheduler().enable_fuzzing is False
+    assert make_scheduler(fuzz=True).enable_fuzzing is True
+    for _ in range(20):
+        assert review(second.state, True, second.due_at) == expected
+        traced, trace = review_traced(second.state, True, second.due_at, concept_slug="water")
+        assert traced == expected
+        assert trace.at == second.due_at
+    assert json.dumps(second.state, sort_keys=True) == before
