@@ -1,0 +1,22 @@
+{
+  "item": null,
+  "done": true,
+  "gap_slug": "bieu-thuc-boolean",
+  "trace": {
+    "kind": "placement_step",
+    "concept_slug": "bieu-thuc-boolean",
+    "at": "2026-11-07T09:30:00Z",
+    "prior": 0.31,
+    "evidence": {
+      "item_id": null,
+      "correct": null,
+      "misconception": null,
+      "slip": null,
+      "guess": null
+    },
+    "posterior": null,
+    "rule": "placement.gap_located",
+    "rule_vi": "Sai ở «Câu lệnh điều kiện» mà «Biểu thức boolean» chưa vững (0,31) → lỗ hổng nằm ở «Biểu thức boolean»",
+    "alternatives": []
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "item": {
+    "id": "loop-003",
+    "kind": "mcq",
+    "prompt_vi": "Đoạn mã `for i in range(3): print(i)` in ra những giá trị nào?",
+    "options": [
+      {
+        "label": "0, 1, 2"
+      },
+      {
+        "label": "1, 2, 3"
+      },
+      {
+        "label": "0, 1, 2, 3"
+      },
+      {
+        "label": "3"
+      }
+    ]
+  },
+  "done": false,
+  "gap_slug": null,
+  "trace": {
+    "kind": "placement_step",
+    "concept_slug": "vong-lap",
+    "at": "2026-11-07T09:30:00Z",
+    "prior": 0.2,
+    "evidence": {
+      "item_id": null,
+      "correct": null,
+      "misconception": null,
+      "slip": null,
+      "guess": null
+    },
+    "posterior": null,
+    "rule": "placement.start_advanced",
+    "rule_vi": "Bắt đầu từ «Vòng lặp» (nâng cao): đúng thì kiến thức nền coi như đã biết",
+    "alternatives": [
+      {
+        "concept_slug": "danh-sach",
+        "p_known": 0.2,
+        "why_not_vi": "Cần cả «Vòng lặp» và «Hàm»; hỏi «Vòng lặp» trước thu hẹp nhanh hơn"
+      }
+    ]
+  }
+}
