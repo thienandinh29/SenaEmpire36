@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     # Default points at the local Docker database from docker-compose.yml.
     database_url: str = "postgresql://postgres:postgres@localhost:54322/nodetrail"
+    api_key: str = ""
+    cors_origins: str = "http://localhost:3000"
 
 
 @lru_cache
