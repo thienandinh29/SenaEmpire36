@@ -42,7 +42,9 @@ def test_each_exercise_is_its_own_chunk() -> None:
 
 def test_urls_point_at_the_online_book_section() -> None:
     chunk = next(c for c in parse_notebook(NOTEBOOK, 5) if c.section == "The `else` clause")
-    assert chunk.url == "https://allendowney.github.io/ThinkPython/chap05.html#the-else-clause"
+    assert (
+        chunk.source_uri == "https://allendowney.github.io/ThinkPython/chap05.html#the-else-clause"
+    )
 
 
 def test_slugify() -> None:

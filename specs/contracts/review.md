@@ -1,0 +1,19 @@
+# Contract review (H0–H1 draft) — reply "OK" or list problems by the deadline P1 sets
+
+Implemented in `apps/api/app/schemas.py` and `apps/api/app/engine/trace.py`, tested in
+`apps/api/tests/engine/test_contracts.py`. `TEAM.md` → "Contracts" stays the source of truth; the points below are
+the choices the code makes where `TEAM.md` is silent. Each needs an answer before the H3 freeze.
+
+| # | Decision in the draft | Affects |
+|---|---|---|
+| 1 | `POST /attempts.answer` and `/tutor/hint.last_answer` are the **option index** (0-based, order as sent), not the label | P3, P5 |
+| 2 | Item ids in the API are the **fixture id string** (e.g. `plr-001`); the DB `items.id` is a uuid, so `0005` should add a unique `items.external_id` (or P3 maps them) | P3, P4, P2 |
+| 3 | `CitationRef` (hint/ask citations) adds optional `page` beside `{title, section, url}` so the web opens the right PDF page | P3, P4, P5 |
+| 4 | `DecisionTrace.prior` / `posterior` may be `null` (e.g. a `review` trace); all `evidence` fields optional | P2, P5 |
+| 5 | Every contract model rejects **unknown keys** (`extra="forbid"`): typos in YAML or requests fail loudly | all |
+| 6 | Items without `status` load as `needs_review` (safe default: never served until verified) | P4 |
+| 7 | `Concept.sources` needs ≥ 1 entry; `Item.chunk_ids` ≥ 1; slugs are kebab-case, ≤ 80 chars | P4 |
+| 8 | `/tutor/hint.level` is 1–4; `HintResponse.citations` needs ≥ 1 (no citation, no hint) | P4, P5 |
+| 9 | `retrieve.search` returns `Citation{chunk_id, source_title, publisher?, license, chapter?, section?, source_uri, page?, content, score}` | P3, P4 |
+| 10 | SSE `GET /topics/{id}/events` sends `TopicState` as the event payload; event names `state` and `heartbeat` | P2, P5 |
+| 11 | Migration `0003` drops the HNSW index; `app.rag.store.build_vector_index(conn)` rebuilds it after bulk loading | P2 |

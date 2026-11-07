@@ -25,7 +25,7 @@ class Chunk:
     section: str
     kind: ChunkKind
     content: str
-    url: str
+    source_uri: str  # web URL of the section (chunks.source_uri)
 
     @property
     def embedding_text(self) -> str:
@@ -149,7 +149,7 @@ def parse_notebook(
                     section=label,
                     kind=_kind_for(sec, sub),
                     content=content,
-                    url=url,
+                    source_uri=url,
                 )
             )
     return chunks

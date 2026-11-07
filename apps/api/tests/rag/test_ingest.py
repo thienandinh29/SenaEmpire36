@@ -6,6 +6,7 @@ import pytest
 
 from app.rag.embed import to_pgvector
 from app.rag.ingest import ingest
+from app.rag.store import build_vector_index, drop_vector_index
 from tests.rag.fixtures import NOTEBOOK, FakeEmbedder
 
 
@@ -19,7 +20,7 @@ def book_dir(tmp_path: Path) -> Path:
 def _chunks(database_url: str) -> list[tuple[object, ...]]:
     with psycopg.connect(database_url) as conn:
         return conn.execute(
-            "select c.chunk_index, c.chapter_no, c.section, c.kind, c.url,"
+            "select c.chunk_index, c.chapter_no, c.section, c.kind, c.source_uri,"
             " vector_dims(c.embedding), s.version, s.license"
             " from chunks c join sources s on s.id = c.source_id order by c.chunk_index"
         ).fetchall()
@@ -55,7 +56,7 @@ def test_nearest_neighbour_finds_identical_text(database_url: str, book_dir: Pat
         assert target is not None
         query = embedder.embed([f"{target[2]} > {target[0]}\n\n{target[1]}"])[0]
         best = conn.execute(
-            "select section from chunks order by embedding <=> %s::vector limit 1",
+            "select section from chunks order by embedding <=> %s::halfvec(1024) limit 1",
             (to_pgvector(query),),
         ).fetchone()
     assert best == ("Glossary",)
@@ -75,3 +76,17 @@ def test_wrong_dimension_is_rejected(database_url: str, book_dir: Path) -> None:
 def test_empty_directory_is_an_error(database_url: str, tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="no chapter notebooks"):
         ingest(tmp_path, database_url, FakeEmbedder())
+
+
+def test_vector_index_is_built_after_loading(database_url: str, book_dir: Path) -> None:
+    ingest(book_dir, database_url, FakeEmbedder())
+    with psycopg.connect(database_url) as conn:
+        drop_vector_index(conn)
+        build_vector_index(conn)
+        build_vector_index(conn)  # idempotent
+        indexdef = conn.execute(
+            "select indexdef from pg_indexes where indexname = 'chunks_embedding_idx'"
+        ).fetchone()
+        drop_vector_index(conn)  # leave the shared test DB as migrations left it
+    assert indexdef is not None
+    assert "hnsw" in indexdef[0] and "halfvec_cosine_ops" in indexdef[0]
