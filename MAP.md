@@ -1,5 +1,14 @@
 # MAP — where things are
 
+## Curriculum and class feature
+
+`apps/api/app/school/` adds course outlines, ordered on-demand lessons and private
+class reporting. Run `app.school.main:create_school_app` after migrations
+`0014`–`0015`. `apps/web/app/school/` is the live course/class UI at `/school`;
+`apps/web/app/api/school/` is its server-only proxy. Read
+`specs/curriculum-classroom/handoff.md` for integration, access rules and evidence.
+Research/question generation and worker files are unchanged by this feature.
+
 Keep this file current when adding top-level folders or important modules.
 Planned entries are marked _(planned)_ until they exist.
 

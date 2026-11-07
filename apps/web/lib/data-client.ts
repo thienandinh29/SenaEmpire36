@@ -275,6 +275,22 @@ function apiClient(config: WebConfig): LearningClient {
   return {
     configureDemo() {},
     async learner(signal) {
+      // Resume a curriculum/class identity before creating a new anonymous learner.
+      let session: Response;
+      try {
+        session = await fetch("/api/school/session", {
+          cache: "no-store",
+          signal: signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(25000)])
+            : AbortSignal.timeout(25000),
+        });
+      } catch {
+        throw new DataError("network");
+      }
+      if (session.ok) return string(record(await session.json()).learner_id);
+      // Older API deployments have no school module; preserve their existing behavior.
+      if (![401, 404].includes(session.status))
+        throw new DataError("configuration", session.status);
       return string(
         record(await post("learners", { display_name: t.learner }, signal))
           .learner_id,

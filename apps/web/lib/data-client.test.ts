@@ -115,6 +115,47 @@ describe("quick demo learning journey", () => {
 });
 
 describe("live data boundary", () => {
+  it("resumes the current class learner without overwriting their cookie", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ learner_id: "current-student", name: "Student" }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    expect(
+      await createLearningClient({ ...config, mode: "api" }).learner(),
+    ).toBe("current-student");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/school/session");
+  });
+  it.each([401, 404])(
+    "creates a learner only when no session exists or the old API lacks it (%s)",
+    async (status) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response(null, { status }))
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ learner_id: "new-student" })),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+      expect(
+        await createLearningClient({ ...config, mode: "api" }).learner(),
+      ).toBe("new-student");
+      expect(fetchMock.mock.calls[1][0]).toBe("/api/backend/learners");
+    },
+  );
+  it("does not replace identity when session lookup is unavailable", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      createLearningClient({ ...config, mode: "api" }).learner(),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
   it("keeps an attempt key on network retry and rotates it only after success", async () => {
     const result = { correct: true, p_known: 0.6, mastered: false, traces: [] };
     const fetchMock = vi

@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
+import { isSameOrigin } from "@/lib/same-origin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const allowed =
-  /^(learners|topics|topics\/[^/]+|graph|graph\/review|graph\/confirm|placement\/next|attempts|tutor\/hint|uploads|reviews\/due)$/;
+  /^(learners|topics|topics\/[^/]+|graph|graph\/review|graph\/confirm|placement\/next|next-item|attempts|tutor\/hint|uploads|reviews\/due)$/;
 const learnerCookie = "nodetrail_learner";
 const sessionToken = /^[A-Za-z0-9_-]{43}$/;
 
@@ -20,10 +21,7 @@ async function proxy(
     return new Response(null, { status: 404 });
   const path = segments.join("/");
   if (!allowed.test(path)) return new Response(null, { status: 404 });
-  if (
-    request.method === "POST" &&
-    request.headers.get("origin") !== request.nextUrl.origin
-  )
+  if (request.method === "POST" && !isSameOrigin(request))
     return new Response(null, { status: 403 });
   const origin = process.env.NODETRAIL_API_URL;
   const key = process.env.NODETRAIL_API_KEY;

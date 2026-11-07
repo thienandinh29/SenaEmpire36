@@ -14,6 +14,22 @@ function configure() {
 }
 const context = (path: string[]) => ({ params: Promise.resolve({ path }) });
 describe("same-origin API proxy", () => {
+  it("forwards the practice next-item route and learner/subject query", async () => {
+    configure();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await GET(
+      new NextRequest(
+        "http://localhost:3000/api/backend/next-item?learner_id=student&subject=topic",
+      ),
+      context(["next-item"]),
+    );
+    expect(result.status).toBe(200);
+    const target = fetchMock.mock.calls[0][0] as URL;
+    expect(target.pathname).toBe("/v1/next-item");
+    expect(target.searchParams.get("learner_id")).toBe("student");
+    expect(target.searchParams.get("subject")).toBe("topic");
+  });
   it.each([null, "other", "demo-v1"])(
     "preserves only explicit upload consent %s",
     async (consent) => {
