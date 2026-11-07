@@ -27,8 +27,8 @@ Planned entries are marked _(planned)_ until they exist.
 | `apps/api/app/migrate.py` | Applies `supabase/migrations/*.sql` once each (`uv run python -m app.migrate`) |
 | `apps/api/tests/` | pytest; `conftest.py` makes a throwaway migrated DB per run |
 | `apps/api/app/schemas.py` | Contracts (P1): Knowledge Graph + Items YAML models with validators, `Citation`, every API body |
-| `apps/api/app/engine/` | Pure, tested decision logic: `bkt.py` (mastery), `srs.py` (FSRS review scheduling), `trace.py` (`DecisionTrace`) |
-| `apps/api/app/engine/graph.py` _(planned, P1)_ | Prerequisite DAG helpers + root-cause traversal to the weakest prerequisite |
+| `apps/api/app/engine/` | Pure, tested decision logic: `bkt.py` (mastery), `srs.py` (FSRS review scheduling); traced wrappers `update_traced`/`review_traced`; `trace.py` (`DecisionTrace`) |
+| `apps/api/app/engine/graph.py` | `Graph` (prerequisite DAG: topological order, depth, ancestors/descendants) + `root_cause` to the weakest prerequisite, traced |
 | `apps/api/app/engine/placement.py` _(planned, P1)_ | Graph-walk placement: next question, located gap |
 | `apps/api/app/graders/` _(planned, P3)_ | MCQ grading |
 | `apps/api/app/tutor/` _(planned, P4)_ | Socratic hint ladder |

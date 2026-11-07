@@ -7,7 +7,10 @@ After every graded attempt we:
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
+
+from app.engine.trace import DecisionTrace, Evidence, fmt_p
 
 ItemKind = Literal["mcq", "code"]
 
@@ -74,3 +77,50 @@ def update(p_known: float, correct: bool, params: BKTParams) -> float:
 def is_mastered(p_known: float, threshold: float = MASTERY_THRESHOLD) -> bool:
     _check_probability(p_known)
     return p_known >= threshold
+
+
+def update_traced(
+    p_known: float,
+    correct: bool,
+    params: BKTParams,
+    *,
+    concept_slug: str,
+    now: datetime,
+    item_id: str | None = None,
+    misconception: str | None = None,
+) -> tuple[float, DecisionTrace]:
+    """`update` plus the trace the "Vì sao?" panel shows. Same number as `update`, always."""
+    new_p = update(p_known, correct, params)
+    if correct:
+        rule = "bkt.correct"
+        why = f"Trả lời đúng → khả năng đã nắm vững tăng từ {fmt_p(p_known)} lên {fmt_p(new_p)}"
+    else:
+        rule = "bkt.wrong"
+        why = f"Trả lời sai → khả năng đã nắm vững giảm từ {fmt_p(p_known)} xuống {fmt_p(new_p)}"
+        if new_p > p_known:
+            # Possible when p_known is tiny: the learning transition outweighs weak evidence.
+            why = (
+                "Trả lời sai, nhưng mỗi lần luyện tập vẫn giúp học thêm:"
+                f" {fmt_p(p_known)} → {fmt_p(new_p)}"
+            )
+    if is_mastered(new_p) and not is_mastered(p_known):
+        rule += ".mastered"
+        why += " — đã đạt mức nắm vững"
+    why += f" (xác suất trượt {fmt_p(params.p_slip)}, đoán đúng {fmt_p(params.p_guess)})"
+    trace = DecisionTrace(
+        kind="bkt_update",
+        concept_slug=concept_slug,
+        at=now,
+        prior=p_known,
+        evidence=Evidence(
+            item_id=item_id,
+            correct=correct,
+            misconception=None if correct else misconception,
+            slip=params.p_slip,
+            guess=params.p_guess,
+        ),
+        posterior=new_p,
+        rule=rule,
+        rule_vi=why,
+    )
+    return new_p, trace

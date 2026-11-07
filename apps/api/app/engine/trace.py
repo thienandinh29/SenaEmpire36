@@ -56,3 +56,8 @@ class DecisionTrace(BaseModel):
 def utc_now() -> datetime:
     """Default clock for traces; engine functions accept `now` so tests stay deterministic."""
     return datetime.now(UTC)
+
+
+def fmt_p(p: float) -> str:
+    """A probability as Vietnamese text: two decimals with a decimal comma (0.31 -> "0,31")."""
+    return f"{p:.2f}".replace(".", ",")

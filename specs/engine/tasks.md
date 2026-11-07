@@ -8,9 +8,9 @@ Window per `TEAM.md` timeline. `[x]` done. Tests in `apps/api/tests/engine/`.
 - [x] T3 Migration `0003` (`halfvec(1024)`, `url` → `source_uri`, HNSW dropped) + `store.py` casts, `build_vector_index`
 
 ## H1–H3
-- [ ] T4 `bkt.update_traced`, `srs.review_traced` + tests (prior/posterior/slip/guess in the trace)
-- [ ] T5 `graph.py`: `Graph.from_contract`, ancestors/descendants/depth/topo order + tests on chain, wide, diamond
-- [ ] T6 `graph.root_cause` + tests (nearest weak prerequisite, ties, no weak prerequisite, alternatives listed)
+- [x] T4 `bkt.update_traced`, `srs.review_traced` + tests (prior/posterior/slip/guess in the trace)
+- [x] T5 `graph.py`: `Graph.from_contract`, ancestors/descendants/depth/topo order + tests on chain, wide, diamond
+- [x] T6 `graph.root_cause` + tests (nearest weak prerequisite, ties, no weak prerequisite, alternatives listed)
 
 ## H3–H7
 - [ ] T7 `placement.py`: inference, `next_question`, `gap` + tests (stops ≤ 6, deterministic)
