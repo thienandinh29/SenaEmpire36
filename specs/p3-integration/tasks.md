@@ -52,3 +52,12 @@
 - [ ] P2 mounts real adapters and connects TopicPipeline to worker with P4 gate.
 - [ ] Live provider/search probes after runtime credentials/model IDs are supplied.
 - [ ] Integrated H7 acceptance and P5 types from actual application OpenAPI.
+
+
+## 2026-11-07 follow-up
+
+- [x] SafeReader transition-address regression and push.
+- [x] Sync main gateway; fix truncation retry, thinking and per-attempt telemetry; push.
+- [x] Wire Retriever with provenance/order checks and canonical graph validation.
+- [ ] Add canonical graph/items smoke and sanitized measurement artifacts.
+- [ ] Run full checks; record missing external prerequisites and handoff to P2/P4.

@@ -35,3 +35,11 @@ ownership. Extend audited library export with P1's two-file format; validate bot
 sample exports and actual cached library against P1. Add explicit Brave smoke CLI;
 record only process presence/config booleans. Refresh OpenAPI/runtime receipts and
 hand P2 exact engine/transaction/retrieval calls through contract-review.md.
+
+
+Follow-up: add optional Retriever injection and explicit subject/k to TopicPipeline;
+validate returned provenance and canonical KnowledgeGraph before save. Test reversed
+rank order, foreign IDs, changed text/URI/page, empty retrieval, malformed graphs and
+foreign item sources. Add a bounded canonical graph/items smoke CLI with explicit
+--live, a local PostgreSQL read and TEI, plus a read-only book-folder mode when
+retrieval is unavailable. Keep live results separate from deterministic tests.

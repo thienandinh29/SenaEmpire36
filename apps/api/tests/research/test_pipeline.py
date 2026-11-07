@@ -8,6 +8,7 @@ from app.graders.mcq import Item
 from app.research.agent import ChosenSource, OnEvent
 from app.research.pipeline import GraphDraft, PreparedChunk, Progress, TopicPipeline, marked_chunks
 from app.research.reader import SourceError
+from app.schemas import Citation
 from app.uploads.reader import Document, Page
 from tests.graders.test_mcq import item
 
@@ -15,7 +16,10 @@ from tests.graders.test_mcq import item
 class Ports:
     def __init__(self) -> None:
         self.upload = Document("private/uploads/u1.pdf", (Page(1, "Nguồn học tập"),), True)
-        self.items = [item().model_copy(update={"id": f"q{i}"}) for i in range(6)]
+        self.items = [
+            item().model_copy(update={"id": f"q{i}", "source": "https://books.example/a"})
+            for i in range(6)
+        ]
         self.graph_saved = self.items_saved = False
         self.supported = True
 
@@ -35,7 +39,21 @@ class Ports:
     async def build_graph(
         self, goal: str, chunks: Sequence[PreparedChunk], tier: str
     ) -> GraphDraft:
-        return GraphDraft(subject_slug="biology", graph={"concepts": []}, supported=self.supported)
+        return GraphDraft(
+            subject_slug="biology",
+            graph={
+                "concepts": [
+                    {
+                        "slug": "biology",
+                        "name_vi": "Sinh học",
+                        "name_en": "Biology",
+                        "sources": [chunks[0].source_uri],
+                    }
+                ],
+                "edges": [],
+            },
+            supported=self.supported,
+        )
 
     async def save_graph(self, graph: GraphDraft) -> None:
         self.graph_saved = True
@@ -237,3 +255,130 @@ def test_progress_sink_failure_does_not_expose_internal_error() -> None:
             )
         )
     assert "secret" not in str(caught.value)
+
+
+class Retrieved:
+    def __init__(self, chunks: Sequence[PreparedChunk]) -> None:
+        from app.schemas import Citation
+
+        self.citations = [
+            Citation(
+                chunk_id=c.id,
+                content=c.text,
+                source_uri=c.source_uri,
+                page=c.page,
+                source_title="Book",
+                license="CC BY 4.0",
+                score=0.8,
+            )
+            for c in chunks
+        ]
+        self.calls: list[tuple[str, str, int]] = []
+
+    async def search(self, query: str, subject: str, k: int = 5) -> list[Citation]:
+        self.calls.append((query, subject, k))
+        return self.citations
+
+
+def test_retrieval_restores_reading_order() -> None:
+    from app.research.pipeline import retrieve_chunks
+
+    chunks = [
+        PreparedChunk(
+            id=f"c{i}", text=f"paragraph {i}", source_uri="https://books.example/a", page=i
+        )
+        for i in range(1, 4)
+    ]
+    retriever = Retrieved([chunks[2], chunks[0]])
+    result = asyncio.run(retrieve_chunks(retriever, "goal", "biology", chunks, 2))
+    assert [c.id for c in result] == ["c1", "c3"]
+    assert retriever.calls == [("goal", "biology", 2)]
+
+
+@pytest.mark.parametrize("failure", ["empty", "foreign", "text", "uri", "page", "duplicate"])
+def test_retrieval_rejects_inconsistent_provenance(failure: str) -> None:
+    from app.research.pipeline import retrieve_chunks
+
+    chunk = PreparedChunk(id="c1", text="paragraph", source_uri="https://books.example/a")
+    retriever = Retrieved([chunk])
+    changes: dict[str, dict[str, str | int]] = {
+        "foreign": {"chunk_id": "other"},
+        "text": {"content": "changed"},
+        "uri": {"source_uri": "https://evil.example"},
+        "page": {"page": 2},
+    }
+    if failure == "empty":
+        retriever.citations = []
+    elif failure == "duplicate":
+        retriever.citations *= 2
+    else:
+        retriever.citations[0] = retriever.citations[0].model_copy(update=changes[failure])
+    with pytest.raises(SourceError):
+        asyncio.run(retrieve_chunks(retriever, "goal", "biology", [chunk], 5))
+
+
+@pytest.mark.parametrize("failure", ["empty-graph", "foreign-source", "item-source", "retrieval"])
+def test_pipeline_rejects_bad_canonical_content_before_publication(failure: str) -> None:
+    class BadPorts(Ports):
+        async def build_graph(
+            self, goal: str, chunks: Sequence[PreparedChunk], tier: str
+        ) -> GraphDraft:
+            result = await super().build_graph(goal, chunks, tier)
+            if failure == "empty-graph":
+                result.graph["concepts"] = []
+            if failure == "foreign-source":
+                result.graph["concepts"] = [
+                    {
+                        "slug": "biology",
+                        "name_vi": "Sinh học",
+                        "name_en": "Biology",
+                        "sources": ["https://evil.example"],
+                    }
+                ]
+            return result
+
+    ports = BadPorts()
+    if failure == "item-source":
+        ports.items[0] = ports.items[0].model_copy(update={"source": "https://evil.example"})
+    retriever = Retrieved([]) if failure == "retrieval" else None
+    states: list[Progress] = []
+
+    async def progress(state: Progress) -> None:
+        states.append(state)
+
+    async def event(value: dict[str, str]) -> None:
+        pass
+
+    with pytest.raises(SourceError):
+        asyncio.run(
+            TopicPipeline(
+                ports, retriever=retriever, retrieval_subject="biology" if retriever else None
+            ).run(TopicInput(goal_vi="biology", mode="quick", tier="free"), progress, event)
+        )
+    assert not ports.items_saved
+    if failure != "item-source":
+        assert not ports.graph_saved
+    assert states[-1].status == "failed"
+
+
+def test_pipeline_calls_injected_retriever_before_graph() -> None:
+    class SelectedPorts(Ports):
+        async def build_graph(
+            self, goal: str, chunks: Sequence[PreparedChunk], tier: str
+        ) -> GraphDraft:
+            assert retriever.calls == [("biology", "library-biology", 12)]
+            assert [c.id for c in chunks] == ["chunk-1"]
+            return await super().build_graph(goal, chunks, tier)
+
+    retriever = Retrieved(
+        [PreparedChunk(id="chunk-1", text="Nguồn", source_uri="https://books.example/a", page=1)]
+    )
+
+    async def ignore(value: object) -> None:
+        pass
+
+    asyncio.run(
+        TopicPipeline(
+            SelectedPorts(), retriever=retriever, retrieval_subject="library-biology"
+        ).run(TopicInput(goal_vi="biology", mode="quick", tier="free"), ignore, ignore)
+    )
