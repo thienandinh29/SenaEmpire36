@@ -12,12 +12,14 @@ from app.schemas import (
     AttemptCreate,
     GraphConfirm,
     GraphConfirmed,
+    GraphReview,
     GraphView,
     ItemSet,
     KnowledgeGraph,
     PlacementStep,
     PublicItem,
     TopicCreate,
+    TopicMetrics,
 )
 
 
@@ -233,25 +235,69 @@ def test_api_responses_embed_trace_and_graph() -> None:
     assert view.model_dump(mode="json")["edges"] == [{"from": "a", "to": "b"}]
 
 
-def test_graph_view_revision_is_optional_and_round_trips() -> None:
-    nodes = [{"slug": "a", "name_vi": "A", "p_known": 0.2, "mastered": False}]
-    legacy = GraphView.model_validate({"nodes": nodes, "edges": []})
-    assert legacy.revision is None
-    shown = GraphView.model_validate({"nodes": nodes, "edges": [], "revision": "rev-abc"})
-    assert GraphView.model_validate(shown.model_dump(mode="json")) == shown
-    for bad in ("", "x" * 129):
+REVISION = "a" * 64  # a sha256 hex digest, as the backend sets it
+LEARNER = "11111111-1111-4111-8111-111111111111"
+
+
+def test_graph_review_carries_the_session_learner_the_map_and_its_state() -> None:
+    body = {
+        "learner_id": LEARNER,
+        "subject": "python-co-ban",
+        "graph_revision": REVISION,
+        "graph": GRAPH,
+        "confirmed": False,
+    }
+    review = GraphReview.model_validate(body)
+    assert GraphReview.model_validate(review.model_dump(mode="json")) == review
+    assert review.graph.edges[0].from_ == "cell-structure"  # the edge key stays `from`
+    for bad in ({**body, "graph_revision": "rev-1"}, {**body, "learner_id": "not-a-uuid"}):
         with pytest.raises(ValidationError):
-            GraphView.model_validate({"nodes": nodes, "edges": [], "revision": bad})
+            GraphReview.model_validate(bad)
 
 
-def test_graph_confirm_binds_learner_subject_and_the_revision_shown() -> None:
-    body = {"learner_id": "l1", "subject": "python-co-ban", "revision": "rev-abc"}
-    assert GraphConfirm.model_validate(body).revision == "rev-abc"
+def test_graph_confirm_names_the_revision_shown_and_never_the_learner() -> None:
+    body = {"subject": "python-co-ban", "graph_revision": REVISION}
+    assert GraphConfirm.model_validate(body).graph_revision == REVISION
     for bad in (
-        {**body, "revision": ""},  # an empty revision confirms nothing
-        {**body, "extra": 1},  # unknown keys are rejected like every other body
-        {k: v for k, v in body.items() if k != "revision"},  # no implicit "latest"
+        {**body, "graph_revision": ""},  # an empty revision confirms nothing
+        {**body, "graph_revision": "A" * 64},  # a digest is lower-case hex
+        {**body, "graph_revision": "a" * 63},
+        {**body, "learner_id": LEARNER},  # identity comes from the session cookie, not the body
+        {"subject": "python-co-ban"},  # no implicit "latest"
     ):
         with pytest.raises(ValidationError):
             GraphConfirm.model_validate(bad)
-    assert GraphConfirmed.model_validate({"confirmed": True, "revision": "rev-abc"}).confirmed
+    done = GraphConfirmed.model_validate(
+        {"learner_id": LEARNER, "subject": "python-co-ban", "graph_revision": REVISION}
+    )
+    assert done.confirmed is True
+    with pytest.raises(ValidationError):
+        GraphConfirmed.model_validate({**done.model_dump(mode="json"), "confirmed": False})
+
+
+def test_topic_metrics_may_leave_time_and_cost_unknown_but_not_invent_them() -> None:
+    known = TopicMetrics.model_validate(
+        {
+            "topic_id": "t1",
+            "elapsed_seconds": 142.6,
+            "cost_usd": 0.31,
+            "items_generated": 12,
+            "items_verified": 9,
+            "items_dropped": 3,
+        }
+    )
+    assert TopicMetrics.model_validate(known.model_dump(mode="json")) == known
+    unknown = TopicMetrics.model_validate(
+        {"topic_id": "t1", "items_generated": 0, "items_verified": 0, "items_dropped": 0}
+    )
+    assert unknown.elapsed_seconds is None and unknown.cost_usd is None
+    base = {"topic_id": "t1", "items_generated": 5, "items_verified": 3, "items_dropped": 2}
+    TopicMetrics.model_validate(base)  # exactly accounts for every item
+    for bad in (
+        {**base, "items_dropped": 3},  # more verified plus dropped than generated
+        {**base, "cost_usd": -0.01},
+        {**base, "elapsed_seconds": -1},
+        {**base, "items_verified": -1},
+    ):
+        with pytest.raises(ValidationError):
+            TopicMetrics.model_validate(bad)

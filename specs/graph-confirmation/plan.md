@@ -2,26 +2,25 @@
 
 Spec: `specs/graph-confirmation/spec.md`.
 
-## Done by P1 (this change, additive)
-- `app/schemas.py`: `GraphView.revision` (optional, 1-128 chars), `GraphConfirm`, `GraphConfirmed`. All `extra="forbid"`
-  like the other bodies, so an unknown key is rejected.
-- Mocks regenerated with `uv run python -m tests.engine.mocks`: `graph.response` carries a `revision`; new
-  `graph-confirm.request` and `graph-confirm.response`. P5's `parseGraph` reads fields explicitly, so the extra key
-  is ignored until P5 uses it.
-- `TEAM.md` API table updated (the `GET /graph` row and the new `POST /graph/confirm` row); mocks README updated.
+## History
+P1's first version (merged in PR #21) put `revision` on `GraphView`, used `POST /graph/confirm {learner_id, subject,
+revision}` and named no session. P3 had already built `GET /graph/review` and `POST /graph/confirm {subject, graph_revision}`
+with the learner taken from the session cookie. P1 aligned the contract to P3's routes rather than make P3 change them close
+to the freeze: the code is live, P5's branches already call `graph/review`, and identity from the session is what the spec
+asks for. `GraphView.revision` was removed again (nothing used it).
 
-## Why optional on `GraphView`
-`revision: str | None = None` keeps every existing response, test and stub valid. The real route must set it; a test
-on the route (P3) should assert it is never `None` there.
+## Done by P1
+- `app/schemas.py`: `GraphReview`, `GraphConfirm`, `GraphConfirmed`, `GRAPH_REVISION_PATTERN`; all `extra="forbid"`.
+- Mocks: `graph-review.response`, `graph-confirm.request`, `graph-confirm.response`; `graph.response` is back to its original
+  shape. `TEAM.md` API table and the mocks README updated.
 
-## Needed from others (not done here)
-- **P3:** the route. Obtain the authenticated learner at the boundary, call P2's `snapshot` for `GET /graph` (project
-  the public graph and the revision from the same snapshot) and `confirm` for `POST /graph/confirm`; return 409 on a
-  stale revision. Do not serialize P4's private graph model.
-- **P5:** show the map, keep its `revision`, send it on an explicit accept; allow `graph/confirm` in the proxy's
-  exact-path list; handle 409 by re-fetching the graph; regenerate `api.generated.ts` and the decoder.
-- **P2:** keep `GraphConfirmations` and migration `0012` as delivered; no contract change on their side.
+## Needed from others
+- **P3:** replace the duplicate DTOs in `app/api/graph_confirmation.py` (`ConfirmationInput`, `GraphReview`, `GraphConfirmed`)
+  with imports from `app/schemas.py` (`GraphConfirm` is the request model); same field names, so the wire does not change.
+- **P5:** call `GET /graph/review?subject=` and `POST /graph/confirm {subject, graph_revision}` from the main workspace with the
+  session cookie; keep the revision from the response that was displayed; re-fetch on 409; allow both paths in the proxy and
+  forward the cookie.
+- **P2:** keep `GraphConfirmations` and migration `0012` as delivered.
 
 ## Risks
-Two different meanings of 409 (stale revision, not yet confirmed). Accepted for the demo; if it confuses the client,
-add a machine-readable `code` later, which is additive.
+Two meanings of 409 (stale revision; not yet confirmed). Accepted for the demo; a machine-readable `code` can be added later.
