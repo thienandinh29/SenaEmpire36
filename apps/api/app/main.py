@@ -5,7 +5,7 @@ import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException, Request
@@ -21,7 +21,13 @@ from app.jobs.queue import snapshot
 from app.observability import configure_logging
 from app.schemas import CachedTopics, TopicState
 from app.services.backend import LearningService
+from app.services.graph_confirmation import GraphConfirmations
 from app.services.topics import SupabaseStorage, TopicsService
+
+if TYPE_CHECKING:
+    from app.content.gateway import Gateway
+    from app.content.learning import GraphConfirmation
+    from app.content.repository import Repository
 
 logger = logging.getLogger(__name__)
 HEARTBEAT_SECONDS = 15
@@ -199,6 +205,46 @@ def create_app(
         return Health(status="ok", db="ok" if db_ok else "down")
 
     return app
+
+
+def create_content_app(
+    settings: Settings | None = None,
+    *,
+    repository: "Repository | None" = None,
+    gateway: "Gateway | None" = None,
+    confirmation: "GraphConfirmation | None" = None,
+) -> FastAPI:
+    """P2 entry point: P4 learning/tutor with P2 queue and private upload storage."""
+    from app.content.backends import LearningBackend, TutorBackend
+    from app.content.gateway import P3Gateway
+    from app.content.repository import Repository
+
+    settings = settings or get_settings()
+    current: FastAPI
+    store = repository if repository is not None else Repository(lambda: current.state.pool)
+    models = gateway if gateway is not None else P3Gateway()
+    confirmations = GraphConfirmations(settings.database_url)
+    approved = confirmation if confirmation is not None else confirmations
+    current = create_app(
+        settings,
+        learning_backend=LearningBackend(store, approved),
+        tutor_backend=TutorBackend(
+            store, models, approved, demo_uploads_enabled=settings.demo_uploads_enabled
+        ),
+    )
+    platform_lifespan = current.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+        async with platform_lifespan(application):
+            await asyncio.to_thread(store.require_schema)
+            await asyncio.to_thread(confirmations.require_schema)
+            yield
+
+    current.router.lifespan_context = lifespan
+    current.state.p4_repository = store
+    current.state.graph_confirmations = confirmations
+    return current
 
 
 app = create_app()

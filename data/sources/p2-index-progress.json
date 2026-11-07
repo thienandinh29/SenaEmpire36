@@ -9,21 +9,32 @@
     {
       "book": "think-python-2e",
       "chunks": 391,
-      "reused": false
+      "reused": true
     },
     {
       "book": "logic-critical-thinking",
       "chunks": 331,
-      "reused": false
+      "reused": true
     },
     {
       "book": "introductory-statistics",
       "chunks": 597,
-      "reused": false
+      "reused": true
+    },
+    {
+      "golden": "cell-basics",
+      "chunks": 5
+    },
+    {
+      "golden": "fractions",
+      "chunks": 5
+    },
+    {
+      "golden": "python-conditions",
+      "chunks": 5
     }
   ],
-  "vector_index_built": false,
-  "stage": "failed",
-  "updated_at": "2026-11-07T13:19:30.242527+00:00",
-  "error_type": "UniqueViolation"
+  "vector_index_built": true,
+  "stage": "complete",
+  "updated_at": "2026-11-07T15:58:25.027820+00:00"
 }
