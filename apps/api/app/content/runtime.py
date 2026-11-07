@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from app.config import Settings
 from app.content.backends import LearningBackend, TopicsBackend, TutorBackend
 from app.content.gateway import Gateway, P3Gateway
+from app.content.learning import GraphConfirmation
 from app.content.repository import Repository
 from app.main import create_app as platform_app
 
@@ -18,6 +19,7 @@ def create_app(
     *,
     repository: Repository | None = None,
     gateway: Gateway | None = None,
+    confirmation: GraphConfirmation | None = None,
 ) -> FastAPI:
     """uvicorn app.content.runtime:create_app --factory (process env only; no .env read)."""
     settings = settings or Settings(_env_file=None)
@@ -26,9 +28,9 @@ def create_app(
     models = gateway or P3Gateway()
     app = platform_app(
         settings,
-        learning_backend=LearningBackend(store),
+        learning_backend=LearningBackend(store, confirmation),
         topics_backend=TopicsBackend(store),
-        tutor_backend=TutorBackend(store, models),
+        tutor_backend=TutorBackend(store, models, confirmation),
     )
     platform_lifespan = app.router.lifespan_context
 

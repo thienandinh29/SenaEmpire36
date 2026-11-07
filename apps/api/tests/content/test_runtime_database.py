@@ -162,7 +162,10 @@ def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
 ) -> None:
     fake = FakeGateway()
     app = create_app(
-        Settings(database_url=database_url, _env_file=None), repository=store, gateway=fake
+        Settings(database_url=database_url, _env_file=None),
+        repository=store,
+        gateway=fake,
+        confirmation=lambda learner, subject, revision: True,  # Explicit test-only consent.
     )
     with TestClient(app) as client:
         learner = client.post("/learners", json={"display_name": "P4 DB test"}).json()["learner_id"]

@@ -1,10 +1,12 @@
 """Source -> validated graph -> draft items -> independent verification."""
 
 import asyncio
+from uuid import UUID
 
 from pydantic import Field
 
 from app.content.gateway import Gateway, parse_reply
+from app.content.learning import teaching_chunks
 from app.content.models import (
     Chunk,
     Graph,
@@ -90,11 +92,14 @@ async def generate_items(
     tier: str = "pro",
     count: int = 15,
     id_namespace: str | None = None,
+    structural_chunk_ids: set[UUID] | None = None,
 ) -> list[Item]:
     if count < 1 or count > 50:
         raise ValueError("count must be 1..50")
     validate_references(chunks, sources, graph)
     require_model_permission(sources)
+    all_chunks = chunks
+    chunks = teaching_chunks(chunks, structural_chunk_ids or set())
     reply = await gateway.generate(
         task="generate_items",
         tier=tier,
@@ -121,7 +126,9 @@ async def generate_items(
         )
         for index, draft in enumerate(batch.items)
     ]
-    validate_items(items, chunks, sources, graph)
+    validate_items(items, all_chunks, sources, graph)
+    for item in items:
+        cited_chunks(item, chunks)  # Reject structural citations even if model copied graph IDs.
     limit = asyncio.Semaphore(3)
 
     async def checked(item: Item) -> Item:

@@ -11,9 +11,10 @@ from pydantic import JsonValue
 from app.api import learn, topics, tutor
 from app.content.gateway import Gateway
 from app.content.integration import contract_item, tutor_text
+from app.content.learning import GraphConfirmation, attempt_review, graph_confirmed
 from app.content.pipeline import require_model_permission
 from app.content.repository import Connection, Repository, StoredItem
-from app.engine import bkt, path, placement, remediation, srs
+from app.engine import bkt, path, placement, remediation
 from app.engine.graph import Graph as EngineGraph
 from app.engine.trace import DecisionTrace
 from app.graders.mcq import Grade, grade
@@ -38,17 +39,22 @@ def trace_dto(trace: DecisionTrace) -> learn.DecisionTrace:
 
 
 class LearningBackend:
-    def __init__(self, repository: Repository) -> None:
+    def __init__(
+        self, repository: Repository, confirmation: GraphConfirmation | None = None
+    ) -> None:
         self.repo = repository
+        self.confirmation = confirmation
 
     def _state(
-        self, conn: Connection, learner: str, subject: str
+        self, conn: Connection, learner: str, subject: str, *, require_confirmation: bool = True
     ) -> tuple[UUID, UUID, EngineGraph, dict[str, float]]:
         lid = uid(learner)
         if not conn.execute("select id from learners where id=%s for update", (lid,)).fetchone():
             raise HTTPException(404, "Không tìm thấy người học.")
         sid = self.repo._subject(conn, subject)
         kg = self.repo.graph(conn, subject)
+        if require_confirmation and not graph_confirmed(self.confirmation, learner, subject, kg):
+            raise HTTPException(409, "Hãy xác nhận bản đồ kiến thức trước khi bắt đầu học.")
         graph = EngineGraph.from_contract(KnowledgeGraph.model_validate(kg.team_payload()))
         mastery = dict(
             conn.execute(
@@ -124,7 +130,9 @@ class LearningBackend:
     async def graph(self, learner_id: str, subject: str) -> learn.GraphResponse:
         def run() -> learn.GraphResponse:
             with self.repo.transaction() as conn:
-                _, _, graph, mastery = self._state(conn, learner_id, subject)
+                _, _, graph, mastery = self._state(
+                    conn, learner_id, subject, require_confirmation=False
+                )
                 return learn.GraphResponse(
                     nodes=[
                         learn.GraphNode(
@@ -363,15 +371,17 @@ class LearningBackend:
                     "select fsrs_state from review_cards where learner_id=%s and concept_id=%s",
                     (lid, cid[0]),
                 ).fetchone()
-                if card or bkt.is_mastered(p):
-                    reviewed, rtrace = srs.review_traced(
-                        card[0] if card else srs.new_card(now).state,
-                        result.correct,
-                        now,
-                        concept_slug=item_concept,
-                        hints_used=request.hints_used,
-                        item_id=item.id,
-                    )
+                scheduled = attempt_review(
+                    card[0] if card else None,
+                    result.correct,
+                    bkt.is_mastered(p),
+                    now,
+                    concept=item_concept,
+                    item_id=item.id,
+                    hints_used=request.hints_used,
+                )
+                if scheduled is not None:
+                    reviewed, rtrace = scheduled
                     save_review(conn, lid, cid[0], dict(reviewed.state), reviewed.due_at)
                     traces.append(rtrace)
                 for decision_trace in traces:
@@ -473,8 +483,14 @@ class TopicsBackend:
 
 
 class TutorBackend:
-    def __init__(self, repository: Repository, gateway: Gateway) -> None:
+    def __init__(
+        self,
+        repository: Repository,
+        gateway: Gateway,
+        confirmation: GraphConfirmation | None = None,
+    ) -> None:
         self.repo, self.gateway = repository, gateway
+        self.confirmation = confirmation
 
     async def hint(self, request: tutor.HintInput) -> tutor.VerifiedText:
         learner = uid(request.learner_id)
@@ -486,6 +502,11 @@ class TutorBackend:
                 bundle = self.repo.servable(conn, request.item_id)
                 if bundle is None:
                     raise HTTPException(503, "Câu hỏi đang chờ kiểm chứng.")
+                graph = self.repo.graph(conn, bundle.subject)
+                if not graph_confirmed(
+                    self.confirmation, request.learner_id, bundle.subject, graph
+                ):
+                    raise HTTPException(409, "Hãy xác nhận bản đồ kiến thức trước khi xin gợi ý.")
                 require_model_permission(bundle.sources)
                 last = request.last_answer
                 if last is None:
@@ -539,6 +560,13 @@ class TutorBackend:
 
         def publish() -> tutor.VerifiedText:
             with self.repo.transaction() as conn:
+                if not graph_confirmed(
+                    self.confirmation,
+                    request.learner_id,
+                    bundle.subject,
+                    self.repo.graph(conn, bundle.subject),
+                ):
+                    raise HTTPException(409, "Bản đồ đã đổi; hãy xác nhận lại trước khi xin gợi ý.")
                 if not self.repo.save_hint(conn, bundle, learner, key, request.level, attempt):
                     raise HTTPException(409, "Nguồn đã thay đổi; hãy tải lại câu hỏi.")
                 current = self.repo.servable(conn, bundle.item.id)

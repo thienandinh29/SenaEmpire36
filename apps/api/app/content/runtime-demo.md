@@ -1,5 +1,11 @@
 # P4 runtime demo (PowerShell)
 
+Current business pass: use `python -m tests.content.learning_loop` for the offline
+scenario instead. The historical live commands below also require a trusted
+per-learner/revision confirmation callback wired by P2/P3/P5; without it learning
+and tutor now return409. Model/DB availability alone no longer enables teaching.
+No new provider, migration or paid call is requested by the business pass.
+
 Run from D:/SenaEmpire36/apps/api with the locked project dependencies.
 Use uv run python (or this session's temporary Python path recorded in validation).
 These are reproduction commands, NOT a record of a completed live run.

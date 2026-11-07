@@ -1,5 +1,29 @@
 # P4 handoff — runtime completion
 
+## Current business-alignment pass (p4, after bc7da3e)
+
+The user's latest product clarification is recorded in [business.md](business.md),
+including the business/code/gap/mismatch/owner matrix and unresolved rule decisions.
+This pass does not call models, inspect credentials, connect DB, change schema,
+migrate, select providers or edit P1/P2/P3/P5 source. Changes remain local/uncommitted.
+
+P4 corrections: trusted per-learner graph-confirmation callback (default409 for
+teaching/tutor; map still viewable), explicit structural-chunk evidence exclusion,
+in-progress hint versus submitted-feedback separation, diagnostic wording and
+existing FSRS concept reviews for wrong answers. Prompt version3 requires fresh
+hint checks. No HTTP contract was extended: P2/P3/P5 still need confirmation and
+post-submission feedback integration. The default factory no longer permits
+teaching solely because jobs/items are ready/verified.
+
+Use `python -m tests.content.learning_loop` from apps/api for the new explicitly
+simulated Python loop. It uses real P1 engine functions, fake gateway and in-memory
+confirmation/review state; Q/A flashcard is fixture-only. Source golden files stay
+needs_review. Exact fresh results: business-validation.json. Prior DB/model counts
+below describe earlier probes, not new execution. Live demo instructions below
+are historical and require the new confirmation integration before teaching.
+
+## Previous runtime delivery (committed/pushed as bc7da3e on p4)
+
 Checkout confirmed: integration/p1-p5, base HEAD 2128cb2. This session's changes
 remain uncommitted. No merge, push, reset, shared migration or real model call.
 No applicable AGENTS.md found; TEAM/P4/contracts/integration/gateway read.
