@@ -92,10 +92,16 @@ class ClassifiedAdapter:
 
 
 async def run(
-    topic: Path, checkpoint: Path, interval: float, retries: int, max_items: int | None = None
+    topic: Path,
+    checkpoint: Path,
+    interval: float,
+    retries: int,
+    max_items: int | None = None,
+    timeout_seconds: float = 70,
+    gateway_override: Gateway | None = None,
 ) -> dict[str, Any]:
     _, chunks, graph, items = load_topic(topic)
-    base = default_gateway()
+    base = gateway_override or default_gateway()
     config_hash = digest(
         {
             "routing": base.routing.model_dump(),
@@ -141,14 +147,14 @@ async def run(
                 base.routing,
                 adapters,
                 attempts_per_model=1,
-                request_timeout=60,
-                total_timeout=65,
+                request_timeout=timeout_seconds - 5,
+                total_timeout=timeout_seconds - 2,
                 observe_attempt=events.append,
             )
             capture = Capture()
             tick = time.monotonic()
             with gateway_scope(gateway):
-                result = await verify_item(item, chunks, capture, timeout_seconds=70)
+                result = await verify_item(item, chunks, capture, timeout_seconds=timeout_seconds)
             audit = result.verification
             assert audit is not None
             infrastructure = audit.reason.startswith("verification_error:")

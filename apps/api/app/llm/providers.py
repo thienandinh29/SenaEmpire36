@@ -4,8 +4,9 @@ import asyncio
 import importlib
 import os
 import re
-from collections.abc import Sequence
-from contextlib import suppress
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -24,6 +25,20 @@ from app.llm.gateway import (
     load_routing,
     schema_instruction,
 )
+
+_diagnostic_timeout: ContextVar[float] = ContextVar("diagnostic_http_timeout", default=30)
+
+
+@contextmanager
+def diagnostic_transport_timeout(seconds: float) -> Iterator[None]:
+    """Explicit diagnostic scope; ordinary API requests keep their 30s timeout."""
+    if seconds < 1 or seconds > 90:
+        raise ValueError("Diagnostic timeout must be 1..90 seconds")
+    token = _diagnostic_timeout.set(seconds)
+    try:
+        yield
+    finally:
+        _diagnostic_timeout.reset(token)
 
 
 class HTTPProviderError(ProviderError):
@@ -125,7 +140,7 @@ async def _post(
     url: str, token: str, payload: dict[str, Any], *, api_key: bool = False
 ) -> dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=_diagnostic_timeout.get(), trust_env=False) as client:
             headers = {"x-goog-api-key": token} if api_key else {"Authorization": f"Bearer {token}"}
             response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
@@ -140,7 +155,7 @@ async def _post(
         error.transport_diagnostic = {  # type: ignore[attr-defined]
             "exception_type": type(exc).__name__,
             "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else None,
-            "timeout_seconds": 30,
+            "timeout_seconds": _diagnostic_timeout.get(),
             "trust_env": False,
         }
         raise error from None

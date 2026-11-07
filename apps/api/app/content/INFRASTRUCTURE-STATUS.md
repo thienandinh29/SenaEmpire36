@@ -1,5 +1,11 @@
 # P4 infrastructure diagnostic, 2026-11-07
 
+Subsequent paired-input diagnostic: see P2-MATERIAL-FIX.md and
+data/guardrails/gemini-shared-p4.json. It returned explicit daily Free Tier
+quota exhaustion (20 requests/day/model/project) in0.797s. That newer HTTP429
+evidence supersedes the uncertainty of the older no-response request below.
+It does not reclassify old timeouts as quota errors.
+
 Exactly one generation/verification diagnostic request was made through P3, with
 one attempt and Gemini only. No batch or fallback provider request followed.
 Evidence: `data/guardrails/gemini-diagnostic-current.json`. Golden authorship is

@@ -1,5 +1,9 @@
 # P4 handoff after ptest2 c413fe6
 
+Latest fixes and exact P2 commands: P2-MATERIAL-FIX.md (shared-source chunk_index,
+scoped graph fixtures, paired-input90s verifier diagnostic). Latest P4 diagnostic
+now confirms daily Free Tier quota20 for gemini-3.8-flash;0 verified current audits.
+
 Latest follow-up: see INFRASTRUCTURE-STATUS.md and
 data/guardrails/gemini-diagnostic-current.json. One additional bounded diagnostic
 failed without an HTTP response; the previous quota cause is not assumed to explain
