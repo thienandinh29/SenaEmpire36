@@ -18,17 +18,19 @@ result: fill the record at the bottom as you go.
 | 7 | API key set (non-empty `API_KEY`) and the client sends it | P2 | |
 | 8 | Research pipeline built **with a retriever and subject** (otherwise citation checks are skipped) | P3 | |
 | 9 | At least one verified topic (Python) with ≥ 6 verified items across ≥ 3 concepts incl. one prerequisite chain | P4 | |
+| 10 | The learner can confirm the knowledge map over HTTP and in the UI (the backend returns 409 for practice, attempts and hints until the map is confirmed, tied to learner, subject and graph revision; added after P2's local run, 2026-11-07) | P2, P3, P5 | |
 
 Not met by the start of H8 → whole team on Nhanh with the golden/pre-generated topic; Deep Research stays a bonus.
 
 ## 2. Steps (one demo learner, topic "Tôi muốn học Python")
 
-Each step: do it, read the expected result, write what happened in the record. Use `$API` for the base URL.
+Each step: do it, read the expected result, write what happened in the record (step 2a has no row of its own; note it on step 2's row). Use `$API` for the base URL.
 
 | Step | Action | Expect | Owner reads |
 |---|---|---|---|
 | 1 | `POST /topics` `{goal_vi, mode: "quick", tier: "free"}`; poll `GET /topics/{id}` (or `/events`) | job reaches `done`; graph and ≥ 6 verified items stored; every concept and item cites chunks; `needs_review` items are not served | P3, P4 |
 | 2 | `GET /graph?learner_id=&subject=` | DAG with no cycle; prerequisites follow the book's chapter order; node `p_known` all at the unseen prior | P1 |
+| 2a | **Confirm the map as the learner** (route or UI control named by P2, P3 and P5; the confirmation is tied to learner, subject and graph revision) | before confirming, practice, attempts and hints return **409**; after confirming they succeed; confirming changes no mastery. Never bypass the check in production to get a test through. | P2, P5 |
 | 3 | `POST /placement/next` repeatedly, answering mostly right, then one concept wrong | at most 6 questions; `done: true` with `gap_slug`; **mastery seeded once** (known ≈ 0.85, unknown ≈ 0.15); each response carries a `DecisionTrace` | P1 |
 | 4 | `GET /next-item` | an unserved verified item of the concept `next_step` chose, near its target difficulty; `reason_vi` in Vietnamese | P1, P2 |
 | 5 | `POST /attempts` with a **wrong** option (misconception-tagged) | `correct: false`, `misconception_vi`, lower `p_known`; if a prerequisite is weak (< 0.5) a `remediation` pointing at the weakest one; traces stored with the attempt | P1 |
