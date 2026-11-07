@@ -15,9 +15,15 @@
       "book": "logic-critical-thinking",
       "chunks": 331,
       "reused": false
+    },
+    {
+      "book": "introductory-statistics",
+      "chunks": 597,
+      "reused": false
     }
   ],
   "vector_index_built": false,
-  "stage": "introductory-statistics",
-  "updated_at": "2026-11-07T13:09:04.951519+00:00"
+  "stage": "failed",
+  "updated_at": "2026-11-07T13:19:30.242527+00:00",
+  "error_type": "UniqueViolation"
 }
