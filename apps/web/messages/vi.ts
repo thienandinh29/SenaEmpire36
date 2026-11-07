@@ -1,4 +1,8 @@
 export const vi = {
+  theme: {
+    switchToLight: "Chuyển sang giao diện sáng",
+    switchToDark: "Chuyển sang giao diện tối",
+  },
   app: "NodeTrail",
   tagline: "Hiểu gốc rễ. Đi xa hơn.",
   workspace: "KHÔNG GIAN HỌC TẬP",

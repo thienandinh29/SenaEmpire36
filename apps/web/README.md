@@ -50,3 +50,7 @@ See [verification evidence and pending browser checks](docs/verification.md), [P
 - Open/close dialogs using keyboard, Escape and close buttons; focus is trapped and restored by Radix.
 - Reload: all state resets, consistent with the demo notice.
 - About → demo state controls: choose fail once, apply, and retry the next upload/topic/graph/hint operation. Choose empty, apply, reload the graph, and verify the empty state. Return to normal and reload before recording.
+
+## Expanded mock frontend
+
+See [mock studio walkthrough and integration limits](docs/mock-studio.md) for the Sena reference redesign, placement, four practice formats, local notes/flashcards, IELTS graph and exam calendar. With installed dependencies, `npm run dev` works directly without pnpm on PATH.

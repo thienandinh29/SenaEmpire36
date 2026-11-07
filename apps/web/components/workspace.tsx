@@ -1,9 +1,22 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Image from "next/image";
+import { Sena } from "./sena";
+import { ThemeToggle } from "./theme-toggle";
+import { PracticeStudio, PlacementStudio } from "./practice-studio";
+import {
+  NoteStudio,
+  FlashcardStudio,
+  ExamCalendar,
+  useStudyNotebook,
+} from "./study-tools";
+import { studio as st } from "@/messages/studio";
 import { Dialog } from "radix-ui";
 import {
+  CalendarDays,
+  NotebookPen,
+  Code2,
+  ClipboardCheck,
   ArrowLeft,
   ArrowRight,
   BookOpen,
@@ -41,19 +54,28 @@ import type { DemoScenario } from "@/lib/data-client";
 import type { KnowledgeGraph } from "@/lib/contracts";
 
 type Screen =
-  "overview" | "map" | "learn" | "reviews" | "sources" | "about" | "research";
+  | "overview"
+  | "map"
+  | "learn"
+  | "reviews"
+  | "sources"
+  | "about"
+  | "research"
+  | "notes"
+  | "calendar"
+  | "practice"
+  | "placement";
 const navigation = [
   { id: "overview", icon: Compass },
   { id: "map", icon: Map },
   { id: "learn", icon: BookOpen },
   { id: "reviews", icon: RotateCcw },
+  { id: "practice", icon: Code2 },
+  { id: "notes", icon: NotebookPen },
+  { id: "calendar", icon: CalendarDays },
+  { id: "placement", icon: ClipboardCheck },
 ] as const;
 
-function Sena({ size = 100 }: { size?: number }) {
-  return (
-    <Image src="/sena.svg" width={size} height={size} alt={t.sena} priority />
-  );
-}
 function Legend() {
   return (
     <div className="legend">
@@ -75,6 +97,8 @@ function Legend() {
 
 export function Workspace({ config }: { config: WebConfig }) {
   const learning = useLearning(config);
+  const notebook = useStudyNotebook();
+  const [approved, setApproved] = useState(false);
   const { graph, selected, setSelected, lessons, snapshot, busy, errors } =
     learning;
   const [screen, setScreen] = useState<Screen>("overview");
@@ -113,7 +137,11 @@ export function Workspace({ config }: { config: WebConfig }) {
   const traces = lesson?.traces ?? [];
   const trace = traces[traceIndex < 0 ? traces.length - 1 : traceIndex];
   const subjectTitle =
-    config.mode === "mock" ? t.python : learning.subject || t.flow.noData;
+    learning.subject === "ielts-sample"
+      ? st.ielts
+      : config.mode === "mock"
+        ? t.python
+        : learning.subject || t.flow.noData;
   const sources =
     snapshot?.sources ??
     (config.mode === "mock"
@@ -127,6 +155,11 @@ export function Workspace({ config }: { config: WebConfig }) {
         ]
       : []);
   function navigate(next: Screen) {
+    if (next === "learn" && config.mode === "mock" && !approved) {
+      setScreen("map");
+      mainRef.current?.focus();
+      return;
+    }
     setScreen(next);
     mainRef.current?.focus();
     if (next === "learn" && config.mode === "mock") void learning.loadLesson();
@@ -165,6 +198,7 @@ export function Workspace({ config }: { config: WebConfig }) {
     if (created) {
       setSubmitted({ goal: goal.trim(), fileName: file?.name ?? "", mode });
       setTopicOpen(false);
+      setApproved(false);
       navigate("research");
     }
   }
@@ -203,13 +237,21 @@ export function Workspace({ config }: { config: WebConfig }) {
           {navigation.map(({ id, icon: Icon }) => (
             <button
               key={id}
-              aria-label={t.nav[id]}
+              aria-label={
+                id in t.nav
+                  ? t.nav[id as keyof typeof t.nav]
+                  : st[id as "practice" | "notes" | "calendar" | "placement"]
+              }
               className={screen === id ? "active" : ""}
               aria-current={screen === id ? "page" : undefined}
               onClick={() => navigate(id)}
             >
               <Icon size={19} />
-              <span>{t.nav[id]}</span>
+              <span>
+                {id in t.nav
+                  ? t.nav[id as keyof typeof t.nav]
+                  : st[id as "practice" | "notes" | "calendar" | "placement"]}
+              </span>
               {id === "reviews" && reviewDue && (
                 <span className="nav-badge">{learning.reviews.length}</span>
               )}
@@ -265,10 +307,16 @@ export function Workspace({ config }: { config: WebConfig }) {
                   ? t.flow.researchTitle
                   : screen === "sources"
                     ? t.sources
-                    : t.settings}
+                    : screen === "notes" ||
+                        screen === "calendar" ||
+                        screen === "practice" ||
+                        screen === "placement"
+                      ? st[screen]
+                      : t.settings}
             </strong>
           </div>
           <div className="topbar-right">
+            <ThemeToggle />
             <span className="mock-badge">
               <i />
               {config.mode === "mock" ? t.mock : t.flow.api}
@@ -307,6 +355,13 @@ export function Workspace({ config }: { config: WebConfig }) {
 
         <main id="main-content" ref={mainRef} tabIndex={-1}>
           <nav className="mobile-resources" aria-label={t.flow.mobileResources}>
+            {(["practice", "notes", "calendar", "placement"] as const).map(
+              (id) => (
+                <button key={id} onClick={() => navigate(id)}>
+                  {st[id]}
+                </button>
+              ),
+            )}
             <button onClick={() => navigate("sources")}>{t.sources}</button>
             <button onClick={() => navigate("about")}>{t.settings}</button>
             {learning.topicId && (
@@ -320,18 +375,49 @@ export function Workspace({ config }: { config: WebConfig }) {
           )}
           {screen === "overview" && (
             <>
+              <section className="brand-hero">
+                <div className="hero-copy">
+                  <p className="eyebrow">
+                    <span className="live-dot" />
+                    {st.eyebrow}
+                  </p>
+                  <h1>
+                    {st.hero}
+                    <br />
+                    <em>{st.heroAccent}</em>
+                  </h1>
+                  <p>{st.heroBody}</p>
+                  <div className="hero-actions">
+                    <Button onClick={() => navigate("learn")}>
+                      {st.heroCta}
+                      <ArrowRight size={17} />
+                    </Button>
+                    <span>
+                      <Clock3 size={15} />
+                      {st.daily}
+                    </span>
+                  </div>
+                </div>
+                <div className="hero-art">
+                  <div className="hero-orbit" />
+                  <span className="orbit-label orbit-top">
+                    <Check size={15} />
+                    {st.planned}
+                  </span>
+                  <Sena size={265} />
+                  <span className="orbit-label orbit-bottom">
+                    <Sparkles size={15} />
+                    {st.states[0]}
+                  </span>
+                </div>
+              </section>
               <section className="welcome">
                 <div>
                   <p className="eyebrow">
                     <span className="sun-mark">✳</span>
                     {t.hello}
                   </p>
-                  <h1>
-                    {t.headline}
-                    <br />
-                    <span>{t.headlineAccent}</span>
-                  </h1>
-                  <p className="welcome-description">{t.intro}</p>
+                  <h2>{st.today}</h2>
                 </div>
                 <Button variant="secondary" onClick={() => setTopicOpen(true)}>
                   <Plus size={17} />
@@ -466,6 +552,16 @@ export function Workspace({ config }: { config: WebConfig }) {
             </>
           )}
 
+          {screen === "notes" && config.mode === "mock" && (
+            <NoteStudio graph={graph} selected={selected} notebook={notebook} />
+          )}
+          {screen === "calendar" && config.mode === "mock" && <ExamCalendar />}
+          {screen === "practice" && config.mode === "mock" && (
+            <PracticeStudio notebook={notebook} />
+          )}
+          {screen === "placement" && config.mode === "mock" && (
+            <PlacementStudio />
+          )}
           {screen === "map" && (
             <>
               <PageHeading
@@ -473,6 +569,24 @@ export function Workspace({ config }: { config: WebConfig }) {
                 title={t.nav.map}
                 description={t.prerequisite}
               />
+              {config.mode === "mock" && (
+                <div
+                  className={`approval-banner ${approved ? "is-approved" : ""}`}
+                >
+                  <div>
+                    <strong>{approved ? st.approved : st.draft}</strong>
+                    <p>{st.approvalBody}</p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    disabled={approved}
+                    onClick={() => setApproved(true)}
+                  >
+                    <Check size={16} />
+                    {approved ? st.approved : st.approve}
+                  </Button>
+                </div>
+              )}
               <div className="map-page-grid">
                 <section className="panel large-map">
                   {
@@ -518,7 +632,9 @@ export function Workspace({ config }: { config: WebConfig }) {
                       <h2>{concept.name_vi || concept.slug}</h2>
                       <p>
                         {config.mode === "mock"
-                          ? t.conceptDescriptions[conceptIndex]
+                          ? learning.subject === "ielts-sample"
+                            ? st.ieltsDescription
+                            : t.conceptDescriptions[conceptIndex]
                           : t.flow.noDescription}
                       </p>
                       <div className="mastery-row">
@@ -710,7 +826,18 @@ export function Workspace({ config }: { config: WebConfig }) {
                   <p className="fine-print draft-label">{t.draft}</p>
                 </section>
                 <aside className="panel tutor-panel">
-                  <Sena size={105} />
+                  <Sena
+                    size={140}
+                    mood={
+                      busy[`hint:${selected}`]
+                        ? "think"
+                        : result
+                          ? result.correct
+                            ? "happy"
+                            : "oops"
+                          : "focus"
+                    }
+                  />
                   <h2>{t.tutorTitle}</h2>
                   <p>{t.tutorSub}</p>
                   <div className="hint-list" aria-live="polite">
@@ -849,14 +976,15 @@ export function Workspace({ config }: { config: WebConfig }) {
             </section>
           )}
 
-          {screen === "reviews" && (
+          {screen === "reviews" && config.mode === "mock" && (
+            <FlashcardStudio notebook={notebook} />
+          )}
+          {screen === "reviews" && config.mode === "api" && (
             <>
               <PageHeading
                 eyebrow={t.nav.reviews}
                 title={t.reviewTitle}
-                description={
-                  config.mode === "mock" ? t.flow.reviewLocal : t.flow.reviewApi
-                }
+                description={t.flow.reviewApi}
               />
               <section className="panel empty-panel">
                 <span className="empty-icon">
@@ -1041,6 +1169,22 @@ export function Workspace({ config }: { config: WebConfig }) {
                   </button>
                 ))}
               </div>
+              {config.mode === "mock" && (
+                <>
+                  <label className="field-label" htmlFor="sample-subject">
+                    {st.subjectLabel}
+                  </label>
+                  <select
+                    id="sample-subject"
+                    className="studio-input"
+                    onChange={(e) => setGoal(e.target.value)}
+                  >
+                    <option value="Python">{st.python}</option>
+                    <option value="IELTS">{st.ielts}</option>
+                  </select>
+                  <p className="fine-print">{st.ieltsDescription}</p>
+                </>
+              )}
               <span className="field-label">{t.mode}</span>
               <div className="mode-options" role="group" aria-label={t.mode}>
                 <button

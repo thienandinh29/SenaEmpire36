@@ -11,6 +11,7 @@ import type {
   PublicItem,
 } from "./contracts";
 import type { WebConfig } from "./config";
+import { studio } from "@/messages/studio";
 import { vi as t } from "@/messages/vi";
 import { graph as sampleGraph } from "./mock";
 import { fixtureTrace, getLessonFixture } from "./fixtures";
@@ -101,6 +102,7 @@ export function createLearningClient(config: WebConfig): LearningClient {
       throw new DataError("network");
     }
   }
+  let sampleSubject = "python-sample";
   return {
     configureDemo(next) {
       scenario = next;
@@ -114,11 +116,25 @@ export function createLearningClient(config: WebConfig): LearningClient {
       await operation("upload", signal);
       return { upload_id: "demo-upload", pages: 0, text_ok: true };
     },
-    async createTopic(_input, signal) {
+    async createTopic(input, signal) {
       await operation("topic", signal);
       const topic_id = `demo-topic-${++topicSequence}`;
       jobs.set(topic_id, 0);
+      sampleSubject = /ielts/i.test(input.goal_vi || "")
+        ? "ielts-sample"
+        : "python-sample";
       graph = structuredClone(sampleGraph);
+      if (sampleSubject === "ielts-sample")
+        graph.nodes = graph.nodes.map((node, i) => ({
+          ...node,
+          slug: `ielts-${node.slug}`,
+          name_vi: studio.ieltsNames[i],
+        }));
+      if (sampleSubject === "ielts-sample")
+        graph.edges = graph.edges.map((edge) => ({
+          from: `ielts-${edge.from}`,
+          to: `ielts-${edge.to}`,
+        }));
       reviews.clear();
       return { topic_id, cached: false };
     },
@@ -127,6 +143,10 @@ export function createLearningClient(config: WebConfig): LearningClient {
       const current = jobs.get(id);
       if (current === undefined) throw new DataError("failed");
       const step = Math.min(current, 4);
+      const steps =
+        sampleSubject === "ielts-sample"
+          ? studio.ieltsResearchSteps
+          : t.researchSteps;
       jobs.set(id, step + 1);
       return {
         status:
@@ -137,13 +157,13 @@ export function createLearningClient(config: WebConfig): LearningClient {
               : step === 3
                 ? "graph"
                 : "researching",
-        step_vi: step === 4 ? t.flow.researchDone : t.researchSteps[step],
+        step_vi: step === 4 ? t.flow.researchDone : steps[step],
         progress: step / 4,
-        subject_slug: "python-sample",
+        subject_slug: sampleSubject,
         graph_ready: step >= 3,
         items_ready: step === 4,
         sources:
-          step > 0 && scenario !== "empty"
+          sampleSubject !== "ielts-sample" && step > 0 && scenario !== "empty"
             ? [
                 {
                   title: t.sourceBook,
@@ -156,7 +176,7 @@ export function createLearningClient(config: WebConfig): LearningClient {
         trail:
           scenario === "empty"
             ? []
-            : t.researchSteps.slice(0, step).map((text_vi, index) => ({
+            : steps.slice(0, step).map((text_vi, index) => ({
                 at: new Date().toISOString(),
                 kind: index === 0 ? "search" : "read",
                 text_vi,

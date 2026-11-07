@@ -22,6 +22,31 @@ afterEach(() => {
 });
 
 describe("quick demo learning journey", () => {
+  it("builds an IELTS sample without Python sources or practice items", async () => {
+    const client = createLearningClient(config);
+    const created = await finish(
+      client.createTopic({ goal_vi: "IELTS", mode: "quick", tier: "free" }),
+    );
+    let snapshot = await finish(client.topic(created.topic_id));
+    for (let i = 0; i < 4; i++)
+      snapshot = await finish(client.topic(created.topic_id));
+    expect(snapshot.subject_slug).toBe("ielts-sample");
+    expect(snapshot.sources).toEqual([]);
+    expect(snapshot.trail.some((step) => step.text_vi.includes("Python"))).toBe(
+      false,
+    );
+    const graph = await finish(client.graph("demo-learner", "ielts-sample"));
+    expect(graph.nodes).toHaveLength(7);
+    expect(graph.nodes.some((node) => node.name_vi === "Writing")).toBe(true);
+    const slugs = new Set(graph.nodes.map((node) => node.slug));
+    expect(
+      graph.edges.every((edge) => slugs.has(edge.from) && slugs.has(edge.to)),
+    ).toBe(true);
+    const lesson = await finish(
+      client.placement("demo-learner", "ielts-sample", graph.nodes[0].slug),
+    );
+    expect(lesson.item).toBeNull();
+  });
   it("supports upload, research, a selected-node item, remediation, hints, mastery and a review", async () => {
     const client = createLearningClient(config);
     const received = await finish(

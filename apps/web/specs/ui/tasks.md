@@ -11,3 +11,13 @@
 - [ ] Complete actual desktop/mobile browser acceptance (Computer Use interrupted).
 - [ ] Validate real API integration after P1/P2/P3 provide missing contracts/configuration.
 - [ ] Record and replay the backup video after browser acceptance.
+
+## Mock expansion tasks
+
+- [x] Reference palette and Sena states; responsive dashboard.
+- [x] Four practice formats, placement and rule-based mock feedback.
+- [x] Node-linked notes, slash insertion and flashcards.
+- [x] Exam countdown and two final review days.
+- [x] IELTS sample map and draft approval.
+- [x] Lint, types, tests and production build.
+- [ ] Desktop/mobile browser visual checks: browser access host unavailable.
