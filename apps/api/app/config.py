@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     # Default points at the local Docker database from docker-compose.yml.
     database_url: str = "postgresql://postgres:postgres@localhost:54322/nodetrail"
     api_key: str = ""
+    allow_unauthenticated_local_dev: bool = False
+    demo_uploads_enabled: bool = False
     cors_origins: str = "http://localhost:3000"
     supabase_url: str = ""
     supabase_service_role_key: SecretStr = SecretStr("")
@@ -30,7 +32,7 @@ class Settings(BaseSettings):
     embedding_backend: Literal["tei", "local"] = "local"
     tei_url: str = "http://localhost:8080"
     tei_api_key: SecretStr = SecretStr("")
-    search_provider: Literal["brave"] = "brave"
+    search_provider: Literal["brave", "tavily"] = "brave"
     search_api_key: SecretStr = SecretStr("")
     google_cloud_project: str = ""
     vertex_location: str = "asia-southeast1"

@@ -1,6 +1,6 @@
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -290,4 +290,105 @@ def test_gemini_missing_key_does_not_call_network(monkeypatch: pytest.MonkeyPatc
                 None,
             )
         )
+    post.assert_not_called()
+
+
+@pytest.mark.parametrize("provider", ["deepseek", "gemini"])
+def test_real_adapter_truncation_is_non_retryable(
+    monkeypatch: pytest.MonkeyPatch, provider: Literal["deepseek", "gemini"]
+) -> None:
+    monkeypatch.setenv(f"{provider.upper()}_API_KEY", "fake")
+
+    async def post(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return (
+            {
+                "choices": [{"finish_reason": "length"}],
+                "usage": {"prompt_tokens": 9, "completion_tokens": 4096},
+            }
+            if provider == "deepseek"
+            else {
+                "candidates": [{"finishReason": "MAX_TOKENS"}],
+                "usageMetadata": {
+                    "promptTokenCount": 9,
+                    "candidatesTokenCount": 4090,
+                    "thoughtsTokenCount": 6,
+                },
+            }
+        )
+
+    adapter = DeepSeekAdapter() if provider == "deepseek" else GeminiAdapter()
+    with patch("app.llm.providers._post", post), pytest.raises(ProviderError) as error:
+        asyncio.run(
+            adapter.generate(
+                Route(provider=provider, model=f"{provider}-test", family=provider),
+                "s",
+                [Message(role="user", content="q")],
+                None,
+            )
+        )
+    assert not error.value.retryable
+    assert error.value.reply is not None
+    assert (error.value.reply.input_tokens, error.value.reply.output_tokens) == (9, 4096)
+
+
+def test_graph_budget_and_gemini_thinking_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.llm.gateway import Gateway, Routing, generation_limits, verification_scope
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "fake")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+    payloads: list[dict[str, Any]] = []
+
+    async def post(url: str, token: str, payload: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        payloads.append(payload)
+        if "deepseek" in url:
+            return {"choices": [{"finish_reason": "stop", "message": {"content": "ok"}}]}
+        return {"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "ok"}]}}]}
+
+    gateway = Gateway(
+        Routing(
+            tiers={
+                "free": {
+                    "graph": [Route(provider="deepseek", model="deepseek-test", family="deepseek")],
+                    "items": [Route(provider="deepseek", model="deepseek-test", family="deepseek")],
+                    "verify": [Route(provider="gemini", model="gemini-3.8-flash", family="gemini")],
+                }
+            }
+        ),
+        {"deepseek": DeepSeekAdapter(), "gemini": GeminiAdapter()},
+    )
+
+    async def run() -> None:
+        await gateway.complete("graph", "free", "s", [{"role": "user", "content": "q"}])
+        await gateway.complete("items", "free", "s", [{"role": "user", "content": "q"}])
+        with verification_scope("deepseek"):
+            await gateway.complete("verify", "free", "s", [{"role": "user", "content": "q"}])
+        assert generation_limits().max_tokens == 4096
+
+    with patch("app.llm.providers._post", post):
+        asyncio.run(run())
+    assert payloads[0]["max_tokens"] == 16384
+    assert payloads[1]["max_tokens"] == 16384
+    assert payloads[2]["generationConfig"] == {
+        "maxOutputTokens": 8192,
+        "thinkingConfig": {"thinkingLevel": "LOW"},
+    }
+
+
+def test_deepseek_long_multibyte_context_is_rejected_before_paid_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "fake")
+    with (
+        patch("app.llm.providers._post") as post,
+        pytest.raises(ProviderError, match="context_budget_exceeded") as error,
+    ):
+        asyncio.run(
+            DeepSeekAdapter().generate(
+                Route(provider="deepseek", model="deepseek-flash", family="deepseek"),
+                "s",
+                [Message(role="user", content="ọ" * 400_000)],
+                None,
+            )
+        )
+    assert not error.value.retryable
     post.assert_not_called()

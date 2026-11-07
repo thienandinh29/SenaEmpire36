@@ -84,8 +84,8 @@ def test_correct_option_cannot_have_misconception(database_url: str) -> None:
         assert mis_id is not None and item_id is not None
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute(
-                "insert into item_options (item_id, label, is_correct, misconception_id)"
-                " values (%s, 'A', true, %s)",
+                "insert into item_options (item_id, label, is_correct, misconception_id,position)"
+                " values (%s, 'A', true, %s,0)",
                 (item_id[0], mis_id[0]),
             )
         conn.rollback()

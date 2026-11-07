@@ -11,6 +11,7 @@ blocked; the SQL runs on the sync connection pool in a worker thread.
 import asyncio
 import unicodedata
 from dataclasses import dataclass
+from uuid import UUID
 
 import psycopg
 from psycopg_pool import ConnectionPool
@@ -32,6 +33,8 @@ with nearest as materialized (
     join sources s on s.id = c.source_id
     join subjects sub on sub.id = s.subject_id
     where sub.slug = %(subject)s
+      and (%(chunk_ids)s::uuid[] is null or c.id = any(%(chunk_ids)s::uuid[]))
+      and c.embedding is not null
     order by distance
     limit %(k)s
 )
@@ -47,6 +50,7 @@ class Retriever:
 
     pool: ConnectionPool
     embedder: AsyncEmbedder
+    chunk_ids: tuple[UUID, ...] | None = None
 
     async def search(self, query: str, subject: str, k: int = 5) -> list[Citation]:
         text = unicodedata.normalize("NFC", query).strip()  # Vietnamese: composed form, as indexed
@@ -62,7 +66,15 @@ class Retriever:
     def _query(self, vector: str, subject: str, k: int) -> list[Citation]:
         with self.pool.connection() as conn, conn.transaction():
             _allow_filtered_scan(conn)
-            rows = conn.execute(_SQL, {"q": vector, "subject": subject, "k": k}).fetchall()
+            rows = conn.execute(
+                _SQL,
+                {
+                    "q": vector,
+                    "subject": subject,
+                    "k": k,
+                    "chunk_ids": list(self.chunk_ids) if self.chunk_ids is not None else None,
+                },
+            ).fetchall()
         return [
             Citation(
                 chunk_id=str(row[0]),
