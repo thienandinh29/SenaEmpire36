@@ -14,7 +14,8 @@ from pydantic import BaseModel
 
 from app.engine.bkt import DEFAULT_PARAMS, update_traced
 from app.engine.graph import Graph
-from app.engine.placement import Answer, next_question
+from app.engine.path import next_step
+from app.engine.placement import Answer, next_question, seed_mastery
 from app.engine.remediation import remediate
 from app.engine.srs import make_scheduler, new_card, review_traced
 from app.schemas import (
@@ -196,15 +197,26 @@ def _placement_first() -> PlacementStep:
     return PlacementStep(item=LIST_ITEM, done=False, trace=trace)
 
 
-def _placement_done() -> PlacementStep:
-    """Run the engine against a learner whose real gap is booleans, noiseless."""
+def _demo_placement_answers() -> list[Answer]:
+    """Run the engine against a learner whose real gap is booleans, noiseless (the demo run)."""
     unknown = {"bieu-thuc-boolean", *GRAPH.descendants("bieu-thuc-boolean")}
     answers: list[Answer] = []
     while (slug := next_question(GRAPH, answers, now=NOW)[0]) is not None:
         answers.append(Answer(slug, slug not in unknown))
-    _, trace = next_question(GRAPH, answers, now=NOW)
+    return answers
+
+
+def _placement_done() -> PlacementStep:
+    _, trace = next_question(GRAPH, _demo_placement_answers(), now=NOW)
     assert trace.concept_slug == "bieu-thuc-boolean"
     return PlacementStep(item=None, done=True, gap_slug=trace.concept_slug, trace=trace)
+
+
+def _next_item() -> NextItem:
+    """The step after that placement: the gap, not what placement found known."""
+    step, _ = next_step(GRAPH, seed_mastery(GRAPH, _demo_placement_answers()), now=NOW)
+    assert step.concept_slug == "bieu-thuc-boolean"  # the item below is written for this concept
+    return NextItem(item=BOOL_ITEM, reason_vi=step.reason_vi)
 
 
 def _attempt_wrong() -> AttemptResult:
@@ -295,9 +307,7 @@ def mocks() -> dict[str, BaseModel]:
         "placement-next.request": PlacementRequest(learner_id=LEARNER, subject=SUBJECT),
         "placement-next.question": _placement_first(),
         "placement-next.done": _placement_done(),
-        "next-item.response": NextItem(
-            item=BOOL_ITEM, reason_vi="Củng cố «Biểu thức boolean» — phần nền còn yếu nhất"
-        ),
+        "next-item.response": _next_item(),
         "attempts.request": AttemptCreate(
             learner_id=LEARNER, item_id="loop-003", answer=2, hints_used=0
         ),
