@@ -82,6 +82,19 @@ class Download:
     content_type: str
 
 
+_TRANSITION_NETWORKS = (
+    ipaddress.ip_network("64:ff9b::/96"),
+    ipaddress.ip_network("::/96"),
+)
+
+
+def _public_address(address: str) -> bool:
+    ip = ipaddress.ip_address(address)
+    return ip.is_global and not any(
+        ip.version == network.version and ip in network for network in _TRANSITION_NETWORKS
+    )
+
+
 class SafeReader:
     def __init__(
         self,
@@ -115,9 +128,7 @@ class SafeReader:
                     if self.allowlist:
                         self.allowlist.publisher(url)
                     addresses = await self.resolver(host)
-                    if not addresses or any(
-                        not ipaddress.ip_address(address).is_global for address in addresses
-                    ):
+                    if not addresses or any(not _public_address(address) for address in addresses):
                         raise SourceError("Không được truy cập địa chỉ mạng nội bộ.")
                     # Connect to the checked IP, retaining TLS SNI/certificate validation.
                     target = httpx.URL(url).copy_with(host=addresses[0])

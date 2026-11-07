@@ -62,7 +62,19 @@ def test_redirect_is_revalidated_before_request() -> None:
     assert calls == 1
 
 
-@pytest.mark.parametrize("address", ["127.0.0.1", "10.0.0.2", "::1", "169.254.169.254"])
+@pytest.mark.parametrize(
+    "address",
+    [
+        "127.0.0.1",
+        "10.0.0.2",
+        "::1",
+        "169.254.169.254",
+        "64:ff9b::7f00:1",
+        "64:ff9b::a00:2",
+        "::127.0.0.1",
+        "::93.184.216.34",
+    ],
+)
 def test_private_dns_never_reaches_transport(address: str) -> None:
     async def resolver(host: str) -> list[str]:
         return [address]
