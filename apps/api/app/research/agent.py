@@ -13,7 +13,14 @@ from urllib.parse import quote, unquote, urlsplit, urlunsplit
 if TYPE_CHECKING:
     from app.research.relevance import ResearchRelevance
 
-from app.research.reader import Allowlist, SafeReader, SourceError, load_allowlist
+from app.research.reader import (
+    Allowlist,
+    Publisher,
+    SafeReader,
+    SourceError,
+    load_allowlist,
+    validate_url,
+)
 from app.uploads.reader import Page, read_link
 
 
@@ -44,16 +51,21 @@ def detect_license(text: str) -> str:
     """Accept explicit CC grants found in the document, never search-result metadata."""
     normalized = text.casefold()
     if re.search(r"shared under (?:a )?not declared license", normalized):
-        raise SourceError("Chưa có giấy phép được công bố cho trang tài liệu này.")
+        raise SourceError(
+            "Chưa có giấy phép được công bố cho trang tài liệu này.", code="license_missing"
+        )
     if re.search(
         r"may not.{0,180}(?:ingested into large language models|training of large language models)",
         " ".join(normalized.split()),
     ):
-        raise SourceError("Nguồn yêu cầu chấp thuận riêng trước khi dùng với mô hình AI.")
+        raise SourceError(
+            "Nguồn yêu cầu chấp thuận riêng trước khi dùng với mô hình AI.",
+            code="ai_permission_required",
+        )
     if re.search(
         r"\bby(?:[-\s]+nc)?[-\s]+nd\b|creativecommons.org/licenses/by[^\s]*nd", normalized
     ):
-        raise SourceError("Không sử dụng tài liệu có giấy phép ND.")
+        raise SourceError("Không sử dụng tài liệu có giấy phép ND.", code="license_nd")
     for code in ("by-nc-sa", "by-nc", "by-sa", "by"):
         found = re.search(
             rf"(?:creativecommons\.org/licenses/{code}/|\bcc[ -]+{code}[ /]+)([1-4]\.0)",
@@ -72,7 +84,7 @@ def detect_license(text: str) -> str:
             return f"CC {code} {found[1]}"
     if "creativecommons.org/publicdomain/zero/1.0" in normalized or "cc0 1.0" in normalized:
         return "CC0 1.0"
-    raise SourceError("Chưa xác định được giấy phép mở của tài liệu.")
+    raise SourceError("Chưa xác định được giấy phép mở của tài liệu.", code="license_missing")
 
 
 def canonical_url(url: str) -> str:
@@ -111,15 +123,19 @@ class ResearchAgent:
         max_reads: int = 12,
         deadline_seconds: float = 480,
         relevance: "ResearchRelevance | None" = None,
+        open_web: bool = False,
     ) -> None:
         if not (1 <= max_searches <= 15 and 1 <= max_reads <= 12 and 0 < deadline_seconds <= 480):
             raise ValueError("Research limits exceed the contract")
         self.allowlist = allowlist or load_allowlist()
+        if open_web:
+            self.allowlist = self.allowlist.model_copy(update={"allow_public": True})
         if reader is not None and reader.allowlist != self.allowlist:
             raise ValueError("Research reader must enforce the same allowlist")
         self.reader = reader or SafeReader(allowlist=self.allowlist)
         self.search = search
         self.relevance = relevance
+        self.open_web = open_web
         self.max_searches, self.max_reads, self.deadline = max_searches, max_reads, deadline_seconds
 
     async def research(self, goal: str, on_event: OnEvent) -> list[ChosenSource]:
@@ -134,15 +150,19 @@ class ResearchAgent:
         sources: list[ChosenSource] = []
         publishers: set[str] = set()
         searches = reads = 0
+        completed_searches = 0
+        rejected: dict[str, int] = {}
+        publisher_selections: dict[str, int] = {}
         started = monotonic()
 
-        async def event(kind: str, text: str, url: str = "") -> None:
+        async def event(kind: str, text: str, url: str = "", **details: str) -> None:
             await on_event(
                 {
                     "kind": kind,
                     "text_vi": text,
                     "url": url,
                     "elapsed_seconds": f"{monotonic() - started:.1f}",
+                    **details,
                 }
             )
 
@@ -157,26 +177,44 @@ class ResearchAgent:
                     alternate_query = plan.alternate_query
                     topic_query = plan.topic_query
                     await event("search", "Phạm vi tìm tài liệu: " + plan.scope_vi)
-                for publisher in self.allowlist.publishers:
-                    if (
-                        publisher.fallback_only
-                        or searches >= self.max_searches
-                        or reads >= self.max_reads
-                    ):
+                scopes: list[Publisher | None] = [
+                    p for p in self.allowlist.publishers if not p.fallback_only
+                ]
+                if self.open_web:
+                    domains = list(dict.fromkeys(d for p in scopes if p for d in p.domains))
+                    preferred = (
+                        [Publisher(name="các nguồn ưu tiên", domains=domains)] if domains else []
+                    )
+                    scopes = [None, *preferred, None]
+                for scope_index, publisher in enumerate(scopes):
+                    if searches >= self.max_searches or reads >= self.max_reads:
                         continue
                     searches += 1
+                    domains = publisher.domains if publisher else []
+                    label = publisher.name if publisher else "web mở rộng (ngoài danh sách ưu tiên)"
                     # Adapters receive the domain scope separately. Do not turn site:
                     # operators into stray query words when sanitizing model queries.
                     query = (
                         search_goal
                         if self.relevance
-                        else (f"{search_goal} textbook site:{publisher.domains[0]}")
+                        else (
+                            f"{search_goal} open textbook"
+                            if not publisher
+                            else f"{search_goal} textbook site:{publisher.domains[0]}"
+                        )
                     )
-                    if self.relevance and "ocw.mit.edu" in publisher.domains:
+                    if self.relevance and domains == ["ocw.mit.edu"]:
                         query = f"{topic_query or search_goal} chapter textbook resource"
-                    await event("search", f"Đang tìm giáo trình tại {publisher.name}…")
+                    if publisher is None:
+                        query = f"{search_goal} chapter lesson Creative Commons"
+                        if scope_index:
+                            query = f"{topic_query or search_goal} introductory textbook chapter "
+                            query += "open educational resources"
+                    await event("search", f"Đang tìm giáo trình tại {label}…")
                     try:
-                        results = await self.search(query, publisher.domains)
+                        results = await self.search(query, domains)
+                        completed_searches += 1
+                        count = len(results)
                         if self.relevance:
                             if (
                                 alternate_query
@@ -184,15 +222,24 @@ class ResearchAgent:
                                 and searches < self.max_searches
                             ):
                                 searches += 1
-                                alternatives = await self.search(alternate_query, publisher.domains)
+                                variant = (
+                                    f"{alternate_query} chapter lesson Creative Commons"
+                                    if publisher is None
+                                    else alternate_query
+                                )
+                                if publisher is None and scope_index:
+                                    variant = f"{topic_query or alternate_query} tutorial section "
+                                    variant += "open textbook Creative Commons"
+                                alternatives = await self.search(variant, domains)
                                 results = list(results) + list(alternatives)
+                                count = len(results)
                             results = await self.relevance.rank(goal, results)
                             # Prefer individual HTML lessons over whole-book downloads.
                             results = sorted(
                                 results,
                                 key=lambda r: (
                                     0
-                                    if "/resources/" in r.url and r.url.rstrip("/").endswith("_pdf")
+                                    if "/resources/" in r.url or "/chapter/" in r.url
                                     else 1
                                     if "/pages/open-textbook" in r.url
                                     else 2,
@@ -200,26 +247,53 @@ class ResearchAgent:
                                     or "/open/download" in r.url,
                                 ),
                             )
+                        await event(
+                            "search",
+                            f"Truy vấn: {query}. Có {count} kết quả, "
+                            f"{len(results)} ứng viên bài học sau xếp hạng.",
+                        )
+                        if not results:
+                            code = "no_relevant_candidates" if count else "search_no_results"
+                            rejected[code] = rejected.get(code, 0) + 1
+                            await event(
+                                "search",
+                                "Không có ứng viên bài học phù hợp trong lượt tìm này.",
+                                code=code,
+                                outcome="rejected",
+                                stage="search",
+                            )
                     except SourceError as exc:
+                        rejected[exc.code] = rejected.get(exc.code, 0) + 1
+                        await event(
+                            "search", str(exc), code=exc.code, outcome="rejected", stage="search"
+                        )
                         if exc.retryable:
                             continue
                         raise
                     publisher_reads = publisher_selected = 0
+                    read_limit = (
+                        max(1, self.max_reads // 3)
+                        if publisher is None
+                        else max(1, self.max_reads // 3)
+                        if self.open_web
+                        else max(3, per_publisher_reads)
+                        if self.relevance
+                        else per_publisher_reads
+                    )
                     results = list(results)
                     for result in results:
                         if (
                             reads >= self.max_reads
                             or (
-                                publisher_reads
-                                >= (
-                                    max(3, per_publisher_reads)
-                                    if self.relevance
-                                    else per_publisher_reads
-                                )
+                                publisher_reads >= read_limit
                                 and canonical_url(result.url) not in linked_licenses
                                 and canonical_url(result.url) not in linked_chapters
                             )
-                            or publisher_selected >= 2
+                            or (
+                                not self.open_web
+                                and publisher is not None
+                                and publisher_selected >= 2
+                            )
                         ):
                             break
                         key = canonical_url(result.url)
@@ -229,6 +303,9 @@ class ResearchAgent:
                         try:
                             self.allowlist.publisher(result.url)
                         except SourceError:
+                            continue
+                        owner = ".".join(validate_url(result.url).split(".")[-2:])
+                        if publisher_selections.get(owner, 0) >= 2:
                             continue
                         reads += 1
                         publisher_reads += 1
@@ -240,6 +317,17 @@ class ResearchAgent:
                             if final_url in selected_urls:
                                 continue
                             if not document.text_ok:
+                                rejected["unreadable_document"] = (
+                                    rejected.get("unreadable_document", 0) + 1
+                                )
+                                await event(
+                                    "read",
+                                    "Tài liệu không có văn bản bài học đọc được.",
+                                    result.url,
+                                    code="unreadable_document",
+                                    outcome="rejected",
+                                    stage="reading",
+                                )
                                 continue
                             text = "\n".join(p.text for p in document.pages)
                             license_text = document.license_text or text
@@ -285,7 +373,21 @@ class ResearchAgent:
                                     text + "\n" + license_text + ("\n" + grant[0] if grant else "")
                                 )
                         except SourceError as exc:
-                            await event("read", "Bỏ qua nguồn: " + str(exc), result.url)
+                            rejected[exc.code] = rejected.get(exc.code, 0) + 1
+                            await event(
+                                "read",
+                                "Bỏ qua nguồn: " + str(exc),
+                                result.url,
+                                code=exc.code,
+                                outcome="rejected",
+                                stage="reading",
+                            )
+                            if (
+                                not self.open_web
+                                and publisher is not None
+                                and exc.code == "ai_permission_required"
+                            ):
+                                break
                             continue
                         candidate = ChosenSource(
                             result.title,
@@ -302,16 +404,22 @@ class ResearchAgent:
                         if self.relevance is not None and not await self.relevance.supports(
                             goal, candidate
                         ):
+                            rejected["not_instructional"] = rejected.get("not_instructional", 0) + 1
                             await event(
                                 "read",
                                 "Nguồn chưa được xác nhận có bài học phù hợp: " + result.title,
                                 document.source_uri,
+                                code="not_instructional",
+                                outcome="rejected",
+                                stage="relevance",
                             )
                             continue
                         sources.append(candidate)
                         selected_urls.add(final_url)
                         publisher_selected += 1
-                        publishers.add(actual.name)
+                        owner = ".".join(validate_url(document.source_uri).split(".")[-2:])
+                        publisher_selections[owner] = publisher_selections.get(owner, 0) + 1
+                        publishers.add(owner)
                         await event(
                             "select",
                             f"Đã chọn {result.title} ({license_name}).",
@@ -320,10 +428,31 @@ class ResearchAgent:
                         if len(sources) >= 3 and len(publishers) >= 2:
                             return sources
         except TimeoutError:
-            raise SourceError("Nghiên cứu đã hết thời gian; hãy thử chế độ Nhanh.") from None
+            raise SourceError(
+                "Nghiên cứu đã hết thời gian; hãy xem các nguồn bị loại trong báo cáo.",
+                code="research_timeout",
+                action_vi="Kiểm tra nguồn chậm/lỗi tải; thu hẹp mục tiêu "
+                "hoặc cung cấp tài liệu hợp lệ.",
+            ) from None
+        if not completed_searches:
+            raise SourceError(
+                "Dịch vụ tìm kiếm không hoàn tất được lượt tìm nào; chưa thể đánh giá tài liệu.",
+                code="research_search_unavailable",
+                action_vi="Kiểm tra cấu hình, hạn mức search và các mã lỗi HTTP trong báo cáo.",
+            )
         raise SourceError(
-            "Chưa đủ 3 nguồn bài học phù hợp từ 2 nhà xuất bản trong giới hạn research. "
-            "Hãy nêu rõ nội dung/trình độ cần học hoặc cung cấp tài liệu."
+            f"Chưa đủ nguồn: chọn được {len(sources)}/3 tài liệu "
+            f"từ {len(publishers)}/2 nhà xuất bản "
+            f"sau {searches} lượt tìm và {reads} lượt đọc. "
+            + "Lý do loại: "
+            + (
+                ", ".join(f"{code}: {count}" for code, count in sorted(rejected.items()))
+                or "không có kết quả tìm kiếm phù hợp"
+            )
+            + ".",
+            code="research_sources_insufficient",
+            action_vi="Xem từng nguồn bị loại bên dưới. Cần bài học đúng chủ đề "
+            "và giấy phép cho phép sử dụng; có thể cung cấp tài liệu được phép dùng.",
         )
 
 

@@ -11,6 +11,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from psycopg import sql
+from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
 from app.config import Settings
@@ -25,6 +26,50 @@ from app.services.graph_confirmation import GraphConfirmations
 from tests.content.fakes import FakeGateway, topic
 
 from .conftest import ADMIN_URL
+
+
+def test_failed_research_without_subject_has_actionable_409_everywhere(database_url: str) -> None:
+    job = uuid4()
+    subject = f"topic-{job.hex}"
+    trail = [
+        {
+            "kind": "read",
+            "at": "2026-01-01T00:00:00Z",
+            "text_vi": "Only 1/3 sources",
+            "outcome": "failed",
+            "stage": "research",
+            "code": "research_sources_insufficient",
+            "action_vi": "Review rejected sources",
+        }
+    ]
+    with psycopg.connect(database_url) as conn:
+        conn.execute(
+            "insert into topic_jobs(id,goal_vi,tier,status,step_vi,trail) "
+            "values(%s,'DSA','pro','failed','Only 1/3 sources',%s)",
+            (job, Jsonb(trail)),
+        )
+    settings = Settings(
+        _env_file=None, database_url=database_url, allow_unauthenticated_local_dev=True
+    )
+    with TestClient(create_content_app(settings, gateway=FakeGateway())) as client:
+        learner = client.post("/learners", json={"display_name": "Failure gate test"}).json()[
+            "learner_id"
+        ]
+        scope = {"learner_id": learner, "subject": subject}
+        responses = [
+            client.get("/graph/review", params={"subject": subject}),
+            client.get("/graph", params=scope),
+            client.post("/placement/next", json=scope),
+            client.get("/next-item", params=scope),
+            client.post("/graph/confirm", json={"subject": subject, "graph_revision": "0" * 64}),
+        ]
+        assert all(r.status_code == 409 for r in responses), [
+            (r.status_code, r.text) for r in responses
+        ]
+        assert all("research_sources_insufficient" in r.json()["detail"] for r in responses)
+        state = client.get(f"/topics/{job}").json()
+        assert state["failure"]["stage"] == "research"
+        assert state["failure"]["action_vi"] == "Review rejected sources"
 
 
 @pytest.fixture(scope="module")

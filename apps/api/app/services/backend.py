@@ -74,6 +74,9 @@ class LearningService:
             "select id from learners where id=%s for update", (learner_id,)
         ).fetchone():
             raise HTTPException(404, "Không tìm thấy người học.")
+        from app.services.topic_readiness import require_published_topic
+
+        require_published_topic(conn, subject)
         row = conn.execute("select id from subjects where slug=%s", (subject,)).fetchone()
         if row is None:
             raise HTTPException(404, "Không tìm thấy môn học.")

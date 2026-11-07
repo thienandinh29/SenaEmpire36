@@ -291,6 +291,27 @@ class TrailEvent(_Contract):
     kind: TrailKind
     text_vi: str
     url: str | None = None
+    code: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    outcome: Literal["started", "rejected", "failed"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    stage: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    action_vi: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    elapsed_seconds: str | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class SourceRejection(_Contract):
+    code: str
+    url: str | None = None
+    message_vi: str
+
+
+class TopicFailure(_Contract):
+    stage: str
+    code: str
+    message_vi: str
+    action_vi: str
+    rejected_sources: list[SourceRejection] = []
 
 
 class TopicState(_Contract):
@@ -302,6 +323,7 @@ class TopicState(_Contract):
     items_ready: bool
     sources: list[TopicSource] = []
     trail: list[TrailEvent] = []
+    failure: TopicFailure | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 # GET /topics/cached

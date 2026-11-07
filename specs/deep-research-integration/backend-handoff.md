@@ -138,3 +138,45 @@ retry phát triển không chứng minh tỷ lệ thành công ngay lần đầu
 
 Kiểm tra toàn bộ sau thay đổi question/hint: **1.516 test pass**, Ruff check/format
 và mypy pass; regression từ chối diagnostic không khớp cũng pass riêng.
+
+## Tìm web mở rộng và báo lỗi có nguyên nhân
+
+Deep production không còn giới hạn URL vào danh sách nhà xuất bản ban đầu. Research
+tìm web rộng, tìm trong nhóm nguồn ưu tiên rồi dùng truy vấn web rộng khác nếu vẫn
+thiếu nguồn hợp lệ. Các bước dùng chung trần 15 search/12 lần đọc và deadline cũ;
+thường có tối đa sáu truy vấn trong ba nhóm. Nhà xuất bản ngoài danh sách được nhóm
+theo miền, bảo thủ gộp các subdomain cùng miền thành một chủ nguồn. Vẫn cần ba tài
+liệu từ hai chủ nguồn; không bỏ kiểm tra giấy phép, hạn chế AI, SSRF, DNS public,
+TLS, redirect, dung lượng, nội dung giảng dạy hoặc verifier độc lập.
+
+Reader nhận PDF bài giảng MIT có tên tệp chứa hash từ link `download-file` thực,
+không đoán tên tệp. Mục lục sách có link chương cùng sách/cùng host được xếp hạng
+và mở trong ngân sách đọc. Từng chương tự kiểm tra giấy phép; giấy phép mục lục
+không tự cấp quyền cho chương không có giấy phép. Không theo các link ngoài sách.
+
+Planner từng đổi nhầm mục tiêu DSA thành tiếng Anh. Prompt đã bỏ ví dụ quá thiên
+về tiếng Anh; một request riêng kiểm tra bản dịch/truy vấn có giữ đúng mục tiêu
+trước khi gọi search. Kế hoạch lệch chủ đề bị chặn với `research_goal_mismatch`.
+
+`GET /topics/{id}` và SSE có thêm `failure` tùy chọn: `stage`, `code`, `message_vi`,
+`action_vi`, `rejected_sources`. Báo cáo lấy từ trail bền vững, không cần migration.
+Mã lỗi phân biệt thiếu giấy phép, ND, hạn chế AI, HTTP, không có kết quả, không có
+ứng viên phù hợp và provider search không khả dụng. Lưu lỗi trail thất bại không
+được ngăn việc ghi trạng thái terminal. Retry chỉ lấy lý do của lượt mới nhất;
+job cũ được đánh dấu `legacy_failure` và vẫn có lý do loại nguồn nếu có trong trail.
+
+Gate readiness chạy trước khi tải subject/graph. Job failed trước indexing không
+còn thành 404/503 chung chung khi review, graph, confirm, placement hay next-item:
+trả 409 kèm mã lỗi, bước lỗi và hướng xử lý. Kiểm tra thật qua proxy web trên cả job
+cũ và job mới: cả mười request đều 409, không có attempt được ghi vào DB.
+
+Demo P5 local đã hiển thị bước/mã lỗi, hướng xử lý, từng URL bị loại và tự mở nhật
+ký khi failed. Không gộp các file UI demo còn đang chỉnh từ trước vào commit backend.
+OpenAPI và phần kiểu TypeScript liên quan failure được cập nhật theo hợp đồng bổ sung.
+
+Kiểm tra: **1.532 test API pass**, Ruff/mypy pass; **77 test web pass**, typecheck,
+lint và production build webpack pass. Chưa kiểm tra giao diện bằng thao tác browser.
+Lượt DSA `443b5223-78af-4404-a3b9-cc5f3a5a8d78` đã chọn được hai chương Pressbooks
+ngoài danh sách cũ, nhưng vẫn **NO GO: 2/3 tài liệu, 1/2 chủ nguồn** sau sáu search và
+12 lần đọc. Báo cáo lưu rõ thiếu giấy phép, ND, hạn chế AI và HTTP 403; không sinh
+bản đồ/câu hỏi từ lượt failed. Đây chưa phải xác nhận DSA hoặc mọi chủ đề đều GO.

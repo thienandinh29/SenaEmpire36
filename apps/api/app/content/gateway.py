@@ -14,6 +14,7 @@ from app.llm.gateway import Completion, verification_scope
 
 TASKS = {
     "plan_research": "graph",
+    "assess_research_plan": "graph",
     "assess_research_source": "graph",
     "select_library": "graph",
     "extract_graph": "graph",

@@ -213,6 +213,17 @@ class TopicPipeline:
                 )
                 await progress(Progress("researching", "Đang chọn nguồn học…", 5))
                 if request.mode == "deep":
+                    await trail(
+                        {
+                            "kind": "search",
+                            "text_vi": "Bắt đầu lượt research.",
+                            "url": "",
+                            "code": "research_started",
+                            "outcome": "started",
+                            "stage": "research",
+                        }
+                    )
+                if request.mode == "deep":
                     sources = list(await self.research(goal, trail))
                     if len({s.url for s in sources}) < 3 or len({s.publisher for s in sources}) < 2:
                         raise SourceError("Nghiên cứu chưa đủ 3 nguồn từ 2 nhà xuất bản.")
@@ -339,6 +350,26 @@ class TopicPipeline:
                 if stage == "questions"
                 else "Không thể xây lộ trình lúc này."
             )
+            try:
+                async with asyncio.timeout(1):
+                    await trail(
+                        {
+                            "kind": "read",
+                            "text_vi": message,
+                            "url": "",
+                            "outcome": "failed",
+                            "stage": stage,
+                            "code": exc.code
+                            if isinstance(exc, SourceError) and exc.code != "source_error"
+                            else f"{stage}_failed",
+                            "action_vi": exc.action_vi
+                            if isinstance(exc, SourceError)
+                            else "Kiểm tra cấu hình, hạn mức model và log backend theo mã job; "
+                            "dữ liệu chưa được phát hành.",
+                        }
+                    )
+            except Exception:
+                pass
             try:
                 async with asyncio.timeout(1):
                     await progress(

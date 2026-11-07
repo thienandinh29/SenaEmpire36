@@ -34,12 +34,12 @@ class GraphConfirmations:
             "select id from learners where id=%s" + suffix, (learner_id,)
         ).fetchone():
             raise HTTPException(404, "Không tìm thấy người học.")
+        require_published_topic(conn, subject)
         row = conn.execute(
             "select id,p4_graph from subjects where slug=%s" + suffix, (subject,)
         ).fetchone()
         if row is None:
             raise HTTPException(404, "Không tìm thấy chủ đề.")
-        require_published_topic(conn, subject)
         if row[1] is None:
             raise HTTPException(503, "Bản đồ kiến thức chưa sẵn sàng.")
         try:

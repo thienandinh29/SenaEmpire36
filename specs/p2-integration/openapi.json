@@ -1613,6 +1613,16 @@
             "type": "array",
             "title": "Trail",
             "default": []
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TopicFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -1656,6 +1666,66 @@
               }
             ],
             "title": "Url"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "started",
+                  "rejected",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "action_vi": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Vi"
+          },
+          "elapsed_seconds": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Seconds"
           }
         },
         "additionalProperties": false,
@@ -1731,6 +1801,73 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "TopicFailure": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "message_vi": {
+            "type": "string",
+            "title": "Message Vi"
+          },
+          "action_vi": {
+            "type": "string",
+            "title": "Action Vi"
+          },
+          "rejected_sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceRejection"
+            },
+            "type": "array",
+            "title": "Rejected Sources",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "stage",
+          "code",
+          "message_vi",
+          "action_vi"
+        ],
+        "title": "TopicFailure"
+      },
+      "SourceRejection": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "message_vi": {
+            "type": "string",
+            "title": "Message Vi"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "message_vi"
+        ],
+        "title": "SourceRejection"
       }
     }
   }

@@ -245,6 +245,8 @@ class DeepModels:
         content: dict[str, Any]
         if task == "plan_research":
             content = {"query": "source rule lesson", "scope_vi": "Fixture scope"}
+        elif task == "assess_research_plan":
+            content = {"preserves_goal": True, "reason_vi": "Fixture scope matches"}
         elif task == "assess_research_source":
             if "candidates" in payload:
                 content = {"urls": [r["url"] for r in payload["candidates"]]}

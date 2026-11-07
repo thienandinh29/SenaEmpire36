@@ -8,6 +8,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from app.research.failures import failure_report
 from app.research.pipeline import Progress
 
 FIELDS = "status, step_vi, progress, subject_slug, graph_ready, items_ready, sources, trail"
@@ -50,6 +51,8 @@ def snapshot(conn: psycopg.Connection[Any], topic_id: UUID) -> dict[str, Any] | 
         state = cur.fetchone()
         if state is not None:
             state["progress"] /= 100
+            if state["status"] == "failed":
+                state["failure"] = failure_report(state["step_vi"], state["trail"])
         return state
 
 

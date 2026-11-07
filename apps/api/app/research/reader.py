@@ -16,9 +16,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class SourceError(Exception):
-    def __init__(self, message: str, *, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        code: str = "source_error",
+        action_vi: str = "",
+    ) -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.code = code
+        self.action_vi = action_vi
 
 
 class Publisher(BaseModel):
@@ -31,6 +40,7 @@ class Publisher(BaseModel):
 class Allowlist(BaseModel):
     model_config = ConfigDict(extra="forbid")
     publishers: list[Publisher]
+    allow_public: bool = False
 
     def publisher(self, url: str, *, include_fallback: bool = False) -> Publisher:
         host = validate_url(url)
@@ -39,6 +49,15 @@ class Allowlist(BaseModel):
                 continue
             if any(host == domain or host.endswith("." + domain) for domain in publisher.domains):
                 return publisher
+        if self.allow_public:
+            if any(
+                p.fallback_only and any(host == d or host.endswith("." + d) for d in p.domains)
+                for p in self.publishers
+            ):
+                raise SourceError("Nguồn này chỉ được dùng làm tham khảo bổ sung.")
+            # Conservative publisher grouping: shared-hosting subdomains count as one source owner.
+            domain = ".".join(host.split(".")[-2:])
+            return Publisher(name=domain, domains=[domain])
         raise SourceError("Nguồn này không nằm trong danh sách được phép.")
 
 
@@ -156,6 +175,7 @@ class SafeReader:
             raise SourceError(
                 f"Nguồn trả về lỗi HTTP {status}.",
                 retryable=status in {408, 429} or status >= 500,
+                code=f"source_http_{status}",
             ) from None
         except (httpx.HTTPError, TimeoutError):
             raise SourceError(
@@ -208,16 +228,18 @@ def html_text(body: bytes) -> str:
 
 
 def resource_chapter_links(body: bytes, base_url: str) -> tuple[tuple[str, str], ...]:
-    """Observed chapter resources from an MIT textbook contents page, never guessed URLs."""
+    """Observed chapters from book contents or MIT notes, never guessed URLs."""
     parsed = urlsplit(base_url)
     parts = parsed.path.strip("/").split("/")
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname != "ocw.mit.edu"
-        or len(parts) != 4
-        or parts[0] != "courses"
-        or parts[2:] != ["pages", "open-textbook"]
-    ):
+    mit_index = (
+        parsed.hostname == "ocw.mit.edu"
+        and len(parts) == 4
+        and parts[0] == "courses"
+        and parts[2] == "pages"
+        and parts[3] in {"open-textbook", "lecture-notes"}
+    )
+    book_index = len(parts) == 1 and bool(parts[0])
+    if parsed.scheme != "https" or not (mit_index or book_index):
         return ()
 
     class Chapters(HTMLParser):
@@ -236,9 +258,15 @@ def resource_chapter_links(body: bytes, base_url: str) -> tuple[tuple[str, str],
             if (
                 p.scheme == "https"
                 and p.netloc == parsed.netloc
-                and len(segments) == 4
-                and segments[:3] == ["courses", parts[1], "resources"]
-                and segments[3].endswith("_pdf")
+                and (
+                    (
+                        mit_index
+                        and len(segments) == 4
+                        and segments[:3] == ["courses", parts[1], "resources"]
+                        and (parts[3] == "lecture-notes" or segments[3].endswith("_pdf"))
+                    )
+                    or (book_index and len(segments) == 3 and segments[:2] == [parts[0], "chapter"])
+                )
                 and not p.query
                 and len(self.links) < 12
             ):
@@ -271,7 +299,6 @@ def resource_pdf_links(body: bytes, base_url: str) -> tuple[str, ...]:
         or len(parts) != 4
         or parts[0] != "courses"
         or parts[2] != "resources"
-        or not parts[3].endswith("_pdf")
     ):
         return ()
     expected_path = f"/courses/{parts[1]}/{parts[3][:-4]}.pdf"
@@ -293,7 +320,15 @@ def resource_pdf_links(body: bytes, base_url: str) -> tuple[str, ...]:
             p = urlsplit(target)
             if (
                 host == parsed.hostname
-                and p.path == expected_path
+                and (
+                    (parts[3].endswith("_pdf") and p.path == expected_path)
+                    or (
+                        "download-file" in (dict(attrs).get("class") or "").split()
+                        and p.path.startswith(f"/courses/{parts[1]}/")
+                        and len(p.path.strip("/").split("/")) == 3
+                        and p.path.lower().endswith(".pdf")
+                    )
+                )
                 and not p.query
                 and not self.urls
             ):

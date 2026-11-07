@@ -449,3 +449,23 @@ def test_pipeline_cannot_be_constructed_without_retrieval() -> None:
         TopicPipeline(Ports())  # type: ignore[call-arg]
     with pytest.raises(ValueError, match="blank"):
         TopicPipeline(Ports(), retriever=Retrieved([]), retrieval_subject=" ")
+
+
+def test_failure_trail_sink_error_does_not_prevent_terminal_progress() -> None:
+    ports = Ports()
+    ports.supported = False
+    states = []
+
+    async def progress(value: Progress) -> None:
+        states.append(value)
+
+    async def event(value: dict[str, str]) -> None:
+        raise RuntimeError("trail storage unavailable")
+
+    with pytest.raises(SourceError):
+        asyncio.run(
+            pipeline(ports).run(
+                TopicInput(goal_vi="biology", mode="quick", tier="free"), progress, event
+            )
+        )
+    assert states[-1].status == "failed" and not states[-1].graph_ready

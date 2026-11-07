@@ -572,6 +572,31 @@ export interface components {
       /** License */
       license: string;
     };
+    /** TopicFailure */
+    TopicFailure: {
+      /** Stage */
+      stage: string;
+      /** Code */
+      code: string;
+      /** Message Vi */
+      message_vi: string;
+      /** Action Vi */
+      action_vi: string;
+      /**
+       * Rejected Sources
+       * @default []
+       */
+      rejected_sources: components["schemas"]["SourceRejection"][];
+    };
+    /** SourceRejection */
+    SourceRejection: {
+      /** Code */
+      code: string;
+      /** Url */
+      url?: string | null;
+      /** Message Vi */
+      message_vi: string;
+    };
     /** TopicState */
     TopicState: {
       /**
@@ -606,6 +631,7 @@ export interface components {
        * @default []
        */
       trail: components["schemas"]["TrailEvent"][];
+      failure?: components["schemas"]["TopicFailure"] | null;
     };
     /** TrailEvent */
     TrailEvent: {
@@ -623,6 +649,16 @@ export interface components {
       text_vi: string;
       /** Url */
       url?: string | null;
+      /** Code */
+      code?: string | null;
+      /** Outcome */
+      outcome?: ("started" | "rejected" | "failed") | null;
+      /** Stage */
+      stage?: string | null;
+      /** Action Vi */
+      action_vi?: string | null;
+      /** Elapsed Seconds */
+      elapsed_seconds?: string | null;
     };
     /** UploadResponse */
     UploadResponse: {

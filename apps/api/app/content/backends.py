@@ -53,8 +53,8 @@ class LearningBackend:
         lid = uid(learner)
         if not conn.execute("select id from learners where id=%s for update", (lid,)).fetchone():
             raise HTTPException(404, "Không tìm thấy người học.")
-        sid = self.repo._subject(conn, subject)
         require_published_topic(conn, subject)
+        sid = self.repo._subject(conn, subject)
         kg = self.repo.graph(conn, subject)
         if require_confirmation and not graph_confirmed(self.confirmation, learner, subject, kg):
             raise HTTPException(409, "Hãy xác nhận bản đồ kiến thức trước khi bắt đầu học.")

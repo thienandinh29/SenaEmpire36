@@ -120,7 +120,9 @@ async def read_link(url: str, reader: SafeReader | None = None) -> Document:
     if media == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
         return await asyncio.to_thread(read_file, "upload.docx", download.body, download.url)
     if media not in {"text/html", "application/xhtml+xml", "text/plain"}:
-        raise SourceError("Đường dẫn không trả về tài liệu được hỗ trợ.")
+        raise SourceError(
+            "Đường dẫn không trả về tài liệu được hỗ trợ.", code="unsupported_document"
+        )
     text = (
         download.body.decode("utf-8-sig", errors="replace")
         if media == "text/plain"

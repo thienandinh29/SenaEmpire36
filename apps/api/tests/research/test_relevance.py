@@ -18,6 +18,8 @@ class RelevanceModels(FakeGateway):
         content: dict[str, Any]
         if kwargs["task"] == "plan_research":
             content = {"query": "beginner English verb be lessons", "scope_vi": "Beginner lesson"}
+        elif kwargs["task"] == "assess_research_plan":
+            content = {"preserves_goal": True, "reason_vi": "Fixture plan"}
         elif "candidates" in kwargs["payload"]:
             content = {"urls": [r["url"] for r in kwargs["payload"]["candidates"]]}
         else:
@@ -167,6 +169,8 @@ def test_ranking_cannot_introduce_urls_or_duplicate_candidates() -> None:
 def test_query_variants_share_the_existing_search_budget() -> None:
     class Plans(RelevanceModels):
         async def generate(self, **kwargs: Any) -> ModelReply:
+            if kwargs["task"] != "plan_research":
+                return await super().generate(**kwargs)
             return ModelReply(
                 content={
                     "query": "English sentences",
@@ -222,6 +226,8 @@ def test_rank_sees_both_full_search_pages_and_keeps_only_supplied_urls() -> None
 def test_resource_publisher_search_uses_short_planned_topic() -> None:
     class Plans(RelevanceModels):
         async def generate(self, **kwargs: Any) -> ModelReply:
+            if kwargs["task"] != "plan_research":
+                return await super().generate(**kwargs)
             return ModelReply(
                 content={
                     "query": "derivative definition tangent slope",
@@ -249,3 +255,28 @@ def test_resource_publisher_search_uses_short_planned_topic() -> None:
             ).research("learn derivatives", event)
         )
     assert calls == ["introductory derivatives chapter textbook resource"]
+
+
+def test_changed_subject_plan_is_blocked_before_any_search() -> None:
+    class ChangedSubject(RelevanceModels):
+        async def generate(self, **kwargs: Any) -> ModelReply:
+            content = (
+                {"query": "beginner English grammar", "scope_vi": "English language"}
+                if kwargs["task"] == "plan_research"
+                else {"preserves_goal": False, "reason_vi": "DSA was replaced by language learning"}
+            )
+            return ModelReply(content=content, identity=self.item.generator)
+
+    async def search(query: str, domains: Sequence[str]) -> list[SearchResult]:
+        pytest.fail("A changed subject must not spend search credits")
+
+    async def event(value: dict[str, str]) -> None:
+        pass
+
+    with pytest.raises(SourceError) as caught:
+        asyncio.run(
+            ResearchAgent(
+                search, relevance=ResearchRelevance(ChangedSubject()), open_web=True
+            ).research("Cau truc du lieu va giai thuatj", event)
+        )
+    assert caught.value.code == "research_goal_mismatch"

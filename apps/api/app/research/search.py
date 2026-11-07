@@ -48,11 +48,13 @@ class BraveSearch:
         self.transport = transport
 
     async def __call__(self, query: str, domains: Sequence[str]) -> list[SearchResult]:
-        if not domains or any(not re.fullmatch(r"[a-z0-9]+(?:[.-][a-z0-9]+)*", d) for d in domains):
+        if any(not re.fullmatch(r"[a-z0-9]+(?:[.-][a-z0-9]+)*", d) for d in domains):
             raise SourceError("Danh sách miền tìm kiếm không hợp lệ.")
         # Discard operators supplied in a learner goal. Query operators come only from config.
         words = re.findall(r"[^\W_]+", query, flags=re.UNICODE)
-        scope = "(" + " OR ".join("site:" + d for d in dict.fromkeys(domains)) + ")"
+        scope = (
+            "(" + " OR ".join("site:" + d for d in dict.fromkeys(domains)) + ")" if domains else ""
+        )
         budget = 600 - len(scope) - 1
         clean = " ".join(words[: max(1, 70 - 2 * len(domains))])[:budget].strip()
         if not clean or budget < 1:
@@ -81,6 +83,7 @@ class BraveSearch:
             raise SourceError(
                 f"Dịch vụ tìm kiếm trả về lỗi HTTP {status}.",
                 retryable=status == 429 or status >= 500,
+                code=f"search_http_{status}",
             ) from None
         except (httpx.RequestError, ValidationError):
             raise SourceError("Dịch vụ tìm kiếm tạm thời không khả dụng.", retryable=True) from None
@@ -92,9 +95,9 @@ class BraveSearch:
             except SourceError:
                 continue
             if (
-                any(host == domain or host.endswith("." + domain) for domain in domains)
-                and entry.url not in seen
-            ):
+                not domains
+                or any(host == domain or host.endswith("." + domain) for domain in domains)
+            ) and entry.url not in seen:
                 results.append(SearchResult(entry.title, entry.url, entry.content))
                 seen.add(entry.url)
         return results
@@ -115,7 +118,7 @@ class TavilySearch:
         self.transport = transport
 
     async def __call__(self, query: str, domains: Sequence[str]) -> list[SearchResult]:
-        if not domains or any(not re.fullmatch(r"[a-z0-9]+(?:[.-][a-z0-9]+)*", d) for d in domains):
+        if any(not re.fullmatch(r"[a-z0-9]+(?:[.-][a-z0-9]+)*", d) for d in domains):
             raise SourceError("Danh sách miền tìm kiếm không hợp lệ.")
         # Scope comes only from configuration, never learner-supplied query operators.
         clean = " ".join(re.findall(r"[^\W_]+", query, flags=re.UNICODE))[:400].strip()
@@ -131,8 +134,14 @@ class TavilySearch:
                     headers={"Authorization": f"Bearer {self.api_key}"},
                     json={
                         "query": clean,
-                        "include_domains": list(dict.fromkeys(domains)),
-                        "include_domains_mode": "restrict",
+                        **(
+                            {
+                                "include_domains": list(dict.fromkeys(domains)),
+                                "include_domains_mode": "restrict",
+                            }
+                            if domains
+                            else {}
+                        ),
                         "max_results": self.count,
                         "search_depth": "basic",
                         "auto_parameters": False,
@@ -148,6 +157,7 @@ class TavilySearch:
             raise SourceError(
                 f"Dịch vụ tìm kiếm trả về lỗi HTTP {status}.",
                 retryable=status == 429 or status >= 500,
+                code=f"search_http_{status}",
             ) from None
         except (httpx.RequestError, ValidationError):
             raise SourceError("Dịch vụ tìm kiếm tạm thời không khả dụng.", retryable=True) from None
@@ -159,9 +169,9 @@ class TavilySearch:
             except SourceError:
                 continue
             if (
-                any(host == domain or host.endswith("." + domain) for domain in domains)
-                and entry.url not in seen
-            ):
+                not domains
+                or any(host == domain or host.endswith("." + domain) for domain in domains)
+            ) and entry.url not in seen:
                 results.append(SearchResult(entry.title, entry.url, entry.content))
                 seen.add(entry.url)
         return results
@@ -181,7 +191,9 @@ def default_agent() -> ResearchAgent:
     from app.content.gateway import P3Gateway
     from app.research.relevance import ResearchRelevance
 
-    return ResearchAgent(configured_search(), relevance=ResearchRelevance(P3Gateway()))
+    return ResearchAgent(
+        configured_search(), relevance=ResearchRelevance(P3Gateway()), open_web=True
+    )
 
 
 def configuration() -> dict[str, str | bool]:
