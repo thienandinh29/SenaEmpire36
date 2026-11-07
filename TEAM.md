@@ -29,6 +29,22 @@ The plan has two versions, chosen by the answers to (2) and (3); see "Before H0 
 6. **Integration before the checkpoint.** Pieces due at H8 are merged by **H7**; H7–H8 is the first end-to-end run.
 7. **Feature freeze at H18.** After that, only bug fixes, rehearsal and the backup video.
 
+## Handoff board (P1 → everyone; read your row, tick it off, reply in PR #1 or to P1)
+Status of P1's work: [PR #1](https://github.com/thienandinh29/SenaEmpire36/pull/1) (`p1/ml-core`): contracts, engine,
+retrieval, migrations `0003`–`0004`. Details and open contract decisions: `specs/contracts/review.md` (19 items).
+**Contracts are still a draft until the H3 freeze: reply "OK" or list concrete problems (silence is not agreement).**
+
+| Lane | What P1 needs from you | Read |
+|---|---|---|
+| **P2** | [ ] Review and merge migration `0003` **before bulk indexing (~H5)**, then `0004`, in number order. [ ] Add `EMBEDDING_BACKEND` (`tei`\|`local`), `TEI_URL`, optional `TEI_API_KEY` to `config.py` and `.env.example` (P1's agent cannot read or edit those files), then build the client with `make_embedder(...)`. [ ] Re-check `uv.lock`: `httpx` is now a runtime dependency. [ ] Bulk indexing uses the sync `TeiEmbedder.embed`; call `store.build_vector_index(conn)` once after loading. [ ] Store traces in `decision_traces` (`trace.model_dump(mode="json")` in, `DecisionTrace.model_validate` out). [ ] H3 check: query embedding < ~1 s on the VM. | `review.md` #11, #16, #18, #19; `specs/retrieval/` |
+| **P3** | [ ] Build one `Retriever(pool, embedder)` at startup; `search` is **async**: `await retriever.search(query, subject, k)`. [ ] Placement is stateless: load the learner's placement answers, call `placement.next_question(graph, answers)`, persist `placement.seed_mastery(...)`; `gap` can be `None`. [ ] Return `traces` from `/attempts` and `/placement/next`. [ ] `answer` is the 0-based option index; map the API item id to the DB uuid (needs `items.external_id`, see P4). [ ] `Citation.publisher` is always `None` until `sources` gets a publisher column (your `0007`?). | `review.md` #1, #2, #12–#15, #17; `specs/engine/` |
+| **P4** | [ ] **Golden topic #1 by H3** (chunks, `graph.yaml`, items): retrieval evaluation waits on it. [ ] Graph and item files must load through `KnowledgeGraph` / `ItemSet` in `app/schemas.py` (cycles, one correct option, a misconception per wrong option are rejected; items without `status` count as `needs_review`). [ ] Label **≥ 20 Vietnamese questions** for retrieval evaluation, in the format in `data/eval/README.md`. [ ] Migration `0005`: add a unique `items.external_id` (the fixture id such as `plr-001`) or agree another mapping with P3. | `review.md` #2, #6, #7, #14; `data/eval/README.md` |
+| **P5** | [ ] Build screens on `specs/contracts/mocks/` (generated from the models and real engine output; **do not edit by hand**, ask P1 for a change). [ ] "Vì sao?" renders `DecisionTrace` (`rule_vi` is ready to show; `prior`, `posterior` and `evidence` fields can be `null`). [ ] Items never contain the answer; graph edges use the key `from`. [ ] SSE sends `state` and `heartbeat` events. | `specs/contracts/mocks/README.md`; `review.md` #4, #10 |
+
+Known gap, not a blocker: placement finds the exact gap in ~56–64% of runs with noisy (slip/guess) answers, against a
+90% target; it is exact with clean answers and always finishes in ≤ 6 questions (`specs/engine/spec.md`). P1 decides
+whether to relax the target.
+
 ## Lanes
 
 | Person | Lane | Owns (only edits these) | Delivers |
