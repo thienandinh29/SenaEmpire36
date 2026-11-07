@@ -74,10 +74,10 @@ export function useLearning(config: WebConfig) {
   function configureDemo(scenario: DemoScenario) {
     client.configureDemo(scenario);
   }
-  async function uploadFile(file: File) {
+  async function uploadFile(file: File, consentAccepted: boolean) {
     setUpload(null);
     return run("upload", async () => {
-      const received = await client.upload(file);
+      const received = await client.upload(file, consentAccepted);
       setUpload(received);
       return received;
     });
@@ -184,7 +184,11 @@ export function useLearning(config: WebConfig) {
   }
   async function loadLesson(slug = selected, force = false) {
     if (!slug || !subject || (!force && lessons[slug])) return;
-    if (locks.current.has(`attempt:${slug}`) || locks.current.has(`hint:${slug}`)) return;
+    if (
+      locks.current.has(`attempt:${slug}`) ||
+      locks.current.has(`hint:${slug}`)
+    )
+      return;
     await run(`lesson:${slug}`, async () => {
       const version = epoch.current;
       const placement = await client.placement(learner, subject, slug);

@@ -20,6 +20,7 @@ from app.graders.mcq import Grade, grade
 from app.graders.mcq import Item as GraderItem
 from app.jobs.queue import enqueue
 from app.schemas import KnowledgeGraph
+from app.services.attempts import remember, replay
 from app.services.learning import save_attempt, save_mastery, save_review
 from app.tutor.hints import HintAttempt, generate_hint_attempt, release_hint
 from app.uploads.metadata import prepare_metadata
@@ -103,10 +104,12 @@ class LearningBackend:
         allow_attempted: bool = False,
     ) -> StoredItem | None:
         candidates = []
-        attempted = {
-            r[0]
-            for r in conn.execute("select item_id from attempts where learner_id=%s", (learner,))
-        }
+        attempted = dict(
+            conn.execute(
+                "select item_id,max(created_at) from attempts where learner_id=%s group by item_id",
+                (learner,),
+            ).fetchall()
+        )
         for key in self.repo.item_ids(conn, subject):
             bundle = self.repo.servable(conn, key)
             if (
@@ -117,7 +120,12 @@ class LearningBackend:
                 candidates.append(bundle)
         return min(
             candidates,
-            key=lambda b: (b.db_id in attempted, abs(b.item.difficulty - difficulty), b.item.id),
+            key=lambda b: (
+                b.db_id in attempted,
+                attempted.get(b.db_id, datetime.min.replace(tzinfo=UTC)),
+                abs(b.item.difficulty - difficulty),
+                b.item.id,
+            ),
             default=None,
         )
 
@@ -217,12 +225,18 @@ class LearningBackend:
                         (lid, sid),
                     ).fetchall()
                 )
+                available = {
+                    bundle.item.concept
+                    for key in self.repo.item_ids(conn, subject)
+                    if (bundle := self.repo.servable(conn, key)) is not None
+                }
                 step, trace = path.next_step(
                     graph,
                     mastery,
                     now=datetime.now(UTC),
                     resume_origin=session[0] if session else None,
                     due_reviews=due,
+                    available_concepts=available,
                 )
                 if step.concept_slug is None:
                     return None
@@ -232,7 +246,7 @@ class LearningBackend:
                     step.concept_slug,
                     lid,
                     step.target_difficulty,
-                    allow_attempted=step.kind == "review",
+                    allow_attempted=True,
                 )
                 if bundle is None:
                     raise HTTPException(503, "Chưa có câu hỏi đã kiểm chứng phù hợp.")
@@ -279,6 +293,9 @@ class LearningBackend:
                 conn.execute(
                     "select id from learners where id=%s for update", (uid(request.learner_id),)
                 ).fetchone()
+                cached = replay(conn, request)
+                if cached is not None:
+                    return cached
                 bundle = self.repo.servable(conn, item.id)
                 if not bundle or contract_item(bundle.item).model_dump() != item.model_dump():
                     raise HTTPException(409, "Câu hỏi đã thay đổi; hãy tải lại.")
@@ -340,7 +357,7 @@ class LearningBackend:
                 mastery[item_concept] = p
                 traces = [trace]
                 plan = None
-                if not result.correct:
+                if not result.correct and session[0] != "placement":
                     decision, rtrace = remediation.remediate(
                         graph,
                         mastery,
@@ -381,7 +398,7 @@ class LearningBackend:
                     "d=%s and subject_id=%s",
                     (lid, sid),
                 )
-                return learn.AttemptUpdate(
+                update = learn.AttemptUpdate(
                     p_known=p,
                     mastered=bkt.is_mastered(p),
                     misconception_vi=mid[1] if mid else None,
@@ -390,6 +407,8 @@ class LearningBackend:
                     else None,
                     traces=[trace_dto(t) for t in traces],
                 )
+                remember(conn, request, update)
+                return update
 
         return await asyncio.to_thread(run)
 
@@ -436,7 +455,12 @@ class TopicsBackend:
         return await asyncio.to_thread(run)
 
     async def persist_upload(
-        self, document: Document, body: bytes | None, filename: str | None
+        self,
+        document: Document,
+        body: bytes | None,
+        filename: str | None,
+        *,
+        demo_consent: bool = False,
     ) -> str:
         # P2 owns private object storage. Linked documents already have canonical provenance.
         if body is not None or not document.source_uri.startswith("https://"):
@@ -453,8 +477,8 @@ class TopicsBackend:
             with self.repo.transaction() as conn:
                 conn.execute(
                     "insert into uploads(id,source_uri,filename,media_type,byte_size,s"
-                    "ha256,page_count,text_ok,pages) "
-                    "values(%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "ha256,page_count,text_ok,pages,demo_consent_at) "
+                    "values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         record.id,
                         record.source_uri,
@@ -465,6 +489,7 @@ class TopicsBackend:
                         record.page_count,
                         record.text_ok,
                         Jsonb([p.model_dump() for p in record.pages]),
+                        datetime.now(UTC) if demo_consent else None,
                     ),
                 )
             return str(record.id)

@@ -33,7 +33,11 @@ export type DemoOperation =
 export interface LearningClient {
   configureDemo(scenario: DemoScenario): void;
   learner(signal?: AbortSignal): Promise<string>;
-  upload(file: File, signal?: AbortSignal): Promise<UploadResult>;
+  upload(
+    file: File,
+    consentAccepted: boolean,
+    signal?: AbortSignal,
+  ): Promise<UploadResult>;
   createTopic(
     input: TopicRequest,
     signal?: AbortSignal,
@@ -110,7 +114,8 @@ export function createLearningClient(config: WebConfig): LearningClient {
       await wait(signal);
       return "demo-learner";
     },
-    async upload(_file, signal) {
+    async upload(_file, consentAccepted, signal) {
+      if (!consentAccepted) throw new DataError("configuration");
       await operation("upload", signal);
       return { upload_id: "demo-upload", pages: 0, text_ok: true };
     },
@@ -233,6 +238,7 @@ export function createLearningClient(config: WebConfig): LearningClient {
 }
 
 function apiClient(config: WebConfig): LearningClient {
+  const attemptIds = new WeakMap<PublicItem, string>();
   async function request(
     path: string,
     init: RequestInit = {},
@@ -274,13 +280,18 @@ function apiClient(config: WebConfig): LearningClient {
           .learner_id,
       );
     },
-    async upload(file, signal) {
-      if (!config.uploadField || !config.uploadMaxBytes)
+    async upload(file, consentAccepted, signal) {
+      if (!consentAccepted || !config.uploadField || !config.uploadMaxBytes)
         throw new DataError("configuration");
       const form = new FormData();
       form.append(config.uploadField, file);
       return parseUpload(
-        await request("uploads", { method: "POST", body: form, signal }),
+        await request("uploads", {
+          method: "POST",
+          body: form,
+          headers: { "X-Demo-Upload-Consent": "demo-v1" },
+          signal,
+        }),
       );
     },
     async createTopic(input, signal) {
@@ -307,12 +318,14 @@ function apiClient(config: WebConfig): LearningClient {
     },
     async attempt(learner_id, item, _slug, answer, hints_used, signal) {
       if (!config.answerEncoding) throw new DataError("configuration");
+      if (!attemptIds.has(item)) attemptIds.set(item, crypto.randomUUID());
       return parseAttempt(
         await post(
           "attempts",
           {
             learner_id,
             item_id: item.id,
+            client_attempt_id: attemptIds.get(item),
             answer:
               config.answerEncoding === "index0"
                 ? answer

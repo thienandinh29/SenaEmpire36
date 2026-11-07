@@ -66,6 +66,9 @@ export const vi = {
   deepDescription: "Khám phá nhiều nguồn · Pro",
   mode: "Cách khám phá",
   upload: "Đính kèm đề cương",
+  uploadDemoNotice:
+    "Tệp bạn tải lên sẽ được gửi tới dịch vụ AI bên thứ ba (DeepSeek, Gemini) để tạo lộ trình. Chỉ tải tài liệu công khai hoặc không chứa thông tin cá nhân. Dữ liệu demo sẽ được xóa sau buổi trình bày.",
+  uploadDemoConsent: "Tôi đã đọc và đồng ý tải tài liệu lên cho bản demo.",
   uploadHint: "PDF, DOCX · tối đa 10 MB · chỉ chọn tệp cục bộ",
   removeFile: "Bỏ tệp",
   uploadError: "Chọn tệp PDF hoặc DOCX không quá 10 MB.",

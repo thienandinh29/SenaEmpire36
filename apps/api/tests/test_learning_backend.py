@@ -60,7 +60,13 @@ def test_real_routes_update_mastery_review_and_audit(
     learning_data: tuple[str, str, str],
 ) -> None:
     learner, subject, item = learning_data
-    with TestClient(create_app(Settings(database_url=database_url, _env_file=None))) as client:
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
         query = {"learner_id": learner, "subject": subject}
         graph = client.get("/graph", params=query)
         assert graph.status_code == 200
@@ -68,6 +74,14 @@ def test_real_routes_update_mastery_review_and_audit(
         next_item = client.get("/next-item", params=query).json()["item"]
         assert next_item["id"] == item
         assert set(next_item["options"][0]) == {"label"}
+        with psycopg.connect(database_url) as conn:
+            conn.execute(
+                "insert into decision_traces(learner_id,subject_id,concept_slug,kind,"
+                "at,rule,rule_vi) "
+                "select %s,id,'c','placement_step',now(),'placement.done.gap','Done' "
+                "from subjects where slug=%s",
+                (learner, subject),
+            )
         body = {"learner_id": learner, "item_id": item, "answer": 1, "hints_used": 0}
         wrong = client.post("/attempts", json=body)
         assert wrong.status_code == 200, wrong.text
@@ -111,7 +125,13 @@ def test_placement_records_answers_and_finishes_without_reset(
     learning_data: tuple[str, str, str],
 ) -> None:
     learner, subject, item = learning_data
-    with TestClient(create_app(Settings(database_url=database_url, _env_file=None))) as client:
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
         body = {"learner_id": learner, "subject": subject}
         first = client.post("/placement/next", json=body)
         assert first.status_code == 200, first.text
@@ -159,7 +179,13 @@ def test_attempt_transaction_rolls_back_on_trace_failure(
         raise RuntimeError("storage unavailable")
 
     monkeypatch.setattr("app.services.backend.save_trace", fail)
-    with TestClient(create_app(Settings(database_url=database_url, _env_file=None))) as client:
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
         result = client.post(
             "/attempts", json={"learner_id": learner, "item_id": item, "answer": 0, "hints_used": 0}
         )
@@ -176,7 +202,13 @@ def test_concurrent_attempts_preserve_both_updates(
     learning_data: tuple[str, str, str],
 ) -> None:
     learner, _, item = learning_data
-    with TestClient(create_app(Settings(database_url=database_url, _env_file=None))) as client:
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
         body = {"learner_id": learner, "item_id": item, "answer": 0, "hints_used": 0}
         with ThreadPoolExecutor(max_workers=2) as executor:
             results = list(executor.map(lambda _: client.post("/attempts", json=body), range(2)))
@@ -198,7 +230,13 @@ def test_reject_invalid_answer_without_writes(
     answer: object,
 ) -> None:
     learner, _, item = learning_data
-    with TestClient(create_app(Settings(database_url=database_url, _env_file=None))) as client:
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
         assert (
             client.post(
                 "/attempts",
@@ -222,7 +260,13 @@ def test_pending_items_never_served_or_graded(
             "update items set payload=jsonb_set(payload,'{status}',%s) where payload->>'id'=%s",
             (Jsonb("needs_review"), item),
         )
-    with TestClient(create_app(Settings(database_url=database_url, _env_file=None))) as client:
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
         assert (
             client.get("/next-item", params={"learner_id": learner, "subject": subject}).status_code
             == 404
@@ -238,3 +282,115 @@ def test_pending_items_never_served_or_graded(
         assert conn.execute(
             "select count(*) from attempts where learner_id=%s", (learner,)
         ).fetchone() == (0,)
+
+
+def test_next_item_rotates_unseen_then_oldest(
+    database_url: str, learning_data: tuple[str, str, str]
+) -> None:
+    learner, subject, first = learning_data
+    second = "second-" + uuid4().hex
+    with psycopg.connect(database_url) as conn:
+        row = conn.execute(
+            "select concept_id,payload from items where payload->>'id'=%s", (first,)
+        ).fetchone()
+        assert row
+        payload = {**row[1], "id": second, "difficulty": 0.6}
+        conn.execute(
+            "insert into items(concept_id,kind,prompt,payload) values (%s,'mcq','?',%s)",
+            (row[0], Jsonb(payload)),
+        )
+        conn.execute(
+            "update items set payload=jsonb_set(payload,'{difficulty}','0.3') "
+            "where payload->>'id'=%s",
+            (first,),
+        )
+    served = []
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
+        for _ in range(4):
+            response = client.get("/next-item", params={"learner_id": learner, "subject": subject})
+            assert response.status_code == 200, response.text
+            item = response.json()["item"]["id"]
+            served.append(item)
+            result = client.post(
+                "/attempts", json={"learner_id": learner, "item_id": item, "answer": 1}
+            )
+            assert result.status_code == 200, result.text
+    assert served == [first, second, first, second]
+
+
+def test_next_item_skips_empty_concept(
+    database_url: str, learning_data: tuple[str, str, str]
+) -> None:
+    learner, subject, item = learning_data
+    with psycopg.connect(database_url) as conn:
+        conn.execute(
+            "insert into concepts(subject_id,slug,name_vi,name_en) "
+            "select id,'a-empty','Empty','Empty' from subjects where slug=%s",
+            (subject,),
+        )
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
+        response = client.get("/next-item", params={"learner_id": learner, "subject": subject})
+        assert response.status_code == 200, response.text
+        assert response.json()["item"]["id"] == item
+
+
+def test_attempt_retries_are_atomic(database_url: str, learning_data: tuple[str, str, str]) -> None:
+    learner, _, item = learning_data
+    body = {"learner_id": learner, "item_id": item, "answer": 0, "client_attempt_id": str(uuid4())}
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: client.post("/attempts", json=body), range(2)))
+        assert all(r.status_code == 200 for r in results)
+        assert results[0].json() == results[1].json()
+        assert client.post("/attempts", json={**body, "answer": 1}).status_code == 409
+        assert client.post("/attempts", json={**body, "hints_used": 1}).status_code == 409
+    with psycopg.connect(database_url) as conn:
+        assert conn.execute(
+            "select count(*) from attempts where learner_id=%s", (learner,)
+        ).fetchone() == (1,)
+        assert conn.execute(
+            "select count(*) from attempt_replays where learner_id=%s", (learner,)
+        ).fetchone() == (1,)
+
+
+def test_wrong_placement_does_not_remediate(
+    database_url: str, learning_data: tuple[str, str, str]
+) -> None:
+    learner, subject, item = learning_data
+    with TestClient(
+        create_app(
+            Settings(
+                database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None
+            )
+        )
+    ) as client:
+        assert (
+            client.post(
+                "/placement/next", json={"learner_id": learner, "subject": subject}
+            ).status_code
+            == 200
+        )
+        response = client.post(
+            "/attempts", json={"learner_id": learner, "item_id": item, "answer": 1}
+        )
+        assert response.status_code == 200
+        assert "remediation" not in response.json()
+        assert [t["kind"] for t in response.json()["traces"]] == ["bkt_update"]

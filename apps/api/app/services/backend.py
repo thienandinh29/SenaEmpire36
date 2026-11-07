@@ -19,6 +19,7 @@ from app.engine.path import next_step
 from app.engine.remediation import remediate
 from app.engine.trace import DecisionTrace
 from app.graders.mcq import Grade, Item
+from app.services.attempts import remember, replay
 from app.services.learning import save_attempt, save_mastery, save_review
 
 
@@ -207,7 +208,7 @@ class LearningService:
             origin = conn.execute(
                 "select c.slug from attempts a join items i on i.id=a.item_id "
                 "join concepts c on c.id=i.concept_id where a.learner_id=%s "
-                "and c.subject_id=%s and not a.is_correct "
+                "and c.subject_id=%s and not a.is_correct and a.answer->>'phase'='practice' "
                 "order by a.created_at desc,a.id desc limit 1",
                 (learner, subject_id),
             ).fetchone()
@@ -216,15 +217,32 @@ class LearningService:
                 if origin and not bkt.is_mastered(mastery.get(origin[0], UNSEEN_P_KNOWN))
                 else None
             )
+            available = {s: self._items(conn, ids[s]) for s in graph.order}
             step, trace = next_step(
-                graph, mastery, now=datetime.now(UTC), due_reviews=due, resume_origin=resume_origin
+                graph,
+                mastery,
+                now=datetime.now(UTC),
+                due_reviews=due,
+                resume_origin=resume_origin,
+                available_concepts={s for s, items in available.items() if items},
             )
             if step.concept_slug is None:
                 return None
-            items = self._items(conn, ids[step.concept_slug])
-            if not items:
-                return None
-            item = min(items, key=lambda i: abs(i.difficulty - step.target_difficulty))
+            items = available[step.concept_slug]
+            answered: dict[str, datetime] = dict(
+                conn.execute(
+                    "select i.payload->>'id',max(a.created_at) from attempts a "
+                    "join items i on i.id=a.item_id where a.learner_id=%s "
+                    "and i.concept_id=%s group by i.payload->>'id'",
+                    (learner, ids[step.concept_slug]),
+                ).fetchall()
+            )
+            unseen = [i for i in items if i.id not in answered]
+            item = (
+                min(unseen, key=lambda i: (abs(i.difficulty - step.target_difficulty), i.id))
+                if unseen
+                else min(items, key=lambda i: (answered[i.id], i.id))
+            )
             save_trace(conn, learner, subject_id, trace)
             return learn.NextSelection(item=item, reason_vi=step.reason_vi)
 
@@ -257,20 +275,16 @@ class LearningService:
                 request.learner_id,
                 subject_slug,
             )
+            if cached := replay(conn, request):
+                return cached
             now = datetime.now(UTC)
             # A pending placement trace identifies phase without accepting client-supplied flags.
             last = conn.execute(
-                "select kind,rule from decision_traces where learner_id=%s and subject_id=%s "
-                "and kind in ('placement_step','next_item') order by at desc,id desc limit 1",
+                "select 1 from decision_traces where learner_id=%s and subject_id=%s "
+                "and kind='placement_step' and rule like 'placement.done.%%' limit 1",
                 (learner, subject),
             ).fetchone()
-            phase = (
-                "placement"
-                if last
-                and last[0] == "placement_step"
-                and not last[1].startswith("placement.done.")
-                else "practice"
-            )
+            phase = "placement" if not last else "practice"
             previous = conn.execute(
                 "select a.answer->>'misconception' from attempts a join items i on i.id=a.item_id "
                 "where a.learner_id=%s and i.concept_id=%s and not a.is_correct",
@@ -311,7 +325,7 @@ class LearningService:
             mastery[slug] = p
             traces = [trace]
             remediation = None
-            if not result.correct:
+            if not result.correct and phase == "practice":
                 plan, trace = remediate(
                     graph,
                     mastery,
@@ -342,7 +356,7 @@ class LearningService:
                 traces.append(trace)
             for trace in traces:
                 save_trace(conn, learner, subject, trace, attempt)
-            return learn.AttemptUpdate(
+            update = learn.AttemptUpdate(
                 p_known=p,
                 mastered=bkt.is_mastered(p),
                 misconception_vi=misconception[1] if misconception else None,
@@ -351,6 +365,8 @@ class LearningService:
                 else None,
                 traces=[learn.DecisionTrace.model_validate(t.model_dump()) for t in traces],
             )
+            remember(conn, request, update)
+            return update
 
     async def reviews_due(self, learner_id: str) -> learn.ReviewsResponse:
         return await asyncio.to_thread(self._reviews_due, learner_id)

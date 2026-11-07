@@ -237,7 +237,8 @@ class Repository:
     def load_item(self, conn: Connection, external_id: str) -> StoredItem | None:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "select i.*,c.slug as concept_slug,s.slug as subject_slug from items i "
+                "select i.*,i.difficulty::double precision as difficulty,"
+                "c.slug as concept_slug,s.slug as subject_slug from items i "
                 "join concepts c on c.id=i.concept_id join subjects s on s.id=c.subject_id "
                 "where i.external_id=%s for update of i",
                 (external_id,),

@@ -25,7 +25,7 @@ describe("quick demo learning journey", () => {
   it("supports upload, research, a selected-node item, remediation, hints, mastery and a review", async () => {
     const client = createLearningClient(config);
     const received = await finish(
-      client.upload(new File(["demo"], "syllabus.pdf")),
+      client.upload(new File(["demo"], "syllabus.pdf"), true),
     );
     const created = await finish(
       client.createTopic({
@@ -115,6 +115,35 @@ describe("quick demo learning journey", () => {
 });
 
 describe("live data boundary", () => {
+  it("sends an upload only after explicit demo consent", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ upload_id: "u1", pages: 1, text_ok: true }),
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createLearningClient({
+      ...config,
+      mode: "api",
+      uploadField: "file",
+    });
+    const file = new File(["public demo material"], "a.pdf");
+    await expect(client.upload(file, false)).rejects.toMatchObject({
+      code: "configuration",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await client.upload(file, true)).toEqual({
+      upload_id: "u1",
+      pages: 1,
+      text_ok: true,
+    });
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(init.headers).get("X-Demo-Upload-Consent")).toBe(
+      "demo-v1",
+    );
+  });
   it("rejects malformed data and never substitutes a sample graph", async () => {
     vi.stubGlobal(
       "fetch",
@@ -134,7 +163,7 @@ describe("live data boundary", () => {
     vi.stubGlobal("fetch", fetchMock);
     const client = createLearningClient({ ...config, mode: "api" });
     await expect(
-      client.upload(new File(["demo"], "a.pdf")),
+      client.upload(new File(["demo"], "a.pdf"), true),
     ).rejects.toMatchObject({ code: "configuration" });
     await expect(
       client.attempt(

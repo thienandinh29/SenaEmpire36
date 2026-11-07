@@ -75,7 +75,9 @@ def main() -> None:
     )
     parser.add_argument("--live", action="store_true")
     parser.add_argument(
-        "--provider", choices=["vertex", "bedrock", "openrouter", "deepseek", "gemini"]
+        "--provider",
+        choices=["vertex", "bedrock", "openrouter", "deepseek", "gemini"],
+        default="deepseek",
     )
     parser.add_argument("--tier", choices=["free", "pro"], default="free")
     parser.add_argument("--task", default="items")
@@ -86,8 +88,6 @@ def main() -> None:
     if not args.live:
         print(json.dumps({"live": False, "routes": configuration(load_routing())}, indent=2))
         return
-    if not args.provider:
-        parser.error("--live requires exactly one --provider (may incur cloud charges)")
     try:
         print(
             json.dumps(asyncio.run(probe(default_gateway(), args.provider, args.tier, args.task)))

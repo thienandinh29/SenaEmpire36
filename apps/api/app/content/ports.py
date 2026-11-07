@@ -43,6 +43,10 @@ class ContentPorts:
                 row = cur.fetchone()
                 if not row:
                     return None
+                if not self.upload_model_permission or row.get("demo_consent_at") is None:
+                    raise ContentUnavailable(
+                        "Demo uploads require recorded user consent and demo mode"
+                    )
                 row.pop("created_at", None)
                 return UploadMetadata.model_validate(row).document()
 
@@ -271,7 +275,14 @@ async def process_claimed_job(
     from psycopg.types.json import Jsonb
 
     subject = f"topic-{UUID(str(job['id'])).hex}"
-    ports = ContentPorts(repository, gateway, subject)
+    from app.config import get_settings
+
+    ports = ContentPorts(
+        repository,
+        gateway,
+        subject,
+        upload_model_permission=get_settings().demo_uploads_enabled,
+    )
     request = TopicInput.model_validate(
         {
             "goal_vi": job["goal_vi"],

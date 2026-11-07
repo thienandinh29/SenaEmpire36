@@ -18,7 +18,7 @@ Why `confirm` comes last: placement marks the concepts it found known at 0.85. I
 the gap, the learner would be asked again about what placement just showed they know.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
@@ -58,6 +58,7 @@ def next_step(
     resume_origin: str | None = None,
     due_reviews: Mapping[str, datetime] | None = None,
     review_grace: timedelta = REVIEW_GRACE,
+    available_concepts: Collection[str] | None = None,
 ) -> tuple[NextStep, DecisionTrace]:
     """Choose the learner's next concept. `due_reviews` maps a concept to when its card fell due."""
     if len(graph) == 0:
@@ -70,7 +71,14 @@ def next_step(
         return p(slug) >= MASTERY_THRESHOLD
 
     def ready(slug: str) -> bool:
-        return not mastered(slug) and all(p(a) >= WEAK_THRESHOLD for a in graph.parents[slug])
+        return (
+            available(slug)
+            and not mastered(slug)
+            and all(p(a) >= WEAK_THRESHOLD for a in graph.parents[slug])
+        )
+
+    def available(slug: str) -> bool:
+        return available_concepts is None or slug in available_concepts
 
     # 0. an open remediation comes back to where the learner failed
     if resume_origin is not None:
@@ -78,14 +86,15 @@ def next_step(
             raise KeyError(f"unknown concept {resume_origin!r}")
         if not mastered(resume_origin):
             target, trace = resume(graph, mastery, resume_origin, now=now)
-            step = NextStep(target, "resume", target_difficulty(p(target)), trace.rule_vi)
-            return step, trace
+            if available(target):
+                step = NextStep(target, "resume", target_difficulty(p(target)), trace.rule_vi)
+                return step, trace
 
     # 1. an overdue review (earliest first); a card due a moment ago is not overdue
     overdue = sorted(
         (due, slug)
         for slug, due in (due_reviews or {}).items()
-        if slug in graph and due <= now - review_grace
+        if slug in graph and available(slug) and due <= now - review_grace
     )
     if overdue:
         due, slug = overdue[0]

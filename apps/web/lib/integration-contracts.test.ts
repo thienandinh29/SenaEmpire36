@@ -53,7 +53,7 @@ describe("P1 canonical fixtures consumed by P5", () => {
     });
     expect(trace.prior).toBeNull();
     expect(trace.posterior).toBeNull();
-    expect(trace.evidence.correct).toBeUndefined();
+    expect(trace.evidence.correct).toBeNull();
   });
 
   it("uses the actual integrated upload, answer and hint conventions in API mode", () => {

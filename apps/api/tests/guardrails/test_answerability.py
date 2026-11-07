@@ -141,6 +141,17 @@ def test_plain_team_gateway_response_has_unknown_identity() -> None:
 
     gateway = P3Gateway(complete)
     fake = FakeGateway()
+    # Use a supported generator so the test reaches untrusted response identity handling.
+    fake.item = fake.item.model_copy(
+        update={
+            "generator": ModelIdentity(
+                provider="fake-test-provider",
+                model="deepseek-test",
+                family="deepseek",
+                identity_source="gateway",
+            )
+        }
+    )
     result = asyncio.run(verify_item(fake.item, fake.chunks, gateway))
     assert result.status == "needs_review"
     assert result.verification is not None

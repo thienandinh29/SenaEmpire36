@@ -59,6 +59,8 @@ class TopicsBackend(Protocol):
         document: Document,
         body: bytes | None,
         filename: str | None,
+        *,
+        demo_consent: bool = False,
     ) -> str: ...
 
 
@@ -111,6 +113,7 @@ def create_router(
     backend: TopicsBackend | None = None,
     *,
     link_reader: ReadLink = read_link,
+    demo_uploads_enabled: bool = False,
 ) -> APIRouter:
     router = APIRouter(tags=["topics"])
 
@@ -121,6 +124,8 @@ def create_router(
 
     @router.post("/topics", response_model=TopicResponse)
     async def topics_route(request: TopicInput) -> TopicResponse:
+        if request.upload_id and not demo_uploads_enabled:
+            raise HTTPException(403, "Tải tài liệu lên chỉ dành cho bản demo.")
         return await service().enqueue(request)
 
     @router.post(
@@ -143,6 +148,12 @@ def create_router(
         },
     )
     async def uploads_route(request: Request) -> UploadResponse:
+        if not demo_uploads_enabled:
+            raise HTTPException(403, "Tải tài liệu lên chỉ dành cho bản demo.")
+        if request.headers.get("x-demo-upload-consent") != "demo-v1":
+            raise HTTPException(
+                403, "Bạn cần chấp nhận thông báo sử dụng dữ liệu demo trước khi tải lên."
+            )
         adapter = service()
         content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
         body: bytes | None = None
@@ -166,7 +177,7 @@ def create_router(
             raise HTTPException(413, "Yêu cầu vượt giới hạn dung lượng.") from None
         except SourceError as exc:
             raise HTTPException(422, str(exc)) from None
-        upload_id = await adapter.persist_upload(document, body, filename)
+        upload_id = await adapter.persist_upload(document, body, filename, demo_consent=True)
         return UploadResponse(
             upload_id=upload_id, pages=len(document.pages), text_ok=document.text_ok
         )

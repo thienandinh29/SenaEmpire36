@@ -6,6 +6,7 @@ Backend protocols describe P3's needs; they do not redefine another lane's API.
 
 from datetime import date
 from typing import Literal, Protocol
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
@@ -94,6 +95,7 @@ class NextResponse(Output):
 
 
 class AttemptInput(Input):
+    client_attempt_id: UUID | None = Field(default=None, exclude_if=lambda value: value is None)
     learner_id: str = Field(min_length=1, max_length=200)
     item_id: str = Field(min_length=1, max_length=200)
     # P1: zero-based index in the exact public options order.

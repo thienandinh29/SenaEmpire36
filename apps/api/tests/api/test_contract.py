@@ -20,10 +20,11 @@ from tests.api.conftest import Harness
 )
 def test_unconfigured_backend_returns_503(path: str, body: dict[str, object]) -> None:
     app = FastAPI()
-    for factory in (learn.create_router, topics.create_router, tutor.create_router):
+    for factory in (learn.create_router, tutor.create_router):
         app.include_router(factory())
+    app.include_router(topics.create_router(demo_uploads_enabled=True))
     with TestClient(app) as client:
-        response = client.post(path, json=body)
+        response = client.post(path, json=body, headers={"X-Demo-Upload-Consent": "demo-v1"})
         assert response.status_code == 503
         assert "item" not in response.json()
 

@@ -101,7 +101,7 @@ def test_p2_application_mounts_all_p3_routers_without_fixture_fallback(
             pass
 
     monkeypatch.setattr("app.main.create_pool", lambda url: NoDatabasePool())
-    app = create_app(Settings(_env_file=None))
+    app = create_app(Settings(allow_unauthenticated_local_dev=True, _env_file=None))
     with TestClient(app) as client:
         paths = client.get("/openapi.json").json()["paths"]
         for path in (

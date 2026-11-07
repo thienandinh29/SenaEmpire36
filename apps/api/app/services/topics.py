@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Protocol
 from urllib.parse import quote
 from uuid import UUID, uuid4
@@ -104,7 +105,12 @@ class TopicsService:
         return TopicResponse(topic_id=str(topic_id), cached=False)
 
     async def persist_upload(
-        self, document: Document, body: bytes | None, filename: str | None
+        self,
+        document: Document,
+        body: bytes | None,
+        filename: str | None,
+        *,
+        demo_consent: bool = False,
     ) -> str:
         upload_id = uuid4()
         source_uri = document.source_uri
@@ -123,6 +129,8 @@ class TopicsService:
                 filename=filename,
                 upload_id=upload_id,
             )
+            if demo_consent:
+                metadata.demo_consent_at = datetime.now(UTC)
             await asyncio.to_thread(self._save_upload, metadata)
         except BaseException as exc:
             if stored and self.storage is not None:
@@ -139,7 +147,7 @@ class TopicsService:
         with self.pool().connection() as conn:
             conn.execute(
                 "insert into uploads(id,source_uri,filename,media_type,byte_size,sha256,"
-                "page_count,text_ok,pages) values (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "page_count,text_ok,pages,demo_consent_at) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     metadata.id,
                     metadata.source_uri,
@@ -150,6 +158,7 @@ class TopicsService:
                     metadata.page_count,
                     metadata.text_ok,
                     Jsonb([page.model_dump() for page in metadata.pages]),
+                    metadata.demo_consent_at,
                 ),
             )
 

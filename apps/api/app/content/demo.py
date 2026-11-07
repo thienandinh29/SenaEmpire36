@@ -21,8 +21,6 @@ from app.llm.gateway import load_routing
 from app.llm.smoke import configuration
 from app.migrate import apply_migrations
 
-SCHEMA = Path(__file__).with_name("sql") / "0008_p4_runtime.sql"
-
 
 def local_only(url: str, *, admin: bool = False) -> None:
     parsed = urlsplit(url)
@@ -35,15 +33,6 @@ def local_only(url: str, *, admin: bool = False) -> None:
 def install_schema(url: str) -> None:
     local_only(url)
     apply_migrations(url)
-    with psycopg.connect(url) as conn:
-        row = conn.execute("select to_regclass('p4_hint_cache')").fetchone()
-        assert row is not None
-        if not row[0]:
-            conn.execute(SCHEMA.read_text(encoding="utf-8").encode())
-            conn.execute(
-                "insert into schema_migrations(name) values('0008_p4_runtime.sql') "
-                "on conflict do nothing"
-            )
 
 
 async def run(args: argparse.Namespace) -> None:

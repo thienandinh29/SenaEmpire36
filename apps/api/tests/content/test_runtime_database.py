@@ -6,6 +6,7 @@ Model responses here are fake fixtures and never establish real content quality.
 import asyncio
 import os
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import psycopg
@@ -162,7 +163,9 @@ def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
 ) -> None:
     fake = FakeGateway()
     app = create_app(
-        Settings(database_url=database_url, _env_file=None), repository=store, gateway=fake
+        Settings(database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None),
+        repository=store,
+        gateway=fake,
     )
     with TestClient(app) as client:
         learner = client.post("/learners", json={"display_name": "P4 DB test"}).json()["learner_id"]
@@ -184,6 +187,12 @@ def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
         )
         assert attempt.status_code == 200 and attempt.json()["correct"] is False
         assert attempt.json()["traces"]
+        assert "remediation" not in attempt.json()
+        with store.transaction() as conn:
+            assert conn.execute(
+                "select remediation_origin from p4_learning_sessions where learner_id=%s",
+                (learner,),
+            ).fetchone() == (None,)
         hint = client.post(
             "/tutor/hint",
             json={"learner_id": learner, "item_id": public["id"], "level": 1, "tier": "free"},
@@ -196,3 +205,105 @@ def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
             json={"learner_id": learner, "item_id": public["id"], "level": 2, "tier": "free"},
         )
         assert denied.status_code == 503
+
+
+def test_practice_exhaustion_reuses_oldest_answered_item(
+    store: Repository, database_url: str
+) -> None:
+    _, chunks, graph, items = topic()
+    graph = graph.model_copy(update={"concepts": [graph.concepts[0]], "edges": []})
+    store.save_graph("python-conditions", graph)
+    checked = []
+    for item, difficulty in zip(items[:2], (0.3, 0.6), strict=True):
+        item = item.model_copy(update={"difficulty": difficulty})
+        fake = FakeGateway()
+        fake.item = item
+        fake.chunks = [c for c in chunks if c.chunk_id in item.chunk_ids]
+        checked.append(asyncio.run(verify_item(item, chunks, fake)))
+    store.save_items("python-conditions", checked)
+    with store.transaction() as conn:
+        conn.execute("update items set status='needs_review' where external_id=%s", (items[2].id,))
+    app = create_app(
+        Settings(database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None),
+        repository=store,
+        gateway=FakeGateway(),
+    )
+    with TestClient(app) as client:
+        learner = client.post("/learners", json={"display_name": "Exhaustion"}).json()["learner_id"]
+        served = []
+        for _ in range(4):
+            response = client.get(
+                "/next-item", params={"learner_id": learner, "subject": "python-conditions"}
+            )
+            assert response.status_code == 200, response.text
+            key = response.json()["item"]["id"]
+            served.append(key)
+            item = next(i for i in checked if i.id == key)
+            wrong = next(n for n, option in enumerate(item.options) if not option.correct)
+            result = client.post(
+                "/attempts", json={"learner_id": learner, "item_id": key, "answer": wrong}
+            )
+            assert result.status_code == 200, result.text
+        assert served == [checked[0].id, checked[1].id, checked[0].id, checked[1].id]
+
+
+def test_practice_skips_a_concept_without_usable_items(
+    store: Repository, database_url: str
+) -> None:
+    _, _, graph, _ = topic()
+    graph = graph.model_copy(update={"concepts": graph.concepts[:2], "edges": []})
+    store.save_graph("python-conditions", graph)
+    # Rebuilding a graph invalidates its items; re-verify only comparison.
+    _, chunks, _, items = topic()
+    checked = []
+    for item in items[3:6]:
+        fake = FakeGateway()
+        fake.item = item
+        fake.chunks = [c for c in chunks if c.chunk_id in item.chunk_ids]
+        checked.append(asyncio.run(verify_item(item, chunks, fake)))
+    store.save_items("python-conditions", checked)
+    app = create_app(
+        Settings(database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None),
+        repository=store,
+        gateway=FakeGateway(),
+    )
+    with TestClient(app) as client:
+        learner = client.post("/learners", json={"display_name": "Skip empty"}).json()["learner_id"]
+        response = client.get(
+            "/next-item", params={"learner_id": learner, "subject": "python-conditions"}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["item"]["id"] in {i.id for i in checked}
+
+
+def test_retried_attempt_replays_once_under_concurrency(
+    store: Repository, database_url: str
+) -> None:
+    app = create_app(
+        Settings(database_url=database_url, allow_unauthenticated_local_dev=True, _env_file=None),
+        repository=store,
+        gateway=FakeGateway(),
+    )
+    with TestClient(app) as client:
+        learner = client.post("/learners", json={"display_name": "Retry"}).json()["learner_id"]
+        item = client.post(
+            "/placement/next", json={"learner_id": learner, "subject": "python-conditions"}
+        ).json()["item"]
+        body = {
+            "learner_id": learner,
+            "item_id": item["id"],
+            "answer": 0,
+            "client_attempt_id": str(uuid4()),
+        }
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(executor.map(lambda _: client.post("/attempts", json=body), range(2)))
+        assert [r.status_code for r in responses] == [200, 200]
+        assert responses[0].json() == responses[1].json()
+        assert client.post("/attempts", json=body | {"answer": 1}).status_code == 409
+    with store.transaction() as conn:
+        assert conn.execute(
+            "select count(*) from attempts where learner_id=%s", (learner,)
+        ).fetchone() == (1,)
+        assert conn.execute(
+            "select count(*) from attempt_replays where learner_id=%s", (learner,)
+        ).fetchone() == (1,)

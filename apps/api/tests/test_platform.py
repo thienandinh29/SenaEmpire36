@@ -136,7 +136,9 @@ def test_sse_heartbeat_and_progress(database_url: str, monkeypatch: pytest.Monke
     def complete() -> None:
         run_once(database_url, allow_fixture=True)
 
-    with TestClient(create_app(Settings(database_url=database_url))) as client:
+    with TestClient(
+        create_app(Settings(database_url=database_url, allow_unauthenticated_local_dev=True))
+    ) as client:
         timer = Timer(0.2, complete)
         timer.start()
         try:

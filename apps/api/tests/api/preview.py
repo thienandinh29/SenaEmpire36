@@ -19,7 +19,7 @@ app = FastAPI(
 )
 backend = FakeBackend()
 app.include_router(learn.create_router(backend))
-app.include_router(topics.create_router(backend, link_reader=fake_link))
+app.include_router(topics.create_router(backend, link_reader=fake_link, demo_uploads_enabled=True))
 app.include_router(tutor.create_router(backend))
 
 
