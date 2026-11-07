@@ -115,6 +115,37 @@ describe("quick demo learning journey", () => {
 });
 
 describe("live data boundary", () => {
+  it("keeps an attempt key on network retry and rotates it only after success", async () => {
+    const result = { correct: true, p_known: 0.6, mastered: false, traces: [] };
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("lost response"))
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify(result))),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createLearningClient({
+      ...config,
+      mode: "api",
+      answerEncoding: "index0",
+    });
+    const item = {
+      id: "i1",
+      kind: "mcq" as const,
+      prompt_vi: "?",
+      options: [{ label: "a" }, { label: "b" }],
+    };
+    await expect(client.attempt("u1", item, "c", 0, 0)).rejects.toMatchObject({
+      code: "network",
+    });
+    await client.attempt("u1", item, "c", 0, 0);
+    await client.attempt("u1", item, "c", 1, 0);
+    const bodies = fetchMock.mock.calls.map(([, init]) =>
+      JSON.parse(init.body),
+    );
+    expect(bodies[0].client_attempt_id).toBe(bodies[1].client_attempt_id);
+    expect(bodies[2].client_attempt_id).not.toBe(bodies[1].client_attempt_id);
+  });
   it("sends an upload only after explicit demo consent", async () => {
     const fetchMock = vi
       .fn()

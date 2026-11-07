@@ -6,10 +6,10 @@ import psycopg
 from fastapi import HTTPException
 from psycopg.types.json import Jsonb
 
-from app.api.learn import AttemptInput, AttemptUpdate
+from app.api.learn import AttemptInput, AttemptResponse, AttemptUpdate
 
 
-def replay(conn: psycopg.Connection[Any], request: AttemptInput) -> AttemptUpdate | None:
+def replay(conn: psycopg.Connection[Any], request: AttemptInput) -> AttemptResponse | None:
     if request.client_attempt_id is None:
         return None
     row = conn.execute(
@@ -21,10 +21,12 @@ def replay(conn: psycopg.Connection[Any], request: AttemptInput) -> AttemptUpdat
         return None
     if row[0] != request.model_dump(mode="json"):
         raise HTTPException(409, "Mã lần trả lời đã được dùng với nội dung khác.")
-    return AttemptUpdate.model_validate(row[1])
+    return AttemptResponse.model_validate(row[1])
 
 
-def remember(conn: psycopg.Connection[Any], request: AttemptInput, result: AttemptUpdate) -> None:
+def remember(
+    conn: psycopg.Connection[Any], request: AttemptInput, result: AttemptUpdate, *, correct: bool
+) -> None:
     if request.client_attempt_id is not None:
         conn.execute(
             "insert into attempt_replays(learner_id,item_id,client_attempt_id,request,response) "
@@ -34,6 +36,6 @@ def remember(conn: psycopg.Connection[Any], request: AttemptInput, result: Attem
                 request.item_id,
                 request.client_attempt_id,
                 Jsonb(request.model_dump(mode="json")),
-                Jsonb(result.model_dump(mode="json")),
+                Jsonb({**result.model_dump(mode="json", exclude_none=True), "correct": correct}),
             ),
         )

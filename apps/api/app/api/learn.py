@@ -211,6 +211,11 @@ def create_router(backend: LearningBackend | None = None) -> APIRouter:
     @router.post("/attempts", response_model=AttemptResponse, response_model_exclude_none=True)
     async def attempts_route(request: AttemptInput) -> AttemptResponse:
         adapter = service()
+        replay_attempt = getattr(adapter, "replay_attempt", None)
+        if replay_attempt is not None:
+            cached = await replay_attempt(request)
+            if cached is not None:
+                return AttemptResponse.model_validate(cached)
         item = await adapter.get_item(request.item_id)
         if item is None:
             raise HTTPException(404, "Không tìm thấy câu hỏi.")
@@ -222,6 +227,8 @@ def create_router(backend: LearningBackend | None = None) -> APIRouter:
         except (ValueError, TypeError):
             raise HTTPException(422, "Lựa chọn trả lời không hợp lệ.") from None
         update = await adapter.apply_attempt(request, item, result)
+        if isinstance(update, AttemptResponse):
+            return update
         values = update.model_dump()
         if result.correct:
             values.update(misconception_vi=None, remediation=None)

@@ -362,6 +362,27 @@ def test_attempt_retries_are_atomic(database_url: str, learning_data: tuple[str,
         assert results[0].json() == results[1].json()
         assert client.post("/attempts", json={**body, "answer": 1}).status_code == 409
         assert client.post("/attempts", json={**body, "hints_used": 1}).status_code == 409
+        with psycopg.connect(database_url) as conn:
+            row = conn.execute(
+                "select payload from items where payload->>'id'=%s", (item,)
+            ).fetchone()
+            assert row
+            payload = row[0]
+            payload["options"] = [
+                {"label": "Đúng", "correct": False, "misconception": "Nhầm kiến thức nền"},
+                {"label": "Sai", "correct": True, "misconception": None},
+            ]
+            conn.execute(
+                "update items set payload=%s where payload->>'id'=%s", (Jsonb(payload), item)
+            )
+        assert client.post("/attempts", json=body).json() == results[0].json()
+        with psycopg.connect(database_url) as conn:
+            payload["status"] = "needs_review"
+            conn.execute(
+                "update items set payload=%s where payload->>'id'=%s", (Jsonb(payload), item)
+            )
+        assert client.post("/attempts", json=body).json() == results[0].json()
+        assert client.post("/attempts", json=body | {"answer": 1}).status_code == 409
     with psycopg.connect(database_url) as conn:
         assert conn.execute(
             "select count(*) from attempts where learner_id=%s", (learner,)

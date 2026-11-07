@@ -6,6 +6,7 @@ import pytest
 from app.content.ports import ContentPorts
 from app.content.repository import ContentUnavailable, Repository
 from app.db import create_pool
+from app.research.agent import ChosenSource
 from app.services.topics import TopicsService
 from app.uploads.reader import Document, Page
 from tests.content.fakes import FakeGateway
@@ -38,3 +39,28 @@ def test_worker_requires_demo_mode_and_persisted_consent(
         else:
             with pytest.raises(ContentUnavailable, match="consent"):
                 asyncio.run(ports.load_upload(upload_id))
+
+
+@pytest.mark.parametrize("subject", ["topic-", "user-upload-"])
+def test_upload_material_never_becomes_a_curated_source(database_url: str, subject: str) -> None:
+    uri = f"https://books.example/{uuid4()}"
+    document = Document(
+        uri, (Page(1, "PRIVATE DEMO SENTINEL synthetic review data. " * 100),), True
+    )
+    with create_pool(database_url) as pool:
+        repo = Repository(lambda: pool)
+        demo = ContentPorts(
+            repo, FakeGateway(), subject + uuid4().hex, upload_model_permission=True
+        )
+        asyncio.run(demo.index([], document))
+        ordinary = ContentPorts(repo, FakeGateway(), "public-fallback-" + uuid4().hex)
+        assert not asyncio.run(ordinary.quick_sources("topic user upload"))
+        public = ChosenSource(
+            title="Public source",
+            publisher="Public publisher",
+            url=uri,
+            license="CC BY 4.0",
+            text="Public fallback source content. " * 100,
+        )
+        prepared = asyncio.run(ordinary.index([public], None))
+        assert prepared and all("PRIVATE DEMO SENTINEL" not in c.text for c in prepared)

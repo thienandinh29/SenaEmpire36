@@ -57,7 +57,9 @@ class ContentPorts:
             with self.repository.transaction() as conn:
                 rows = conn.execute(
                     "select s.slug,r.p4_metadata from sources r join subjects s "
-                    "on s.id=r.subject_id order by s.slug,r.title"
+                    "on s.id=r.subject_id where s.slug not like 'topic-%%' "
+                    "and coalesce(r.p4_metadata->>'version','') <> 'uploaded document' "
+                    "order by s.slug,r.title"
                 ).fetchall()
             selected = []
             for slug, metadata in rows:
@@ -132,7 +134,10 @@ class ContentPorts:
                     row[0]
                     for row in conn.execute(
                         "select c.id from chunks c join sources s on s.id=c.source_id "
-                        "where s.url=any(%s) order by s.url,c.chunk_index",
+                        "join subjects b on b.id=s.subject_id "
+                        "where s.url=any(%s) and b.slug not like 'topic-%%' "
+                        "and coalesce(s.p4_metadata->>'version','') <> 'uploaded document' "
+                        "order by s.url,c.chunk_index",
                         (uris,),
                     )
                 ]

@@ -284,6 +284,21 @@ class LearningBackend:
             raise ValueError("Invalid option index")
         return answer
 
+    async def replay_attempt(self, request: learn.AttemptInput) -> learn.AttemptResponse | None:
+        if request.client_attempt_id is None:
+            return None
+
+        def load() -> learn.AttemptResponse | None:
+            with self.repo.transaction() as conn:
+                if not conn.execute(
+                    "select id from learners where id=%s for update",
+                    (uid(request.learner_id),),
+                ).fetchone():
+                    raise HTTPException(404, "Không tìm thấy người học.")
+                return replay(conn, request)
+
+        return await asyncio.to_thread(load)
+
     async def apply_attempt(
         self, request: learn.AttemptInput, item: GraderItem, result: Grade
     ) -> learn.AttemptUpdate:
@@ -407,7 +422,7 @@ class LearningBackend:
                     else None,
                     traces=[trace_dto(t) for t in traces],
                 )
-                remember(conn, request, update)
+                remember(conn, request, update, correct=result.correct)
                 return update
 
         return await asyncio.to_thread(run)
@@ -498,8 +513,11 @@ class TopicsBackend:
 
 
 class TutorBackend:
-    def __init__(self, repository: Repository, gateway: Gateway) -> None:
+    def __init__(
+        self, repository: Repository, gateway: Gateway, *, demo_uploads_enabled: bool = False
+    ) -> None:
         self.repo, self.gateway = repository, gateway
+        self.demo_uploads_enabled = demo_uploads_enabled
 
     async def hint(self, request: tutor.HintInput) -> tutor.VerifiedText:
         learner = uid(request.learner_id)
@@ -511,6 +529,22 @@ class TutorBackend:
                 bundle = self.repo.servable(conn, request.item_id)
                 if bundle is None:
                     raise HTTPException(503, "Câu hỏi đang chờ kiểm chứng.")
+                upload_uris = {
+                    source.url for source in bundle.sources if source.version == "uploaded document"
+                }
+                if upload_uris:
+                    if not self.demo_uploads_enabled:
+                        raise HTTPException(403, "Tài liệu tải lên chỉ được dùng trong bản demo.")
+                    consented = {
+                        row[0]
+                        for row in conn.execute(
+                            "select source_uri from uploads where source_uri=any(%s) "
+                            "and demo_consent_at is not null",
+                            (list(upload_uris),),
+                        )
+                    }
+                    if not upload_uris <= consented:
+                        raise HTTPException(403, "Tài liệu chưa có đồng ý sử dụng cho bản demo.")
                 require_model_permission(bundle.sources)
                 last = request.last_answer
                 if last is None:

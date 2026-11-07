@@ -246,6 +246,21 @@ class LearningService:
             save_trace(conn, learner, subject_id, trace)
             return learn.NextSelection(item=item, reason_vi=step.reason_vi)
 
+    async def replay_attempt(self, request: learn.AttemptInput) -> learn.AttemptResponse | None:
+        if request.client_attempt_id is None:
+            return None
+
+        def load() -> learn.AttemptResponse | None:
+            with self.pool().connection() as conn:
+                if not conn.execute(
+                    "select id from learners where id=%s for update",
+                    (learner_uuid(request.learner_id),),
+                ).fetchone():
+                    raise HTTPException(404, "Không tìm thấy người học.")
+                return replay(conn, request)
+
+        return await asyncio.to_thread(load)
+
     async def apply_attempt(
         self,
         request: learn.AttemptInput,
@@ -365,7 +380,7 @@ class LearningService:
                 else None,
                 traces=[learn.DecisionTrace.model_validate(t.model_dump()) for t in traces],
             )
-            remember(conn, request, update)
+            remember(conn, request, update, correct=result.correct)
             return update
 
     async def reviews_due(self, learner_id: str) -> learn.ReviewsResponse:

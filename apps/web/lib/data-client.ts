@@ -319,7 +319,7 @@ function apiClient(config: WebConfig): LearningClient {
     async attempt(learner_id, item, _slug, answer, hints_used, signal) {
       if (!config.answerEncoding) throw new DataError("configuration");
       if (!attemptIds.has(item)) attemptIds.set(item, crypto.randomUUID());
-      return parseAttempt(
+      const result = parseAttempt(
         await post(
           "attempts",
           {
@@ -335,6 +335,8 @@ function apiClient(config: WebConfig): LearningClient {
           signal,
         ),
       );
+      attemptIds.delete(item);
+      return result;
     },
     async hint(learner_id, item, _slug, level, tier, signal) {
       if (config.hintFirstLevel === null) throw new DataError("configuration");

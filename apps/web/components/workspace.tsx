@@ -645,7 +645,11 @@ export function Workspace({ config }: { config: WebConfig }) {
                         {result && (
                           <Button
                             variant="ghost"
-                            onClick={() => learning.setAnswer(selected, null)}
+                            onClick={() =>
+                              config.mode === "api"
+                                ? void learning.loadLesson(selected, true)
+                                : learning.setAnswer(selected, null)
+                            }
                           >
                             {t.retry}
                             <RotateCcw size={15} />

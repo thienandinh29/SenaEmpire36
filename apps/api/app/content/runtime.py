@@ -28,7 +28,9 @@ def create_app(
         settings,
         learning_backend=LearningBackend(store),
         topics_backend=TopicsBackend(store),
-        tutor_backend=TutorBackend(store, models),
+        tutor_backend=TutorBackend(
+            store, models, demo_uploads_enabled=settings.demo_uploads_enabled
+        ),
     )
     platform_lifespan = app.router.lifespan_context
 

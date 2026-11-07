@@ -20,6 +20,8 @@ from app.content.repository import Repository
 from app.content.runtime import create_app
 from app.db import create_pool
 from app.guardrails.answerability import verify_item
+from app.services.topics import TopicsService
+from app.uploads.reader import Document, Page
 from tests.content.fakes import FakeGateway, topic
 
 
@@ -300,6 +302,12 @@ def test_retried_attempt_replays_once_under_concurrency(
         assert [r.status_code for r in responses] == [200, 200]
         assert responses[0].json() == responses[1].json()
         assert client.post("/attempts", json=body | {"answer": 1}).status_code == 409
+        with store.transaction() as conn:
+            conn.execute(
+                "update items set prompt=prompt||' edited' where external_id=%s", (item["id"],)
+            )
+        assert client.post("/attempts", json=body).json() == responses[0].json()
+        assert client.post("/attempts", json=body | {"answer": 1}).status_code == 409
     with store.transaction() as conn:
         assert conn.execute(
             "select count(*) from attempts where learner_id=%s", (learner,)
@@ -307,3 +315,59 @@ def test_retried_attempt_replays_once_under_concurrency(
         assert conn.execute(
             "select count(*) from attempt_replays where learner_id=%s", (learner,)
         ).fetchone() == (1,)
+
+
+@pytest.mark.parametrize("demo_enabled", [False, True])
+@pytest.mark.parametrize("consented", [False, True])
+def test_uploaded_topic_hints_require_demo_mode_and_stored_consent(
+    store: Repository, database_url: str, demo_enabled: bool, consented: bool
+) -> None:
+    sources, chunks, _, items = topic()
+    sources = [source.model_copy(update={"version": "uploaded document"}) for source in sources]
+    store.save_material("python-conditions", sources, chunks)
+    fake = FakeGateway()
+    fake.item = items[0]
+    fake.chunks = [c for c in chunks if c.chunk_id in fake.item.chunk_ids]
+    checked = asyncio.run(verify_item(fake.item, chunks, fake))
+    store.save_items("python-conditions", [checked])
+    for source in sources:
+        with store.transaction() as conn:
+            conn.execute("delete from uploads where source_uri=%s", (source.url,))
+        asyncio.run(
+            TopicsService(store.pool).persist_upload(
+                Document(source.url, (Page(1, "Public synthetic upload material."),), True),
+                None,
+                None,
+                demo_consent=consented,
+            )
+        )
+    fake.calls.clear()
+    app = create_app(
+        Settings(
+            database_url=database_url,
+            allow_unauthenticated_local_dev=True,
+            demo_uploads_enabled=demo_enabled,
+            _env_file=None,
+        ),
+        repository=store,
+        gateway=fake,
+    )
+    with TestClient(app) as client:
+        learner = client.post("/learners", json={"display_name": "Consent check"}).json()[
+            "learner_id"
+        ]
+        response = client.post(
+            "/tutor/hint",
+            json={
+                "learner_id": learner,
+                "item_id": checked.id,
+                "level": 1,
+                "tier": "free",
+            },
+        )
+    if demo_enabled and consented:
+        assert response.status_code == 200, response.text
+        assert fake.calls
+    else:
+        assert response.status_code == 403
+        assert not fake.calls
