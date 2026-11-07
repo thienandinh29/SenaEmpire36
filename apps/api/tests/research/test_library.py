@@ -80,3 +80,35 @@ def test_transient_http_error_is_retried() -> None:
     reader = SafeReader(resolver=resolve, transport=httpx.MockTransport(handler))
     assert asyncio.run(_fetch(reader, "https://books.example/page")).body == b"ok"
     assert calls == 2
+
+
+def test_export_keeps_numeric_chapters_and_sections_in_reading_order(tmp_path: Path) -> None:
+    from app.rag.library import load_book
+    from app.research.library import _export_p1
+
+    book = Book(
+        slug="book",
+        title="Book",
+        publisher="Publisher",
+        start_url="https://books.example/book",
+        license_url="https://books.example/license",
+        page_prefix="https://books.example/book",
+    )
+    paths = ["10:_Chapter", "2:_Chapter/10:_Section", "2:_Chapter/2:_Section", "2:_Chapter"]
+    records = [
+        {
+            "source_uri": f"https://books.example/book/{path}",
+            "text": f"Paragraph in {path}",
+            "license": "CC BY 4.0",
+            "sha256": path,
+        }
+        for path in paths
+    ]
+    _export_p1(book, tmp_path, records)
+    loaded = load_book(tmp_path)
+    assert [chunk.source_uri.rsplit("/book/", 1)[1] for chunk in loaded.chunks] == [
+        "2:_Chapter",
+        "2:_Chapter/2:_Section",
+        "2:_Chapter/10:_Section",
+        "10:_Chapter",
+    ]

@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import re
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -112,14 +113,20 @@ def export_library(manifest: Manifest, root: Path) -> list[dict[str, object]]:
 def _export_p1(book: Book, directory: Path, records: list[dict[str, str]]) -> None:
     """Emit P1 SourceMeta/ParsedDocument after the same provenance audit as JSONL.
 
-    Page order is deterministic URL order, not an inferred prerequisite or TOC order.
+    Numeric chapter/section names use natural URL order (2 before 10); other names
+    retain deterministic URL order. This does not infer prerequisites or a missing TOC.
     Never leave a stale ingestible pair when a new audit accepts no pages.
     """
     if not records:
         for filename in ("source.json", "document.json"):
             (directory / filename).unlink(missing_ok=True)
         return
-    ordered = sorted(records, key=lambda record: record["source_uri"])
+    ordered = sorted(
+        records,
+        key=lambda record: re.sub(
+            r"\d+", lambda match: f"{int(match.group()):012d}", unquote(record["source_uri"])
+        ),
+    )
     version = hashlib.sha256(
         "\n".join(record["source_uri"] + " " + record["sha256"] for record in ordered).encode()
     ).hexdigest()

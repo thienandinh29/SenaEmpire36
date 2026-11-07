@@ -13,6 +13,7 @@ from app.graders.mcq import Item
 from app.research.agent import ChosenSource, OnEvent, research
 from app.research.reader import SourceError
 from app.schemas import Citation, KnowledgeGraph
+from app.schemas import Item as ContractItem
 from app.uploads.reader import Document
 
 
@@ -250,6 +251,7 @@ class TopicPipeline:
                 seen: set[str] = set()
                 for item in generated:
                     try:
+                        ContractItem.model_validate(item.model_dump())
                         item = Item.model_validate(item.model_dump())
                     except ValidationError:
                         dropped += 1
