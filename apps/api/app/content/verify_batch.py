@@ -84,6 +84,8 @@ class ClassifiedAdapter:
                     "retry_after": getattr(exc, "retry_after", None),
                     "delay_source": getattr(exc, "delay_source", None),
                     "quota_violations": getattr(exc, "quota_violations", []),
+                    "http": getattr(exc, "http_diagnostic", None),
+                    "transport": getattr(exc, "transport_diagnostic", None),
                 }
             )
             raise
@@ -161,6 +163,7 @@ async def run(
                 "attempt": attempt + 1,
                 "latency_ms": round((time.monotonic() - tick) * 1000),
                 "infrastructure_error": infrastructure,
+                "provider_errors": provider_errors,
             }
             state["items"][item.id] = record
             for event in events:

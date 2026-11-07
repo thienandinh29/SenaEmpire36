@@ -1,5 +1,11 @@
 # P4 handoff after ptest2 c413fe6
 
+Latest follow-up: see INFRASTRUCTURE-STATUS.md and
+data/guardrails/gemini-diagnostic-current.json. One additional bounded diagnostic
+failed without an HTTP response; the previous quota cause is not assumed to explain
+this newer network failure. Postgres outside-sandbox check is connection refused
+(Windows10061), not merely a timeout. No new verified content is available.
+
 Branch: p4. Latest integration includes ptest2 c413fe6, P2 migrations 0009?0011,
 worker/retriever and tutor wiring. No database migration was run here.
 No P2 review confirmation has been received.
