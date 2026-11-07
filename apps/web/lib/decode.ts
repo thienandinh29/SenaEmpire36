@@ -99,19 +99,22 @@ export function parseTrace(value: unknown): DecisionTrace {
     kind: kind as DecisionTrace["kind"],
     concept_slug: string(data.concept_slug),
     at: string(data.at),
-    prior: probability(data.prior),
-    posterior: probability(data.posterior),
+    prior: data.prior == null ? null : probability(data.prior),
+    posterior: data.posterior == null ? null : probability(data.posterior),
     rule: string(data.rule),
     rule_vi: string(data.rule_vi),
     evidence: {
-      item_id: optionalString(evidence.item_id),
+      item_id:
+        evidence.item_id === null ? null : optionalString(evidence.item_id),
       correct:
-        evidence.correct === undefined ? undefined : bool(evidence.correct),
-      misconception: optionalString(evidence.misconception),
-      slip:
-        evidence.slip === undefined ? undefined : probability(evidence.slip),
+        evidence.correct == null ? evidence.correct : bool(evidence.correct),
+      misconception:
+        evidence.misconception === null
+          ? null
+          : optionalString(evidence.misconception),
+      slip: evidence.slip == null ? evidence.slip : probability(evidence.slip),
       guess:
-        evidence.guess === undefined ? undefined : probability(evidence.guess),
+        evidence.guess == null ? evidence.guess : probability(evidence.guess),
     },
     alternatives: list(data.alternatives, (value) => {
       const a = record(value);

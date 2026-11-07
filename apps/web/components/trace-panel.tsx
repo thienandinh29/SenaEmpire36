@@ -11,20 +11,21 @@ export function TracePanel({
 }) {
   if (!trace) return <p className="empty-inline">{t.flow.traceEmpty}</p>;
   const evidence = trace.evidence;
-  const evidenceRows: [string, string | number | boolean | undefined][] = [
-    [t.flow.traceItem, evidence.item_id],
+  const evidenceRows: [string, string | number | boolean | null | undefined][] =
     [
-      t.flow.traceCorrect,
-      evidence.correct === undefined
-        ? undefined
-        : evidence.correct
-          ? t.flow.traceYes
-          : t.flow.traceNo,
-    ],
-    [t.flow.traceMisconception, evidence.misconception],
-    [t.flow.traceSlip, evidence.slip],
-    [t.flow.traceGuess, evidence.guess],
-  ];
+      [t.flow.traceItem, evidence.item_id],
+      [
+        t.flow.traceCorrect,
+        evidence.correct == null
+          ? undefined
+          : evidence.correct
+            ? t.flow.traceYes
+            : t.flow.traceNo,
+      ],
+      [t.flow.traceMisconception, evidence.misconception],
+      [t.flow.traceSlip, evidence.slip],
+      [t.flow.traceGuess, evidence.guess],
+    ];
   const name = (slug: string) =>
     graph.nodes.find((node) => node.slug === slug)?.name_vi || slug;
   return (
@@ -32,23 +33,31 @@ export function TracePanel({
       <p className="trace-concept">
         {t.flow.traceFor}: <strong>{name(trace.concept_slug)}</strong>
       </p>
-      <div className="trace-scores">
-        <div>
-          <span>{t.before}</span>
-          <strong>{Math.round(trace.prior * 100)}%</strong>
+      {(trace.prior !== null || trace.posterior !== null) && (
+        <div className="trace-scores">
+          <div>
+            <span>{t.before}</span>
+            <strong>
+              {trace.prior === null ? "—" : `${Math.round(trace.prior * 100)}%`}
+            </strong>
+          </div>
+          <ArrowRight size={22} />
+          <div>
+            <span>{t.after}</span>
+            <strong>
+              {trace.posterior === null
+                ? "—"
+                : `${Math.round(trace.posterior * 100)}%`}
+            </strong>
+          </div>
         </div>
-        <ArrowRight size={22} />
-        <div>
-          <span>{t.after}</span>
-          <strong>{Math.round(trace.posterior * 100)}%</strong>
-        </div>
-      </div>
+      )}
       <div className="trace-section">
         <h3>{t.evidence}</h3>
-        {evidenceRows.some(([, value]) => value !== undefined) ? (
+        {evidenceRows.some(([, value]) => value != null) ? (
           <dl>
             {evidenceRows
-              .filter(([, value]) => value !== undefined)
+              .filter(([, value]) => value != null)
               .map(([label, value]) => (
                 <div key={label}>
                   <dt>{label}</dt>

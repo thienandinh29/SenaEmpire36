@@ -1,5 +1,23 @@
 # P5 verification evidence
 
+## ptest integration check (2026-11-07)
+
+- Installed the existing frozen pnpm lockfile; no dependency or lockfile changes.
+- ESLint, strict TypeScript and the Next.js production build pass.
+- Vitest: 38 tests pass, including 12 checks against the unedited P1 JSON in
+  `specs/contracts/mocks/`. These cover graph edges, wrong/correct attempts,
+  placement question/completion, topic snapshots, upload, hint and review responses.
+- Correct attempts include an FSRS review trace with null probabilities. The decoder
+  now accepts nullable evidence and probability fields; the trace panel omits
+  unavailable scores instead of displaying a fabricated 0%.
+- Hand-authored mock lessons remain explicitly labeled UI simulation; they are not
+  substituted for canonical contracts or real API data.
+- Generated `lib/api.generated.ts` with pinned openapi-typescript 7.10.1 from
+  `specs/p2-integration/openapi.json`; consumer aliases now use these integrated
+  types. Runtime checks cover both omitted and explicit-null trace probabilities.
+- Browser acceptance and deployment/video checks below still require separate
+  evidence. Passing these code checks does not establish the H7 learner journey.
+
 ## Executed checks
 
 - ESLint, strict TypeScript and the Next.js production build passed in the implementation session.
@@ -12,8 +30,8 @@
 
 - Browser automation reported an unavailable browser host. Native Chrome inspection failed, then Computer Use was stopped with the physical Escape key. No further UI input was attempted after that stop.
 - Desktop/mobile layout, keyboard focus, interactive upload, map controls, learning context, hints, trace dialogs, Free/Pro and retry states still require actual browser verification.
-- No real learning endpoints, integration schema/OpenAPI, authentication convention or deployment credentials were supplied. The API checkout contains only /health. Live upload/attempt/hint conventions remain gated by confirmed configuration.
-- API Python checks were unavailable through uv on PATH; no backend files were changed.
+- The ptest backend integration is in progress. The P4 verified generation/tutor
+  handoff and deployment credentials are still missing; live acceptance remains pending.
 - No video was recorded. ffmpeg and a window-only recording wrapper are available; do not present the wrapper or script as a completed recording.
 
 ## Browser acceptance checklist — pending

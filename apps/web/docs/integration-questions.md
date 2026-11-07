@@ -1,32 +1,49 @@
-# P5 integration questions and missing inputs
+﻿# P5 integration status on ptest
 
-Source of truth: [TEAM.md](../../../TEAM.md), especially Contracts, Stack and Lanes. No AGENTS.md was found in the repository or the checked ancestor directories. `team/P5.md` and CLAUDE.md were read. No additional integration guide, P1 schemas/OpenAPI, API learning routes, P4 golden fixtures, Spec Kit setup or assets/sena files were present. The existing public/sena.svg was retained.
+Source of truth: `TEAM.md`, `specs/contracts/mocks/` and the integrated app's OpenAPI.
+P5's web branch is now included in ptest. Mock mode remains an explicitly labeled
+UI simulation; API errors never fall back to sample answers or a sample graph.
 
-No project-authorized messaging channel for P1/P2/P3 is configured. No messages were sent. Forward this concise list to the owners; frontend work continues using labeled fixtures.
+## Confirmed consumer conventions
 
-## P1 — consumer contract confirmation
+| Setting or shape             | Confirmed value                       | Evidence                                             |
+| ---------------------------- | ------------------------------------- | ---------------------------------------------------- |
+| API key header               | `X-API-Key`                           | `app/main.py`                                        |
+| Multipart upload field       | `file`                                | P3 upload router                                     |
+| API file limit               | 20,000,000 bytes, 200 pages           | P3 upload reader/router                              |
+| File types                   | PDF and DOCX                          | P3 upload router                                     |
+| Answer encoding              | `index0`                              | P1 `attempts.request.json`, deterministic MCQ grader |
+| Trace probabilities          | nullable `prior` / `posterior`        | P1 correct-attempt and placement mocks               |
+| Trace evidence               | object with optional nullable members | P1 trace model and mocks                             |
+| Graph edges                  | `{from, to}`                          | P1 graph mock                                        |
+| Placement completion         | `done: true`, `item: null`            | P1 placement mock                                    |
+| Citations in tutor responses | `{title, section, url}`               | P1 mock / P3 router                                  |
+| Topic progress               | API integer 0..100                    | P2 queue and P3 pipeline                             |
 
-1. Publish the frozen OpenAPI/Pydantic schema. Confirm the current web consumer shapes for topic snapshots, public MCQs and DecisionTrace, including nullability. The web mirrors TEAM.md and validates responses; generated types cannot yet be produced.
-2. Citations are inconsistent across documents: the lane promises `source_uri + page`, while tutor JSON defines `{title, section, url}` and public graph/items have no citation or lesson-content fields. Confirm the actual citation schema and how private Storage paths become authorized browser URLs. P5 will not concatenate storage paths or invent signed URLs.
-3. Confirm how a selected graph node links to lesson content or a question. Current placement requests accept `{learner_id, subject}` only; they do not accept a concept slug. Live direct-per-node lesson content remains unavailable. Mock mode has a fixture per node.
-4. Confirm `progress` units, initial/empty evidence semantics and review trace probability fields. P5 shows backend step/trail without assuming live percentage units.
+For API mode set server-only `NODETRAIL_DATA_MODE=api`, `NODETRAIL_API_URL`,
+`NODETRAIL_API_KEY`, `NODETRAIL_API_KEY_HEADER=X-API-Key`,
+`NODETRAIL_UPLOAD_FIELD=file`, `NODETRAIL_MAX_UPLOAD_BYTES=20000000` and
+`NODETRAIL_ANSWER_ENCODING=index0`. Configure a lower upload cap if the deployment
+platform requires it. Never expose API credentials through `NEXT_PUBLIC_` variables.
 
-## P3 — endpoint and request conventions
+`NODETRAIL_HINT_FIRST_LEVEL=1` follows P1's `HintRequest` contract (levels 1..4).
+The mounted tutor handler still returns 503 until P4 supplies the verified backend.
 
-1. Provide the real base URL, working routes, auth header convention (with P2), and error/retry contract. Never send secret values in this document/chat.
-2. Uploads: exact multipart field, size/page limits, supported MIME/content checks, scanned-file behavior, timeouts and `text_ok=false` handling. Live upload stays disabled until `NODETRAIL_UPLOAD_FIELD` and `NODETRAIL_MAX_UPLOAD_BYTES` are confirmed. The mock-only 10 MiB cap is not presented as a backend guarantee.
-3. MCQ attempts: is `answer` a zero-based option index, option label, or another representation? Configure `index0` or `label` only if confirmed; other formats require adapting the consumer after the contract is published. No silent guess is made.
-4. Tutor: first hint `level`, maximum levels, exhausted-hint behavior, and any streaming protocol. Current contract is one JSON hint with citations, so frontend uses JSON. Hint requests stay disabled until the first level is confirmed.
-5. Confirm idempotency/retry policy for topic creation and submissions. The frontend retries on explicit user action and prevents duplicate in-flight operations; it does not automatically replay submissions or invent idempotency headers.
+## Remaining owner inputs and acceptance
 
-## P2 — deployment and operations
-
-1. Configure the Vercel project root as apps/web, the supported Node runtime and pnpm 10.20.0. Set server-only environment values listed in `.env.example`; configure the shared API-key header name and value securely.
-2. Confirm request-body limits and timeouts on the actual Vercel plan/API. The Next proxy bounds JSON requests and uploads; it does not replace backend validation or authorize a larger upload than the hosting plan permits.
-3. Confirm allowed origins for the chosen production and preview URLs, and deployment protection if required. Frontend POST proxy requests reject mismatched Origin; no user authentication is invented for the no-login demo.
-4. Publish topic SSE heartbeat/event details and hosting duration limits if switching from the current cancellable snapshot polling implementation to SSE. Reconnection is not yet claimed.
-5. MAP.md needs a P1-owned update for the new web app/data client/docs. P5 has not edited it because it is outside the authorized paths.
-
-## Sprint window
-
-H0 has not been provided. P5 does not infer H12 or the feature-freeze deadline from the local clock. The sleep handoff note is [P2-handoff.md](P2-handoff.md); update it before the actual H12:00–H13:30 break once H0 is known.
+- P4: deliver verified graph/item generation, Socratic tutor/gate and migration 0005.
+  A mounted route with an unavailable backend is not a working hint or topic pipeline.
+- P1/P3: align the provisional hint DTO with P1 `HintRequest`: P1 uses an integer
+  option index for optional `last_answer` and levels 1..4; P3 currently declares
+  `last_answer` as a string and permits any nonnegative level. The current web
+  client omits `last_answer` and begins at level 1.
+- P4/P2: serve authorized citation URLs for private uploaded sources; the web does
+  not build private Storage URLs or make buckets public.
+- A map node does not choose a live placement concept. The engine selects it through
+  `{learner_id, subject}`; the UI follows `trace.concept_slug`. Direct per-node lesson
+  content remains mock-only because the API has no lesson-content endpoint.
+- Web uses cancellable snapshot polling/retry. Backend SSE state/heartbeat events
+  are available separately; SSE reconnection is not implemented by this client.
+- P2/P5: verify desktop/mobile/keyboard using `verification.md`, then the deployed
+  API flow. Deployment URL/configuration and a recorded/replayed backup video are
+  still pending; code checks cannot replace those observations.

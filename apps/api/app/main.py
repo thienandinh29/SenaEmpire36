@@ -14,10 +14,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
+from app.api import learn, topics, tutor
 from app.config import Settings, get_settings
 from app.db import create_pool, ping
 from app.jobs.queue import snapshot
 from app.observability import configure_logging
+from app.schemas import CachedTopics, TopicState
+from app.services.backend import LearningService
+from app.services.topics import SupabaseStorage, TopicsService
 
 logger = logging.getLogger(__name__)
 HEARTBEAT_SECONDS = 15
@@ -45,6 +49,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.pool.close()
 
     app = FastAPI(title="NodeTrail API", lifespan=lifespan)
+    app.include_router(learn.create_router(LearningService(lambda: app.state.pool)))
+    storage = (
+        SupabaseStorage(
+            settings.supabase_url,
+            settings.supabase_service_role_key.get_secret_value(),
+            settings.upload_bucket,
+        )
+        if settings.supabase_url and settings.supabase_service_role_key.get_secret_value()
+        else None
+    )
+    app.include_router(topics.create_router(TopicsService(lambda: app.state.pool, storage)))
+    # P4's verified tutor implementation is not available yet; its routes fail explicitly.
+    app.include_router(tutor.create_router())
 
     @app.middleware("http")
     async def request_context(
@@ -100,7 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         assert row is not None
         return {"learner_id": row[0]}
 
-    @app.get("/topics/cached")
+    @app.get("/topics/cached", response_model=CachedTopics)
     def cached_topics(request: Request) -> dict[str, list[dict[str, str]]]:
         with request.app.state.pool.connection() as conn:
             rows = conn.execute(
@@ -121,7 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.state.tier = metadata[1]
         return state, metadata[0]
 
-    @app.get("/topics/{topic_id}")
+    @app.get("/topics/{topic_id}", response_model=TopicState)
     def get_topic(topic_id: UUID, request: Request) -> JSONResponse:
         state, fixture = topic_state(topic_id, request)
         return JSONResponse(state, headers={"X-Data-Fixture": str(fixture).lower()})
@@ -137,7 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             while not await request.is_disconnected():
                 data = json.dumps(state, ensure_ascii=False)
                 if data != previous:
-                    yield f"event: message\ndata: {data}\n\n"
+                    yield f"event: state\ndata: {data}\n\n"
                     previous = data
                 if state["status"] in ("ready", "failed"):
                     return

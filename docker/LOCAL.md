@@ -124,6 +124,9 @@ library: the current pipeline replaces all chunks for the same source title.
 
 ## Phase C platform foundation
 
+> Historical foundation record below. See the current integration update at the
+> end of this file and `planv2.md` section 8 for the integrated checkout status.
+
 Specification, implementation plan and tasks are in `specs/p2-local/`. They were
 written manually before code; Spec Kit CLI/commands are not installed here.
 
@@ -181,3 +184,66 @@ updates for one learner/concept in the P3 orchestration transaction before doing
 read/compute/write. Decision-trace persistence awaits P1's migration 0004 and
 schemas; P3 route stubs and real gateway wiring remain pending. No real LLM calls
 or fabricated content were added.
+
+## Current integration update (2026-11-07)
+
+P1 contracts and migrations 0003–0004, P3 routes/gateway and P5 web now exist in
+this checkout. `app.main` mounts learning, topic/upload and tutor routes. Learning
+routes use the durable P2 adapter; tutor/ask return 503 until a verified backend
+is supplied. SSE emits `state` and `heartbeat`, superseding the `message` event
+description above. Web currently uses snapshot polling.
+
+P2 settings expose `EMBEDDING_BACKEND=local` by default, `TEI_URL=http://localhost:8080`
+and optional secret-masked `TEI_API_KEY`. They are available to pipeline adapters;
+API startup does not load a model or create an unused retriever. P1 CLI selection
+uses explicit flags: `--embedder local`, or `--embedder tei --tei-url http://localhost:8080`.
+Set `TEI_API_KEY` in the shell for an authenticated TEI endpoint. Do not assume
+`EMBEDDING_BACKEND` in `.env` controls those CLIs. No TEI container was started here.
+
+Worker/storage setup and pending real pipeline factory:
+[`specs/p2-integration/worker-handoff.md`](../specs/p2-integration/worker-handoff.md).
+Migration 0005 and real P4 generation/gates/item mapping remain pending. Do not
+run the example factory path until the adapter exists. Dev/shared migrations are
+still deferred; isolated tests apply all available migrations, including 0008.
+
+Latest checks: 1172 API tests, Ruff lint/format and mypy passed; 38 web tests,
+ESLint, TypeScript and production build passed. Development chunks stayed at zero.
+No local raw book files exist despite acquisition receipts in `data/sources/`;
+real ingest, elapsed time, peak RAM and vector/provenance acceptance remain open.
+
+## P2 continuation: indexing, runtime and Spec Kit
+
+`app.services.indexing.index_document` now connects P1 documents/chunking/embedding
+to transactional P2 persistence. Identical retries preserve chunk IDs and avoid a
+second embedding call. Changed snapshots require an explicit new source identity;
+the adapter rejects replacement to protect existing citations. See the worker handoff
+for its signature, CPU selection and the remaining P4/factory dependencies.
+
+The worker now exports supported P3 search/provider/model settings from Settings to
+process environment before constructing the pipeline factory. Shell values win;
+credentials are secret-masked in Settings and are never logged by this forwarding.
+The root `.env.example` includes `SEARCH_PROVIDER=brave` and all ten model ID names.
+This is configuration support, not evidence of successful provider calls.
+
+Spec Kit CLI `1.3.3.dev0` was installed from the official GitHub repository at
+`c43849408ac0de2ca6a52f14eaae71449776057b`. Its `init --help` now uses
+`--integration claude --script ps --non-interactive`. Initialization was run in a
+temporary directory and its 27 non-memory scaffold files were installed here after
+checking for collisions; the existing constitution was retained. No repository
+branch was changed and no git commit was created. Generated Claude skills use
+`/speckit-specify`, `/speckit-plan`, `/speckit-tasks` (hyphenated names).
+
+`specify check` passed. `create-new-feature.ps1 -DryRun -Json -ShortName p2-smoke`
+computed `001-p2-smoke` without creating a spec or changing `ptest`. This CLI version
+stores feature selection in `.specify/feature.json` for actual creation; do not assume
+it switches a Git branch. Existing manually written P2 specs remain the active work.
+
+PowerShell smoke command when local script execution is restricted:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .specify/scripts/powershell/create-new-feature.ps1 -DryRun -Json -ShortName p2-smoke 'P2 scaffold smoke check'
+```
+
+Web verification on Windows can use `npm.cmd run lint`, `npm.cmd run typecheck` and
+`npm.cmd test` with the installed node_modules when pnpm is unavailable. This invokes
+the same package scripts without installing packages or changing the pnpm lockfile.

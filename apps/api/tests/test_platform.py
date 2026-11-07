@@ -63,7 +63,7 @@ def test_worker_fixture_and_missing_pipeline(database_url: str) -> None:
                 },
             )
             assert '"status": "ready"' in events.text
-            assert "event: message" in events.text
+            assert "event: state\n" in events.text
         assert client.get(f"/topics/{uuid4()}", headers=headers).status_code == 404
         assert client.get("/topics/cached", headers=headers).json() == {"topics": []}
         assert (
