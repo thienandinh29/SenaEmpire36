@@ -26,7 +26,11 @@ other book or replace P1's semantic review.
 
 Artifacts: `data/sources/p3-library-export.json`,
 `data/sources/p3-python-library-audit.json` (including readable samples and page order).
-P1's ten Vietnamese queries/expected sections have not arrived in this checkout;
+P1's ten Vietnamese queries have now arrived in `data/eval/think-python-2e.yaml`.
+All ten label snippets and all ten intended numbered sections are present in the
+clean export. `data/sources/p3-python-query-label-audit.json` records exact confirmed
+page URLs for P1 to review/add to its labels. q06-q10 were checked only for label
+existence, without tuning k, prompts or models. This is not a ranked retrieval score;
 semantic retrieval and graph quality remain unchecked.
 
 P2 must regenerate its own ignored local exports after pulling, before indexing:
@@ -36,6 +40,9 @@ P2 must regenerate its own ignored local exports after pulling, before indexing:
 uv run python ../../scripts/build_library.py --export-only --book think-python-2e
 uv run python ../../scripts/build_library.py --audit-only --book think-python-2e `
   --report ../../outputs/python-library-audit.json
+uv run python ../../scripts/build_library.py --audit-only --book think-python-2e `
+  --queries ../../data/eval/think-python-2e.yaml `
+  --report ../../outputs/python-query-label-audit.json
 ```
 
 ## Real worker retrieval construction
@@ -129,5 +136,9 @@ subclasses preserve strict integer/length validation; no API contract was change
 Frozen trace test fixtures use `model_copy` rather than mutating P1's evidence.
 
 The board ticks only the completed library/runtime/schema/model-configuration work.
-P1's ten queries, semantic k=12 graph review, rotated-key live measurements and full
-deployment acceptance remain unticked.
+P1 label-existence checking is complete. Semantic k=12 graph review, rotated-key live
+measurements and full deployment acceptance remain unticked.
+
+The P2 index receipt at 12:54 UTC still lists 2,764 Python chunks (pre-cleaning).
+Regenerate/reindex the clean export before accepting that index; this P3 session
+did not interrupt or modify P2's running index process on its host.

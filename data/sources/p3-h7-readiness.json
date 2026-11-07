@@ -10,7 +10,7 @@
     "subject": "think-python-2e",
     "k": 12,
     "construction": "mandatory; shared worker Retriever",
-    "semantic_quality": "pending P1 queries and rotated-key live graph"
+    "semantic_quality": "10/10 P1 snippets and intended page sections confirmed locally; ranked TEI retrieval and live k=12 graph review pending"
   },
   "model_calls": [],
   "live_token_counts": null,
@@ -32,5 +32,6 @@
   "tei": {
     "reachable": false,
     "error_type": "ConnectTimeout"
-  }
+  },
+  "query_label_audit": "data/sources/p3-python-query-label-audit.json"
 }

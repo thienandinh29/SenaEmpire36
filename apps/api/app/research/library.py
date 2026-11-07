@@ -230,7 +230,92 @@ def audit_export(book: Book, root: Path) -> dict[str, object]:
             }
             for i in indexes
         ],
-        "semantic_retrieval": "pending P1's 10 Vietnamese queries and indexed TEI retrieval",
+        "semantic_retrieval": "pending real indexed TEI evaluation of P1's Vietnamese queries",
+    }
+
+
+def audit_query_labels(folder: Path, queries: Path) -> dict[str, object]:
+    """Confirm P1 labels exist in local text, without ranking or tuning held-out cases."""
+    from app.rag.evaluate import load_eval_set
+    from app.rag.library import load_book
+    from app.schemas import Citation
+
+    book, evaluation = load_book(folder), load_eval_set(queries)
+    if evaluation.subject != book.info.subject_slug:
+        raise ValueError("Query subject does not match the exported library subject")
+    passages = [
+        Citation(
+            chunk_id=f"local-audit-{i}",
+            source_title=book.info.title,
+            license=book.info.license,
+            source_uri=c.source_uri,
+            content=c.content,
+            page=c.page,
+            section=c.section,
+            score=0,
+        )
+        for i, c in enumerate(book.chunks)
+    ]
+    rows = []
+    all_present = True
+    expected_sections = confirmed_sections = 0
+    for question in evaluation.questions:
+        labels = []
+        section = re.search(r"\((\d+)\.(\d+)\)", question.note or "")
+        prefix = f"{int(section[1])}.{int(section[2]):02d}:" if section else None
+        confirmed: dict[str, str | None] = {}
+        for criterion in question.relevant:
+            matching = [passage for passage in passages if criterion.matches(passage)]
+            confirmed.update(
+                {
+                    passage.source_uri: criterion.contains
+                    for passage in matching
+                    if prefix and (passage.section or "").startswith(prefix)
+                }
+            )
+            all_present = all_present and bool(matching)
+            labels.append(
+                {
+                    **criterion.model_dump(exclude_none=True),
+                    "present": bool(matching),
+                    "matching_chunks": len(matching),
+                    "sources": [
+                        {
+                            "source_uri": uri,
+                            "sections": sorted(
+                                {p.section or "" for p in matching if p.source_uri == uri}
+                            ),
+                        }
+                        for uri in dict.fromkeys(p.source_uri for p in matching)
+                    ],
+                }
+            )
+        if prefix:
+            expected_sections += 1
+            confirmed_sections += bool(confirmed)
+        rows.append(
+            {
+                "id": question.id,
+                "question_vi": question.question_vi,
+                "p1_note": question.note,
+                "labels": labels,
+                "expected_section_present": bool(confirmed) if prefix else None,
+                "confirmed_relevant": [
+                    {"source_uri": uri, "contains": snippet} for uri, snippet in confirmed.items()
+                ],
+            }
+        )
+    return {
+        "scope": (
+            "P1 label presence in audited local text; no vector search, ranking or model tuning"
+        ),
+        "subject": evaluation.subject,
+        "total_queries": len(rows),
+        "all_snippets_present": all_present,
+        "expected_sections": expected_sections,
+        "expected_sections_confirmed": confirmed_sections,
+        "held_out_policy": "q06-q10 checked for source existence only; not used to tune k/models",
+        "queries": rows,
     }
 
 

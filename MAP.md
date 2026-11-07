@@ -101,3 +101,5 @@ with one upstream Starlette/httpx deprecation warning. No web app is included.
 
 | `specs/p3-integration/h7-results.md` | Current P3 H7 results after main/P4 integration; audited clean library, mandatory worker retrieval, canonical schemas, model configuration, live prerequisites |
 | `data/sources/p3-python-library-audit.json`, `data/sources/p3-h7-readiness.json` | Reproducible local export audit and honest environment/model-call readiness receipts |
+
+| `data/sources/p3-python-query-label-audit.json` | Confirms all 10 P1 query label snippets in the intended book sections, with exact page URLs; no ranked retrieval or held-out tuning |

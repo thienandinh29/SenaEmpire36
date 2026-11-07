@@ -36,3 +36,26 @@ def test_pair_failure_keeps_attempt_errors() -> None:
     report = asyncio.run(probe_pair(Gateway(routes(), {"vertex": fake}), "free"))
     assert report["status"] == "failed"
     assert report["attempts"][0]["error_code"] == "key_missing"
+
+
+def test_live_cli_defaults_to_the_pair_not_single_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from app.llm.smoke import main
+
+    called: list[str] = []
+
+    async def pair(gateway: Gateway, tier: str) -> dict[str, str]:
+        called.append(tier)
+        return {"status": "ok"}
+
+    monkeypatch.setattr("sys.argv", ["smoke", "--live"])
+    monkeypatch.setattr(
+        "app.config.get_settings", lambda: SimpleNamespace(export_worker_environment=lambda: None)
+    )
+    monkeypatch.setattr("app.llm.smoke.default_gateway", lambda: Gateway(routes(), {}))
+    monkeypatch.setattr("app.llm.smoke.probe_pair", pair)
+    main()
+    assert called == ["free"]

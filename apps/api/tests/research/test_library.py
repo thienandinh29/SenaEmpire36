@@ -1,6 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -179,3 +180,44 @@ def test_pre_index_audit_reports_real_chunk_sizes_and_source_retention(tmp_path:
     document["blocks"][0]["text"] += " Skip to main content"
     (folder / "document.json").write_text(json.dumps(document), encoding="utf-8")
     assert audit_export(book, tmp_path)["status"] == "fail"
+
+
+def test_p1_label_audit_requires_matching_text_and_page(tmp_path: Path) -> None:
+    from app.research.library import _export_p1, audit_query_labels
+
+    book = Book(
+        slug="book",
+        title="Book",
+        publisher="Publisher",
+        start_url="https://books.example/book",
+        license_url="https://books.example/license",
+        page_prefix="https://books.example/book",
+    )
+    _export_p1(
+        book,
+        tmp_path,
+        [
+            {
+                "source_uri": book.start_url,
+                "text": "A boolean expression.",
+                "license": "CC BY 4.0",
+                "sha256": "raw",
+            }
+        ],
+    )
+    queries = tmp_path / "queries.yaml"
+    data: dict[str, Any] = {
+        "subject": "book",
+        "questions": [
+            {
+                "id": "q01",
+                "question_vi": "Boolean?",
+                "relevant": [{"contains": "BOOLEAN expression", "source_uri": book.start_url}],
+            }
+        ],
+    }
+    queries.write_text(json.dumps(data), encoding="utf-8")
+    assert audit_query_labels(tmp_path, queries)["all_snippets_present"]
+    data["questions"][0]["relevant"][0]["source_uri"] = "https://books.example/wrong"
+    queries.write_text(json.dumps(data), encoding="utf-8")
+    assert not audit_query_labels(tmp_path, queries)["all_snippets_present"]
