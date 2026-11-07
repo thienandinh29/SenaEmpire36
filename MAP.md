@@ -48,4 +48,4 @@ Planned entries are marked _(planned)_ until they exist.
 | `data/items/` _(planned)_ | MCQ item fixtures with misconception tags |
 | `apps/web/` _(planned, P5)_ | Next.js web app on Vercel: topic input, research trail, map, learning, tutor |
 | `apps/web/messages/` _(planned)_ | i18n strings (`vi` default, `en`) |
-| `supabase/migrations/` | Database schema (Postgres + pgvector); `0001_init.sql` = schema v1, `0002` = chunk provenance (chapter, section, kind, url), `0003` = `halfvec(1024)`, `url` → `source_uri`, HNSW dropped (rebuilt after load) |
+| `supabase/migrations/` | Database schema (Postgres + pgvector); `0001_init.sql` = schema v1, `0002` = chunk provenance (chapter, section, kind, url), `0003` = `halfvec(1024)`, `url` → `source_uri`, HNSW dropped (rebuilt after load), `0004` = `decision_traces` (the "Vì sao?" audit trail) |

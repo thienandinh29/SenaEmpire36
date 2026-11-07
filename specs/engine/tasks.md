@@ -18,7 +18,8 @@ Window per `TEAM.md` timeline. `[x]` done. Tests in `apps/api/tests/engine/`.
   With slip 0.10 / guess 0.25 noise the ≥ 90% criterion is NOT met** (seeded, 400 runs per planted gap):
   plain 43–55% exact (mean 2.5–4.7 questions), `verify` 56–64% (3.2–5.6 questions). **Decision (P1): `verify` is the
   default.** The 90% criterion stays open: relax it or move to probabilistic placement (see spec.md note)
-- [ ] T9 Traces on every engine output; hand the trace list to P3's `/attempts` and `/placement/next`
+- [~] T9 Traces on every engine output (done); migration `0004` `decision_traces` written and tested (done); P2 to review/merge
+  and store them, P3 to return them from `/attempts` and `/placement/next`
 
 ## H8–H11
 - [ ] T10 Remediation rules on top of `root_cause` (misconception → concept hints), varied graph shapes
