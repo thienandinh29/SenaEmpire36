@@ -33,7 +33,7 @@ from app.llm.gateway import (
     Route,
     gateway_scope,
 )
-from app.llm.providers import default_gateway
+from app.llm.providers import default_gateway, diagnostic_transport_timeout
 
 
 def atomic_json(path: Path, value: object) -> None:
@@ -84,16 +84,24 @@ class ClassifiedAdapter:
                     "retry_after": getattr(exc, "retry_after", None),
                     "delay_source": getattr(exc, "delay_source", None),
                     "quota_violations": getattr(exc, "quota_violations", []),
+                    "http": getattr(exc, "http_diagnostic", None),
+                    "transport": getattr(exc, "transport_diagnostic", None),
                 }
             )
             raise
 
 
 async def run(
-    topic: Path, checkpoint: Path, interval: float, retries: int, max_items: int | None = None
+    topic: Path,
+    checkpoint: Path,
+    interval: float,
+    retries: int,
+    max_items: int | None = None,
+    timeout_seconds: float = 70,
+    gateway_override: Gateway | None = None,
 ) -> dict[str, Any]:
     _, chunks, graph, items = load_topic(topic)
-    base = default_gateway()
+    base = gateway_override or default_gateway()
     config_hash = digest(
         {
             "routing": base.routing.model_dump(),
@@ -139,14 +147,14 @@ async def run(
                 base.routing,
                 adapters,
                 attempts_per_model=1,
-                request_timeout=60,
-                total_timeout=65,
+                request_timeout=timeout_seconds - 5,
+                total_timeout=timeout_seconds - 2,
                 observe_attempt=events.append,
             )
             capture = Capture()
             tick = time.monotonic()
             with gateway_scope(gateway):
-                result = await verify_item(item, chunks, capture, timeout_seconds=70)
+                result = await verify_item(item, chunks, capture, timeout_seconds=timeout_seconds)
             audit = result.verification
             assert audit is not None
             infrastructure = audit.reason.startswith("verification_error:")
@@ -161,6 +169,7 @@ async def run(
                 "attempt": attempt + 1,
                 "latency_ms": round((time.monotonic() - tick) * 1000),
                 "infrastructure_error": infrastructure,
+                "provider_errors": provider_errors,
             }
             state["items"][item.id] = record
             for event in events:
@@ -173,6 +182,7 @@ async def run(
                         "family": event.route.family,
                         "status": event.status,
                         "error": event.error_code,
+                        "provider_errors": provider_errors,
                         "latency_ms": event.latency_ms,
                         "input_tokens": event.input_tokens
                         if event.status == "success" or event.input_tokens > 0
@@ -322,18 +332,31 @@ def main() -> None:
     parser.add_argument("--interval", type=float, default=15)
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--max-items", type=int, help="Probe only this many unfinished items")
+    parser.add_argument(
+        "--request-timeout",
+        type=float,
+        default=30,
+        help="Explicit scoped provider timeout (1..90s); production default unchanged",
+    )
     args = parser.parse_args()
     if args.interval < 0 or args.retries < 0:
         parser.error("interval/retries must be nonnegative")
     if args.max_items is not None and args.max_items < 1:
         parser.error("max-items must be positive")
-    print(
-        json.dumps(
-            asyncio.run(
-                run(args.topic, args.checkpoint, args.interval, args.retries, args.max_items)
-            )["summary"]
+    if not 1 <= args.request_timeout <= 90:
+        parser.error("request-timeout must be between 1 and 90 seconds")
+    with diagnostic_transport_timeout(args.request_timeout):
+        result = asyncio.run(
+            run(
+                args.topic,
+                args.checkpoint,
+                args.interval,
+                args.retries,
+                args.max_items,
+                timeout_seconds=max(70, args.request_timeout + 10),
+            )
         )
-    )
+    print(json.dumps(result["summary"]))
 
 
 if __name__ == "__main__":

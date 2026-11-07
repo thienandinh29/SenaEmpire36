@@ -63,6 +63,12 @@ Only if this produces a current verified result, use the full sequential command
 above. A new quota response stops the batch and persists its next permitted time.
 The time is a minimum retry time, not a guarantee that quota has recovered.
 
+An explicit `--request-timeout 90` may be used for the verified slow Gemini
+configuration. The scope applies only to this CLI invocation; ordinary API calls
+retain their existing provider timeout. One recorded successful blind verification
+took76.766s, so a30s request budget cannot complete that same response. Continue the
+same checkpoint that holds the success; do not restart from legacy failed receipts.
+
 Postgres check: this process runs on the Windows host, not in a container. API and
 worker both use P2 Settings.database_url; current configured endpoint is localhost:
 54322. TCP attempts to localhost:54322, 127.0.0.1:54322 and 127.0.0.1:5432 timed
