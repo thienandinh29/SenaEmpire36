@@ -53,17 +53,17 @@
     ],
     "identical_text_top1": true
   },
-  "llm_status": "DeepSeek gateway implemented and offline-tested; no live call: credentials not configured",
+  "llm_status": "Live synthetic Vietnamese MCQ: deepseek-flash generated, gemini-3.8-flash independently verified; not P4/full-pipeline acceptance",
   "gateway_verification": {
-    "checked_at": "2026-11-07T09:57:42.218921+00:00",
-    "api_tests_passed": 1048,
+    "checked_at": "2026-11-07T10:18:22.591612+00:00",
+    "api_tests_passed": 1058,
     "api_tests_skipped": 1,
     "ruff": "passed",
     "mypy": "passed on 72 files",
-    "live_llm_calls": 0,
     "default_verifier_families": [
-      "gemini",
-      "claude"
-    ]
+      "gemini"
+    ],
+    "transport": "Gemini Developer API; Vertex Express returned HTTP 403 for supplied Google key",
+    "live_llm_receipt": "docker/llm-live-smoke.json (final successful pair only; earlier diagnostic requests are not included)"
   }
 }

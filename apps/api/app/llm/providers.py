@@ -1,4 +1,4 @@
-"""Vertex, Bedrock, OpenRouter and DeepSeek adapters; no secrets in errors."""
+"""Vertex, Gemini, Bedrock, OpenRouter and DeepSeek adapters; no secrets in errors."""
 
 import asyncio
 import importlib
@@ -21,12 +21,13 @@ from app.llm.gateway import (
 )
 
 
-async def _post(url: str, token: str, payload: dict[str, Any]) -> dict[str, Any]:
+async def _post(
+    url: str, token: str, payload: dict[str, Any], *, api_key: bool = False
+) -> dict[str, Any]:
     try:
         async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
-            response = await client.post(
-                url, headers={"Authorization": f"Bearer {token}"}, json=payload
-            )
+            headers = {"x-goog-api-key": token} if api_key else {"Authorization": f"Bearer {token}"}
+            response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
             if not isinstance(data, dict):
@@ -39,6 +40,62 @@ async def _post(url: str, token: str, payload: dict[str, Any]) -> dict[str, Any]
         ) from None
     except (httpx.RequestError, ValueError):
         raise ProviderError("transport_or_json_error", retryable=True) from None
+
+
+def _gemini_payload(
+    system: str, messages: Sequence[Message], schema: type[BaseModel] | None
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "systemInstruction": {"parts": [{"text": schema_instruction(system, schema)}]},
+        "contents": [
+            {
+                "role": "model" if m.role == "assistant" else "user",
+                "parts": [{"text": m.content}],
+            }
+            for m in messages
+        ],
+        "generationConfig": {"maxOutputTokens": 4096},
+    }
+    if schema:
+        payload["generationConfig"]["responseMimeType"] = "application/json"
+    return payload
+
+
+def _gemini_reply(data: dict[str, Any], provider: str) -> ProviderReply:
+    try:
+        candidate = data["candidates"][0]
+        if candidate.get("finishReason") != "STOP":
+            raise ProviderError(f"{provider}_incomplete_response", retryable=True)
+        text = "".join(
+            p.get("text", "") for p in candidate["content"]["parts"] if not p.get("thought", False)
+        )
+        usage = data.get("usageMetadata", {})
+        return ProviderReply(
+            text,
+            usage.get("promptTokenCount", 0),
+            usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0),
+        )
+    except (KeyError, IndexError, TypeError):
+        raise ProviderError(f"{provider}_invalid_response", retryable=True) from None
+
+
+class GeminiAdapter:
+    async def generate(
+        self,
+        route: Route,
+        system: str,
+        messages: Sequence[Message],
+        schema: type[BaseModel] | None,
+    ) -> ProviderReply:
+        token = os.environ.get("GEMINI_API_KEY", "")
+        if not token:
+            raise ProviderError("gemini_key_missing")
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{quote(route.model, safe='')}:generateContent"
+        )
+        data = await _post(url, token, _gemini_payload(system, messages, schema), api_key=True)
+        return _gemini_reply(data, "gemini")
 
 
 class VertexAdapter:
@@ -74,31 +131,10 @@ class VertexAdapter:
             f"{quote(location, safe='')}/publishers/google/models/"
             f"{quote(route.model, safe='')}:generateContent"
         )
-        payload: dict[str, Any] = {
-            "systemInstruction": {"parts": [{"text": schema_instruction(system, schema)}]},
-            "contents": [
-                {
-                    "role": "model" if m.role == "assistant" else "user",
-                    "parts": [{"text": m.content}],
-                }
-                for m in messages
-            ],
-            "generationConfig": {"maxOutputTokens": 4096},
-        }
-        if schema:
-            payload["generationConfig"]["responseMimeType"] = "application/json"
-        data = await _post(url, await asyncio.to_thread(self._token), payload)
-        try:
-            candidate = data["candidates"][0]
-            if candidate.get("finishReason") != "STOP":
-                raise ProviderError("vertex_incomplete_response", retryable=True)
-            text = "".join(p.get("text", "") for p in candidate["content"]["parts"])
-            usage = data.get("usageMetadata", {})
-            return ProviderReply(
-                text, usage.get("promptTokenCount", 0), usage.get("candidatesTokenCount", 0)
-            )
-        except (KeyError, IndexError, TypeError):
-            raise ProviderError("vertex_invalid_response", retryable=True) from None
+        data = await _post(
+            url, await asyncio.to_thread(self._token), _gemini_payload(system, messages, schema)
+        )
+        return _gemini_reply(data, "vertex")
 
 
 class BedrockAdapter:
@@ -241,5 +277,6 @@ def default_gateway() -> Gateway:
             "bedrock": BedrockAdapter(),
             "openrouter": OpenRouterAdapter(),
             "deepseek": DeepSeekAdapter(),
+            "gemini": GeminiAdapter(),
         },
     )

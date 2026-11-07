@@ -3,10 +3,17 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from app.llm.gateway import Message, ProviderError, Route
-from app.llm.providers import BedrockAdapter, DeepSeekAdapter, OpenRouterAdapter, VertexAdapter
+from app.llm.providers import (
+    BedrockAdapter,
+    DeepSeekAdapter,
+    GeminiAdapter,
+    OpenRouterAdapter,
+    VertexAdapter,
+)
 from tests.llm.test_gateway import Answer
 
 
@@ -152,6 +159,132 @@ def test_deepseek_missing_key_does_not_call_network(monkeypatch: pytest.MonkeyPa
         asyncio.run(
             DeepSeekAdapter().generate(
                 Route(provider="deepseek", model="deepseek-flash", family="deepseek"),
+                "s",
+                [Message(role="user", content="q")],
+                None,
+            )
+        )
+    post.assert_not_called()
+
+
+def test_gemini_key_header_payload_and_thinking_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "private-gemini-test")
+    captured: dict[str, Any] = {}
+    client_type = httpx.AsyncClient
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        import json
+
+        captured.update(
+            url=str(request.url), headers=request.headers, payload=json.loads(request.content)
+        )
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {
+                        "finishReason": "STOP",
+                        "content": {
+                            "parts": [
+                                {"thought": True, "text": "internal summary"},
+                                {"text": '{"count":3}'},
+                            ]
+                        },
+                    }
+                ],
+                "usageMetadata": {
+                    "promptTokenCount": 10,
+                    "candidatesTokenCount": 4,
+                    "thoughtsTokenCount": 7,
+                },
+            },
+        )
+
+    with patch(
+        "app.llm.providers.httpx.AsyncClient",
+        side_effect=lambda **kw: client_type(transport=httpx.MockTransport(handle), **kw),
+    ):
+        reply = asyncio.run(
+            GeminiAdapter().generate(
+                Route(provider="gemini", model="gemini-test", family="gemini"),
+                "Return JSON",
+                [Message(role="user", content="q"), Message(role="assistant", content="a")],
+                Answer,
+            )
+        )
+    assert captured["headers"]["x-goog-api-key"] == "private-gemini-test"
+    assert "authorization" not in captured["headers"]
+    assert "private-gemini-test" not in captured["url"] and "?" not in captured["url"]
+    assert captured["payload"]["contents"][1]["role"] == "model"
+    assert captured["payload"]["generationConfig"]["responseMimeType"] == "application/json"
+    assert reply.text == '{"count":3}' and reply.input_tokens == 10 and reply.output_tokens == 11
+
+
+@pytest.mark.parametrize("status", [400, 403, 429, 503])
+def test_gemini_http_errors_hide_credentials(monkeypatch: pytest.MonkeyPatch, status: int) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "private-gemini-test")
+    client_type = httpx.AsyncClient
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": {"message": "private-gemini-test"}})
+
+    with (
+        patch(
+            "app.llm.providers.httpx.AsyncClient",
+            side_effect=lambda **kw: client_type(transport=httpx.MockTransport(handle), **kw),
+        ),
+        pytest.raises(ProviderError, match=f"http_{status}") as error,
+    ):
+        asyncio.run(
+            GeminiAdapter().generate(
+                Route(provider="gemini", model="gemini-test", family="gemini"),
+                "s",
+                [Message(role="user", content="q")],
+                None,
+            )
+        )
+    assert "private-gemini-test" not in str(error.value)
+    assert error.value.retryable == (status in (429, 503))
+
+
+@pytest.mark.parametrize(
+    "data,reason",
+    [
+        ({"candidates": [{"finishReason": "MAX_TOKENS"}]}, "incomplete"),
+        ({"candidates": []}, "invalid"),
+    ],
+)
+def test_gemini_invalid_or_truncated_output(
+    monkeypatch: pytest.MonkeyPatch, data: dict[str, Any], reason: str
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "fake")
+
+    async def post(
+        url: str, token: str, payload: dict[str, Any], *, api_key: bool = False
+    ) -> dict[str, Any]:
+        assert api_key
+        return data
+
+    with patch("app.llm.providers._post", post), pytest.raises(ProviderError, match=reason):
+        asyncio.run(
+            GeminiAdapter().generate(
+                Route(provider="gemini", model="gemini-test", family="gemini"),
+                "s",
+                [Message(role="user", content="q")],
+                None,
+            )
+        )
+
+
+def test_gemini_missing_key_does_not_call_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    with (
+        patch("app.llm.providers._post") as post,
+        pytest.raises(ProviderError, match="key_missing"),
+    ):
+        asyncio.run(
+            GeminiAdapter().generate(
+                Route(provider="gemini", model="gemini-test", family="gemini"),
                 "s",
                 [Message(role="user", content="q")],
                 None,

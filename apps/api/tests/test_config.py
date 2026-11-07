@@ -88,3 +88,17 @@ def test_deepseek_settings_forwarding_and_secret_masking(monkeypatch: pytest.Mon
     assert os.environ["DEEPSEEK_API_KEY"] == "secret-deepseek-test"
     assert os.environ["DEEPSEEK_FREE_MODEL"] == "deepseek-flash"
     assert os.environ["DEEPSEEK_PRO_MODEL"] == "deepseek-v4-pro"
+
+
+def test_gemini_secret_export_and_shell_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    monkeypatch.setenv("GEMINI_API_KEY", "private-gemini-test")
+    monkeypatch.setenv("GEMINI_VERIFY_MODEL", "gemini-test")
+    settings = Settings(_env_file=None)
+    assert "private-gemini-test" not in repr(settings)
+    monkeypatch.delenv("GEMINI_API_KEY")
+    monkeypatch.setenv("GEMINI_VERIFY_MODEL", "gemini-shell-test")
+    settings.export_worker_environment()
+    assert os.environ["GEMINI_API_KEY"] == "private-gemini-test"
+    assert os.environ["GEMINI_VERIFY_MODEL"] == "gemini-shell-test"
