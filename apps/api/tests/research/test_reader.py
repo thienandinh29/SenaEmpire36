@@ -9,6 +9,7 @@ from app.research.reader import (
     Publisher,
     SafeReader,
     SourceError,
+    html_content,
     html_text,
     validate_url,
 )
@@ -136,3 +137,22 @@ def test_full_license_name() -> None:
         )
         == "CC BY-NC-SA 4.0"
     )
+
+
+def test_book_content_excludes_libretexts_chrome_and_preserves_python_indent() -> None:
+    body = b"""<header>Search this book</header><article>
+      <section class="other mt-content-container">
+        <h2>Functions</h2><p>A function has a body.</p>
+        <pre>def greet():
+    print("hello")</pre><br><p>After the example.</p>
+        <script>ignore()</script>
+      </section><footer>CC BY-SA 4.0</footer></article>"""
+    text = html_content(body)
+    assert "Search this book" not in text and "ignore()" not in text
+    assert 'def greet():\n    print("hello")' in text
+    assert "After the example." in text
+    assert detect_license(html_text(body)) == "CC BY-SA 4.0"
+
+
+def test_book_content_falls_back_for_other_publishers() -> None:
+    assert html_content(b"<p>Textbook</p>") == "Textbook"
