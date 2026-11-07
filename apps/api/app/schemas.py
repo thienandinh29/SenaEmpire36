@@ -145,6 +145,9 @@ class ItemSet(_Contract):
 
     @model_validator(mode="after")
     def _check_misconceptions(self) -> Self:
+        ids = [item.id for item in self.items]
+        if len(ids) != len(set(ids)):
+            raise ValueError("item ids must be unique within an ItemSet")
         defined = {m.slug for m in self.misconceptions}
         for item in self.items:
             for o in item.options:

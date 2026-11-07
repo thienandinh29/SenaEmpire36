@@ -23,3 +23,13 @@ Window per `TEAM.md` timeline. `[x]` done. Tests in `apps/api/tests/engine/`.
 
 ## H8–H11
 - [x] T10 Remediation rules on top of `root_cause`: see `specs/remediation/`
+
+P1 H7 handoff reviewed against P3 `acb048b` and P2 `651bc7b`; acceptance sequence
+and placement decision recorded in `../contracts/p1-h7-review.md`. Keep verify
+enabled; T8's noisy 90% target stays unmet. T9's DB persistence remains pending.
+
+Review fixes: duplicate fixture IDs are rejected; default FSRS scheduling is
+deterministic. `tests/engine/test_learning_flow.py` covers placement seeding,
+wrong diagnostic -> prerequisite remediation -> resumed target -> mastery ->
+overdue review, with JSON state/trace round trips. On an integration checkout it
+also runs with P3's real grader; DB/worker acceptance remains separate.

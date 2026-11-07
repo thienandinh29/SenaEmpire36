@@ -14,6 +14,9 @@ Python 3.12, Pydantic v2 for the trace model only, no new dependencies. Module l
 | `bkt.py` / `srs.py` | add `update_traced`, `review_traced` beside the existing functions |
 
 ## Key decisions
+- Default FSRS scheduling is deterministic (`make_scheduler(fuzz=False)`); explicit
+  `fuzz=True` is an opt-in to randomized date spreading. Identical state, answer
+  and time replay identically without mutating the supplied card state.
 - **Graph in memory, not networkx:** graphs are < 100 nodes; plain dicts keep the engine dependency-free.
 - **Placement inference:** correct on X ⇒ ancestors(X) known; wrong on X ⇒ descendants(X) unknown. Next question
   = the undecided concept that best halves the undecided set (binary search on the DAG); ties → deeper concept,
