@@ -111,7 +111,7 @@ def next_question(
     *,
     now: datetime | None = None,
     max_questions: int = MAX_QUESTIONS,
-    verify: bool = False,
+    verify: bool = True,
 ) -> tuple[str | None, DecisionTrace]:
     """The concept to ask about next, or None when placement is finished; always with a trace.
 

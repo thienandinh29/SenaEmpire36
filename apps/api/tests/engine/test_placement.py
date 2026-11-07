@@ -150,10 +150,21 @@ def test_gap_located_when_unknown_concept_has_all_prerequisites_known() -> None:
 
 
 def test_all_known_when_the_top_answer_is_correct() -> None:
-    slug, trace = next_question(CHAIN, [yes("d")], now=NOW)
+    slug, trace = next_question(CHAIN, [yes("d")], now=NOW, verify=False)
     assert slug is None
     assert trace.rule == "placement.done.all_known"
     assert gap(CHAIN, [yes("d")]) is None
+
+
+def test_verification_is_on_by_default() -> None:
+    # One correct answer on the hardest concept is not trusted on its own.
+    slug, trace = next_question(CHAIN, [yes("d")], now=NOW)
+    assert slug == "c"
+    assert trace.rule == "placement.verify"
+    # Once the neighbours confirm it (and the budget allows), placement finishes.
+    done_slug, done = next_question(CHAIN, [yes("d"), yes("c"), yes("b"), yes("a")], now=NOW)
+    assert done_slug is None
+    assert done.rule == "placement.done.all_known"
 
 
 def test_budget_stops_placement_with_a_best_estimate() -> None:

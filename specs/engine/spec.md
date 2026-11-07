@@ -40,7 +40,7 @@ Elo difficulty calibration, fitted BKT parameters (defaults from the literature)
 
 ## Measured status (H3–H7, placement.py)
 The success criterion above is **not yet met under noise**. Seeded simulation, slip 0.10 / guess 0.25, one planted gap
-per concept: exact gap located in 43–55% of runs (56–64% with `verify=True`); noiseless runs are exact on all shapes.
-Cause: one lucky MCQ guess (25%) settles whole branches by inference. Options, cheapest first: (1) accept
-"within one concept" as the criterion, (2) default `verify=True`, (3) probabilistic placement (per-concept BKT
+per concept: exact gap located in 43–55% of runs without verification and 56–64% with it (`verify`, now the default); noiseless runs are exact on all shapes.
+Cause: one lucky MCQ guess (25%) settles whole branches by inference. Decided: `verify` is on by default. Remaining options: (1) accept
+"within one concept" as the criterion, (2) probabilistic placement (per-concept BKT
 posteriors, ask the highest-entropy concept; more work than the demo window allows).
