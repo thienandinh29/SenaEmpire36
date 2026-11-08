@@ -16,6 +16,9 @@ Need a different mock? Ask P1.
 | `topics-cached.response` | `GET /topics/cached` | |
 | `uploads.request-link` / `.response` | `POST /uploads` (link body) | file upload is multipart; response shape is the same |
 | `graph.response` | `GET /graph` | `edges` use the key `from`; node brightness = `p_known` |
+| `graph-review.response` | `GET /graph/review` | the generated map (concepts and edges) before mastery, with its `graph_revision` and `confirmed`; learner from the session cookie |
+| `graph-confirm.request` / `.response` | `POST /graph/confirm` | the learner explicitly accepts the revision they were shown; no learner id in the body; 409 if stale (`specs/graph-confirmation-contract/`) |
+| `topic-metrics.response` | `GET /topics/{id}/metrics` | synthetic numbers; `cost_usd: null` means unknown (`specs/topic-metrics/`) |
 | `placement-next.request` / `.question` / `.done` | `POST /placement/next` | `.question` and `.done` are real `placement.next_question` output; `.done` (4 questions, learner's real gap = booleans) has `gap_slug` and `item: null` |
 | `next-item.response` | `GET /next-item` | |
 | `attempts.request` | `POST /attempts` | `answer` = 0-based option index |

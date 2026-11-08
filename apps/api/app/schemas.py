@@ -339,6 +339,53 @@ class GraphView(_Contract):
     edges: list[Edge]
 
 
+# GET /graph/review?subject= and POST /graph/confirm (specs/graph-confirmation-contract/).
+# Identity comes from the learner session cookie (`nodetrail_learner`), never from the body.
+GRAPH_REVISION_PATTERN = r"^[a-f0-9]{64}$"  # sha256 of the generated map, set by the backend
+
+
+class GraphReview(_Contract):
+    learner_id: UUID
+    subject: str
+    graph_revision: str = Field(pattern=GRAPH_REVISION_PATTERN)
+    graph: KnowledgeGraph  # the generated concepts and prerequisite edges, before any mastery
+    confirmed: bool  # True only when this exact revision is already confirmed
+
+
+class GraphConfirm(_Contract):
+    subject: str = Field(min_length=1, max_length=80)
+    graph_revision: str = Field(
+        pattern=GRAPH_REVISION_PATTERN
+    )  # the revision the learner was shown
+
+
+class GraphConfirmed(_Contract):
+    learner_id: UUID
+    subject: str
+    graph_revision: str = Field(pattern=GRAPH_REVISION_PATTERN)
+    confirmed: Literal[True] = True
+
+
+# GET /topics/{topic_id}/metrics (specs/topic-metrics/): what the demo dashboard shows for one topic
+class TopicMetrics(_Contract):
+    topic_id: str
+    elapsed_seconds: float | None = Field(
+        default=None, ge=0
+    )  # wall time of the build; None = unknown
+    cost_usd: float | None = Field(
+        default=None, ge=0
+    )  # measured model-call cost; None = unknown, never estimated
+    items_generated: int = Field(ge=0)
+    items_verified: int = Field(ge=0)
+    items_dropped: int = Field(ge=0)  # failed verification, so never served
+
+    @model_validator(mode="after")
+    def _counts_fit(self) -> Self:
+        if self.items_verified + self.items_dropped > self.items_generated:
+            raise ValueError("verified plus dropped items cannot exceed generated items")
+        return self
+
+
 # POST /placement/next
 class PlacementRequest(_Contract):
     learner_id: str
