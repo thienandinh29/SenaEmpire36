@@ -202,11 +202,8 @@ def create_router(backend: LearningBackend | None = None) -> APIRouter:
             else await service().next_item(learner_id, subject)
         )
         if selection is None:
-            graph = await service().graph(learner_id, subject)
-            if not graph.nodes or not all(node.mastered for node in graph.nodes):
-                raise HTTPException(
-                    404, "Chưa có câu hỏi đã kiểm chứng phù hợp cho phần kiến thức cần củng cố."
-                )
+            # Exhausting new questions ends this session; mastery can still be low.
+            # The graph/review endpoints retain the actual assessment and gaps.
             return Response(status_code=204)
         return NextResponse(
             item=_safe_item(selection.item),

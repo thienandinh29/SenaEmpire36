@@ -14,6 +14,27 @@ function configure() {
 }
 const context = (path: string[]) => ({ params: Promise.resolve({ path }) });
 describe("same-origin API proxy", () => {
+  it.each([
+    ["http://127.0.0.1:3000", 200],
+    ["http://attacker.example", 403],
+    ["http://127.0.0.1:3001", 403],
+  ])(
+    "checks the actual destination host for origin %s",
+    async (origin, status) => {
+      configure();
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}")));
+      const response = await POST(
+        new NextRequest("http://localhost:3000/api/backend/uploads", {
+          method: "POST",
+          headers: { host: "127.0.0.1:3000", origin },
+          body: "test",
+        }),
+        context(["uploads"]),
+      );
+      expect(response.status).toBe(status);
+    },
+  );
+
   it("rejects upstream fixture responses instead of displaying them as live data", async () => {
     configure();
     vi.stubGlobal(

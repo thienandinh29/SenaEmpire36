@@ -259,7 +259,7 @@ def create_content_app(
     approved = confirmation if confirmation is not None else confirmations
     current = create_app(
         settings,
-        learning_backend=LearningBackend(store, approved),
+        learning_backend=LearningBackend(store, approved, models),
         tutor_backend=TutorBackend(
             store, models, approved, demo_uploads_enabled=settings.demo_uploads_enabled
         ),

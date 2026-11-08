@@ -33,7 +33,7 @@ def create_app(
     models = gateway or P3Gateway()
     app = platform_app(
         settings,
-        learning_backend=LearningBackend(store, confirmation),
+        learning_backend=LearningBackend(store, confirmation, models),
         topics_backend=TopicsBackend(store),
         tutor_backend=TutorBackend(
             store, models, confirmation, demo_uploads_enabled=settings.demo_uploads_enabled

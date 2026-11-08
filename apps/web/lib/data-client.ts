@@ -11,6 +11,7 @@ import type {
   PublicItem,
 } from "./contracts";
 import type { GraphReview } from "./decode";
+import { shuffleAnswers } from "./answer-order";
 import type { WebConfig } from "./config";
 import { vi as t } from "@/messages/vi";
 import {
@@ -93,13 +94,19 @@ export interface LearningClient {
 
 export function createLearningClient(config: WebConfig): LearningClient {
   const attemptIds = new WeakMap<PublicItem, string>();
+  const answerOrders = new WeakMap<PublicItem, number[]>();
+  function present(item: PublicItem) {
+    const shuffled = shuffleAnswers(item);
+    answerOrders.set(shuffled.item, shuffled.order);
+    return shuffled.item;
+  }
   async function request(
     path: string,
     init: RequestInit = {},
   ): Promise<unknown> {
     try {
       const timeout = AbortSignal.timeout(
-        path === "tutor/hint" ? 100000 : 25000,
+        /^(tutor\/hint|placement\/next|next-item)/.test(path) ? 180000 : 25000,
       );
       const response = await fetch(`/api/backend/${path}`, {
         ...init,
@@ -211,16 +218,20 @@ export function createLearningClient(config: WebConfig): LearningClient {
       if (raw === null) return null;
       const value = record(raw);
       return {
-        item: parseItem(value.item),
+        item: present(parseItem(value.item)),
         reason_vi: string(value.reason_vi),
         concept_slug:
           value.concept_slug == null ? undefined : string(value.concept_slug),
       };
     },
     async placement(learner_id, subject, _slug, signal) {
-      return parsePlacement(
+      const selection = parsePlacement(
         await post("placement/next", { learner_id, subject }, signal),
       );
+      return {
+        ...selection,
+        item: selection.item ? present(selection.item) : null,
+      };
     },
     async attempt(learner_id, item, _slug, answer, hints_used, signal) {
       if (!config.answerEncoding) throw new DataError("configuration");
@@ -234,7 +245,7 @@ export function createLearningClient(config: WebConfig): LearningClient {
             client_attempt_id: attemptIds.get(item),
             answer:
               config.answerEncoding === "index0"
-                ? answer
+                ? (answerOrders.get(item)?.[answer] ?? answer)
                 : item.options[answer]?.label,
             hints_used,
           },

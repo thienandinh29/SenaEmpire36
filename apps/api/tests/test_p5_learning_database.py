@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.content.repository import Repository
 from app.db import create_pool
-from app.engine import bkt
+from app.engine import bkt, survey
+from app.engine.graph import Graph as EngineGraph
 from app.guardrails.answerability import verify_item
 from app.main import create_content_app
 from tests.content.fakes import FakeGateway, topic
@@ -25,7 +26,8 @@ def test_session_to_practice_persists_engine_state(database_url: str) -> None:
         repo.save_material("python-conditions", sources, chunks)
         repo.save_graph("python-conditions", graph)
         checked = []
-        for draft in drafts:
+        for index, draft in enumerate(drafts):
+            draft = draft.model_copy(update={"difficulty": survey.DIFFICULTIES[index % 3]})
             fake = FakeGateway()
             fake.item = draft
             fake.chunks = [chunk for chunk in chunks if chunk.chunk_id in draft.chunk_ids]
@@ -52,6 +54,7 @@ def test_session_to_practice_persists_engine_state(database_url: str) -> None:
             assert accepted.status_code == 200, accepted.text
 
             observations = []
+            survey_history: dict[str, list[survey.Answer]] = {}
 
             def answer(
                 public: dict[str, Any], *, correct: bool, replay: bool = False
@@ -65,6 +68,11 @@ def test_session_to_practice_persists_engine_state(database_url: str) -> None:
                         "where m.learner_id=%s and c.slug=%s",
                         (learner, bundle.item.concept),
                     ).fetchone()
+                    previous = conn.execute(
+                        "select count(*) from attempts where learner_id=%s and item_id=%s",
+                        (learner, bundle.db_id),
+                    ).fetchone()
+                    assert previous is not None
                 prior = prior_row[0] if prior_row else 0.2
                 choice = next(
                     i for i, option in enumerate(bundle.item.options) if option.correct == correct
@@ -80,7 +88,22 @@ def test_session_to_practice_persists_engine_state(database_url: str) -> None:
                 assert response.status_code == 200, response.text
                 result: dict[str, Any] = response.json()
                 assert result["correct"] is correct
-                expected = bkt.update(prior, correct, bkt.DEFAULT_PARAMS["mcq"])
+                params = bkt.mcq_params(
+                    bundle.item.difficulty,
+                    len(bundle.item.options),
+                    correct=correct,
+                    previous_attempts=previous[0],
+                )
+                expected = prior if correct and previous[0] else bkt.update(prior, correct, params)
+                if result["traces"][0]["rule"] == "survey.elo_update":
+                    history = survey_history.setdefault(bundle.item.concept, [])
+                    history.append(
+                        survey.Answer(bundle.item.concept, correct, bundle.item.difficulty)
+                    )
+                    expected = survey.seed_mastery(
+                        EngineGraph.from_edges([bundle.item.concept], []),
+                        history,
+                    )[bundle.item.concept]
                 assert result["p_known"] == pytest.approx(expected)
                 with repo.transaction() as conn:
                     stored = conn.execute(
@@ -106,7 +129,7 @@ def test_session_to_practice_persists_engine_state(database_url: str) -> None:
                 return result
 
             placement_answers = 0
-            for _ in range(7):
+            for _ in range(3 * len(graph.concepts) + 1):
                 step = client.post("/placement/next", json=scope)
                 assert step.status_code == 200, step.text
                 selection = step.json()
@@ -115,13 +138,14 @@ def test_session_to_practice_persists_engine_state(database_url: str) -> None:
                 answer(selection["item"], correct=placement_answers > 0)
                 placement_answers += 1
             else:
-                pytest.fail("placement did not finish within its six-question budget")
+                pytest.fail("survey did not finish after three levels per concept")
+            assert placement_answers == 3 * len(graph.concepts)
 
-            practice = client.get("/next-item", params=scope)
+            practice = client.get("/next-item", params={**scope, "mode": "review"})
             assert practice.status_code == 200, practice.text
             wrong = answer(practice.json()["item"], correct=False, replay=True)
             assert any(trace["kind"] == "root_cause" for trace in wrong["traces"])
-            practice = client.get("/next-item", params=scope)
+            practice = client.get("/next-item", params={**scope, "mode": "review"})
             assert practice.status_code == 200, practice.text
             answer(practice.json()["item"], correct=True)
 
@@ -152,9 +176,9 @@ def test_session_to_practice_persists_engine_state(database_url: str) -> None:
             assert counts["decision_traces"] >= counts["attempts"]
             assert counts["learner_graph_confirmations"] == 1
             assert cards and all(due and state for due, state in cards)
-            assert session == (True, "practice", None)
+            assert session == (True, "review", None)
             assert client.get("/reviews/due", params={"learner_id": learner}).status_code == 200
-            assert models.calls == []
+            assert all(call["task"] == "generate_items" for call in models.calls)
             print(
                 json.dumps(
                     {

@@ -16,3 +16,18 @@ worker and web; see [shared database setup](docker/DATABASE.md).
 ```powershell
 apps/api/.venv/Scripts/python scripts/run_live.py --service check
 ```
+
+Run these in three separate terminals from the repository root. The worker is
+required: the API only saves uploads and queues topics; it does not generate lessons.
+Pass `--local-uploads` to both the API and worker to enable consented demo PDFs
+using private workspace storage (the flag is not persisted across restarts).
+
+```powershell
+apps/api/.venv/Scripts/python scripts/run_live.py --service api --local-uploads
+apps/api/.venv/Scripts/python scripts/run_live.py --service worker --local-uploads
+apps/api/.venv/Scripts/python scripts/run_live.py --service web
+```
+
+Open http://localhost:3000 or http://127.0.0.1:3000 and accept the demo data notice
+before uploading. PDF/DOCX files must be at most 20 MB. Scanned PDFs need OCR
+before upload; the reader currently extracts existing text only.

@@ -233,9 +233,18 @@ async def generate_items(
     allow_partial: bool = False,
     repair_feedback: str | None = None,
     misconception_descriptions: dict[tuple[str, str], str] | None = None,
+    difficulty_targets: list[float] | None = None,
+    existing_prompts: list[str] | None = None,
+    verification_attempts: int = 3,
 ) -> list[Item]:
     if count < 1 or count > 50:
         raise ValueError("count must be 1..50")
+    if not 1 <= verification_attempts <= 3:
+        raise ValueError("verification attempts must be between 1 and 3")
+    if difficulty_targets is not None and (
+        len(difficulty_targets) != count or any(not 0 <= value <= 1 for value in difficulty_targets)
+    ):
+        raise ValueError("one valid difficulty target is required per question")
     validate_references(chunks, sources, graph)
     require_model_permission(sources)
     all_chunks = chunks
@@ -254,6 +263,10 @@ async def generate_items(
             "count": count,
             "sources": [s.model_dump(mode="json") for s in sources],
             **({"repair_feedback": repair_feedback} if repair_feedback else {}),
+            **(
+                {"difficulty_targets": difficulty_targets} if difficulty_targets is not None else {}
+            ),
+            **({"avoid_questions": existing_prompts} if existing_prompts else {}),
         },
         schema=DraftBatch,
     )
@@ -300,14 +313,14 @@ async def generate_items(
     async def checked(item: Item) -> Item:
         async with limit:
             checked_item = item
-            for attempt in range(3):
+            for attempt in range(verification_attempts):
                 checked_item = await verify_item(checked_item, chunks, gateway, tier=tier)
                 if not checked_item.verification or checked_item.verification.reason not in {
                     "verification_error:GatewayError",
                     "verification_error:TimeoutError",
                 }:
                     break
-                if attempt < 2:
+                if attempt < verification_attempts - 1:
                     await asyncio.sleep(2**attempt)
             return checked_item
 

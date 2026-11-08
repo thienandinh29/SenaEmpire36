@@ -45,7 +45,7 @@ export function AssessmentReview({
             <h4>{t.live.reviewContent}</h4>
             <p>{concept?.description_vi}</p>
             {concept?.sources.map((url) => (
-              <SourceLink key={url} url={url} title={t.sources} />
+              <SourceLink key={url} url={url} title="Đọc lại tài liệu" />
             ))}
           </article>
         );

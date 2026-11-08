@@ -318,6 +318,11 @@ class LearningService:
                 if result.misconception
                 else None
             )
+            previous_row = conn.execute(
+                "select count(*) from attempts where learner_id=%s and item_id=%s",
+                (learner, db_item_id),
+            ).fetchone()
+            previous_attempts = previous_row[0] if previous_row else 0
             attempt = save_attempt(
                 conn,
                 learner_id=learner,
@@ -327,14 +332,19 @@ class LearningService:
                     "hints_used": request.hints_used,
                     "misconception": result.misconception,
                     "phase": phase,
+                    "difficulty": item.difficulty,
+                    "mastery_model": "bkt-item-v1",
                 },
                 correct=result.correct,
                 misconception_id=misconception[0] if misconception else None,
             )
-            p, trace = bkt.update_traced(
+            p, trace = bkt.update_item_traced(
                 mastery.get(slug, UNSEEN_P_KNOWN),
                 result.correct,
-                bkt.DEFAULT_PARAMS["mcq"],
+                difficulty=item.difficulty,
+                option_count=len(item.options),
+                hints_used=request.hints_used,
+                previous_attempts=previous_attempts,
                 concept_slug=slug,
                 now=now,
                 item_id=item.id,

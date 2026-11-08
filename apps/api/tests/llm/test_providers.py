@@ -17,6 +17,52 @@ from app.llm.providers import (
 from tests.llm.test_gateway import Answer
 
 
+def test_worker_transport_deadline_is_scoped_and_errors_are_classified() -> None:
+    from app.llm.providers import _post, provider_transport_timeout
+
+    client_type = httpx.AsyncClient
+    timeouts: list[float | None] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.extensions["timeout"]["read"])
+        raise httpx.ReadTimeout("private-token must not appear", request=request)
+
+    async def run() -> None:
+        for scoped in (True, False):
+            with pytest.raises(ProviderError, match="transport_ReadTimeout") as error:
+                if scoped:
+                    with provider_transport_timeout(90):
+                        await _post("https://example.com", "private-token", {})
+                else:
+                    await _post("https://example.com", "private-token", {})
+            assert "private-token" not in str(error.value)
+            assert error.value.retryable
+
+    with patch(
+        "app.llm.providers.httpx.AsyncClient",
+        side_effect=lambda **kw: client_type(transport=httpx.MockTransport(handle), **kw),
+    ):
+        asyncio.run(run())
+    assert timeouts == [90, 30]
+
+
+def test_invalid_provider_json_is_distinct_from_transport_failure() -> None:
+    from app.llm.providers import _post
+
+    client_type = httpx.AsyncClient
+    with (
+        patch(
+            "app.llm.providers.httpx.AsyncClient",
+            side_effect=lambda **kw: client_type(
+                transport=httpx.MockTransport(lambda request: httpx.Response(200, text="bad json")),
+                **kw,
+            ),
+        ),
+        pytest.raises(ProviderError, match="invalid_json_response"),
+    ):
+        asyncio.run(_post("https://example.com", "private-token", {}))
+
+
 def test_vertex_payload_and_usage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
     monkeypatch.setenv("VERTEX_LOCATION", "global")

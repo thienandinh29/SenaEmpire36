@@ -16,6 +16,7 @@ from app.graders.mcq import Item as GraderItem
 from app.rag.embed import EMBEDDING_DIM, AsyncEmbedder, EmbeddingError, to_pgvector
 from app.research.agent import ChosenSource, detect_license
 from app.research.pipeline import ChunkRetriever, GraphDraft, PreparedChunk, Progress
+from app.research.relevance import UploadCoverage
 from app.schemas import Citation
 from app.uploads.metadata import UploadMetadata
 from app.uploads.reader import Document
@@ -137,9 +138,7 @@ class ContentPorts:
             selected = [(slug, source) for slug, source in selected if slug == choice.subject]
         return [ChosenSource(s.title, s.publisher, s.url, s.license, "") for _, s in selected[:3]]
 
-    async def assess_upload(self, goal: str, upload: Document):
-        from app.research.relevance import UploadCoverage
-
+    async def assess_upload(self, goal: str, upload: Document) -> UploadCoverage:
         reply = await self.gateway.generate(
             task="assess_upload",
             tier="free",
@@ -458,11 +457,41 @@ class ContentPorts:
             if len(released) >= count and not missing:
                 break
             targets = missing or lesson_concepts
+            lesson_urls = {source.source_id: source.url for source in lesson_sources}
+            chunk_sources = {chunk.chunk_id: chunk.source_id for chunk in lesson_material}
             scoped_graph = self.graph.model_copy(
                 update={
-                    "concepts": [c for c in self.graph.concepts if c.slug in targets],
+                    "concepts": [
+                        c.model_copy(
+                            update={
+                                "chunk_ids": [
+                                    cid for cid in c.chunk_ids if cid in lesson_chunk_ids
+                                ],
+                                "sources": sorted(
+                                    {
+                                        lesson_urls[chunk_sources[cid]]
+                                        for cid in c.chunk_ids
+                                        if cid in lesson_chunk_ids
+                                    }
+                                ),
+                            }
+                        )
+                        for c in self.graph.concepts
+                        if c.slug in targets
+                    ],
                     "edges": [
-                        e for e in self.graph.edges if e.prerequisite in targets and e.to in targets
+                        e.model_copy(
+                            update={
+                                "chunk_ids": [cid for cid in e.chunk_ids if cid in lesson_chunk_ids]
+                            }
+                        )
+                        for e in self.graph.edges
+                        if e.prerequisite in targets
+                        and e.to in targets
+                        and set(e.chunk_ids) & lesson_chunk_ids
+                    ],
+                    "source_chunk_ids": [
+                        cid for cid in self.graph.source_chunk_ids if cid in lesson_chunk_ids
                     ],
                 }
             )

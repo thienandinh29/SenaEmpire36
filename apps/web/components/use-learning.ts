@@ -235,6 +235,7 @@ export function useLearning(config: WebConfig) {
     )
       return;
     await run("lesson", async () => {
+      error("hint");
       const version = epoch.current;
       setReviewMode(adaptive);
       let done = placementDone;
@@ -298,12 +299,27 @@ export function useLearning(config: WebConfig) {
         : current,
     );
   }
-  async function attempt() {
-    if (!lesson || lesson.answer === null || lesson.result) return;
-    const current = lesson;
+  async function attempt(selectedAnswer?: number) {
+    if (
+      !lesson ||
+      lesson.result ||
+      locks.current.has("attempt") ||
+      locks.current.has("lesson") ||
+      locks.current.has("hint")
+    )
+      return;
+    const answer = selectedAnswer ?? lesson.answer;
+    if (
+      answer === null ||
+      !Number.isInteger(answer) ||
+      answer < 0 ||
+      answer >= lesson.item.options.length
+    )
+      return;
+    const current = { ...lesson, answer };
     setLesson((value) =>
       value?.item === current.item
-        ? { ...value, answerCommitted: true }
+        ? { ...value, answer, answerCommitted: true }
         : value,
     );
     await run("attempt", async () => {
@@ -328,7 +344,13 @@ export function useLearning(config: WebConfig) {
     });
   }
   async function hint(tier: Tier) {
-    if (!lesson || lesson.hints.length >= 3) return;
+    if (
+      !lesson ||
+      lesson.result ||
+      lesson.answerCommitted ||
+      lesson.hints.length >= 3
+    )
+      return;
     const current = lesson;
     await run("hint", async () => {
       const version = epoch.current;

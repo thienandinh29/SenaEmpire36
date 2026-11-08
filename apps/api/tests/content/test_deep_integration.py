@@ -5,6 +5,7 @@ import json
 import re
 from collections.abc import Sequence
 from typing import Any
+from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import httpx
@@ -26,6 +27,62 @@ from app.research.runtime import research_scope
 from app.research.search import BraveSearch, TavilySearch
 from app.uploads.reader import Document, Page
 from tests.content.test_runtime_database import database_url as database_url
+
+
+def test_question_generation_projects_full_pdf_graph_to_retrieved_lesson() -> None:
+    from app.content.models import Graph, validate_references
+    from app.research.pipeline import GraphDraft, PreparedChunk
+    from tests.content.fakes import topic
+
+    sources, chunks, graph, _ = topic()
+    selected = chunks[0]
+    outside = selected.model_copy(update={"chunk_id": uuid4()})
+    graph = graph.model_copy(
+        update={
+            "concepts": [
+                c.model_copy(update={"chunk_ids": [selected.chunk_id, outside.chunk_id]})
+                for c in graph.concepts
+            ],
+            "edges": [e.model_copy(update={"chunk_ids": [outside.chunk_id]}) for e in graph.edges],
+            "source_chunk_ids": [selected.chunk_id, outside.chunk_id],
+        }
+    )
+    with pytest.raises(ValueError, match="unknown graph citation"):
+        validate_references([selected], sources, graph)
+    original = graph.model_dump()
+    repository = MagicMock(spec=Repository)
+    repository.item_ids.return_value = []
+    repository.misconception_descriptions.return_value = {}
+    ports = ContentPorts(repository, DeepModels(), "scope-regression")
+    ports.sources, ports.chunks, ports.graph = sources, [selected, outside], graph
+
+    class ReachedGenerator(RuntimeError):
+        pass
+
+    async def check_scope(
+        scoped: Graph, material: list[Chunk], used_sources: list[Source], *args: Any, **kwargs: Any
+    ) -> None:
+        Graph.model_validate(scoped.model_dump(by_alias=True))
+        validate_references(material, used_sources, scoped)
+        assert all(c.chunk_ids == [selected.chunk_id] for c in scoped.concepts)
+        assert scoped.edges == []
+        assert scoped.source_chunk_ids == [selected.chunk_id]
+        raise ReachedGenerator
+
+    with patch("app.content.ports.generate_items", check_scope), pytest.raises(ReachedGenerator):
+        asyncio.run(
+            ports.build_items(
+                GraphDraft(subject_slug=ports.subject, graph={}, supported=True),
+                [
+                    PreparedChunk(
+                        id=str(selected.chunk_id), text=selected.content, source_uri=sources[0].url
+                    )
+                ],
+                "pro",
+                6,
+            )
+        )
+    assert graph.model_dump() == original
 
 
 class Vectors:
@@ -246,8 +303,11 @@ class DeepModels:
                     {
                         "id": f"draft-{n}",
                         "concept": concept["slug"],
-                        "difficulty": 0.4,
-                        "prompt_vi": f"Fixture question {n} about {concept['name_vi']}?",
+                        "difficulty": payload.get("difficulty_targets", [0.4] * payload["count"])[
+                            n
+                        ],
+                        "prompt_vi": ("Refill " if payload.get("avoid_questions") else "")
+                        + f"Fixture question {n} about {concept['name_vi']}?",
                         "source": concept["sources"][0],
                         "source_ids": [concept["sources"][0]],
                         "chunk_ids": concept["chunk_ids"],
@@ -437,7 +497,7 @@ def test_deep_http_worker_to_graph_and_learning(
                 == 200
             )
             step = client.post("/placement/next", json=scope)
-            assert step.status_code == 200
+            assert step.status_code == 200, step.text
             public = step.json()["item"]
             assert set(public) == {"id", "kind", "prompt_vi", "options"}
             graded = client.post(

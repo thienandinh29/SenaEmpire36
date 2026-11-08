@@ -116,6 +116,8 @@ def main() -> None:
         from app.content.ports import process_claimed_job
         from app.content.repository import Repository
         from app.db import create_pool
+        from app.llm.gateway import gateway_scope
+        from app.llm.providers import default_gateway, provider_transport_timeout
         from app.research.runtime import retrieval_configuration, worker_retriever
 
         retrieval_subject, retrieval_k = retrieval_configuration()
@@ -125,19 +127,23 @@ def main() -> None:
             repository = Repository(lambda: pool)
             repository.require_schema()
             gateway = P3Gateway()
+            # PDF graph/item generation can outlast the interactive 30s HTTP limit.
+            # Leave room for two attempts within the pipeline's existing job deadline.
+            model_gateway = default_gateway(request_timeout=95, total_timeout=195)
             retriever = worker_retriever(pool)
 
             def process(job: dict[str, Any]) -> None:
-                asyncio.run(
-                    process_claimed_job(
-                        repository,
-                        gateway,
-                        job,
-                        retriever=retriever,
-                        retrieval_subject=retrieval_subject,
-                        retrieval_k=min(retrieval_k, 6),
+                with gateway_scope(model_gateway), provider_transport_timeout(90):
+                    asyncio.run(
+                        process_claimed_job(
+                            repository,
+                            gateway,
+                            job,
+                            retriever=retriever,
+                            retrieval_subject=retrieval_subject,
+                            retrieval_k=min(retrieval_k, 6),
+                        )
                     )
-                )
 
             loop(
                 database_url,

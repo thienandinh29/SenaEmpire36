@@ -1,3 +1,85 @@
+.journal-ui .mastery-chart {
+  margin-bottom: 28px;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid var(--journal-rule);
+  border-radius: 12px;
+  background: var(--journal-page);
+}
+.mastery-chart header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.journal-ui .mastery-chart h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: var(--journal-ink);
+}
+.mastery-chart header p,
+.mastery-chart-note,
+.mastery-chart-bars small {
+  color: var(--journal-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.mastery-chart header p {
+  margin: 0;
+}
+.mastery-chart-count {
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--journal-tint);
+  color: var(--journal-accent);
+  font-size: 12px;
+}
+.mastery-chart-bars {
+  display: grid;
+  gap: 22px;
+  list-style: none;
+  padding: 0;
+  margin: 26px 0 20px;
+}
+.mastery-chart-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  margin-bottom: 9px;
+}
+.mastery-chart-label span {
+  overflow-wrap: anywhere;
+}
+.mastery-chart-label strong {
+  color: var(--journal-accent);
+  font-variant-numeric: tabular-nums;
+}
+.mastery-chart-track {
+  height: 12px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--journal-rule);
+}
+.mastery-chart-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--journal-accent);
+}
+.mastery-chart-track[data-mastered="true"] > span {
+  background: #52816a;
+}
+.mastery-chart-track[data-unassessed="true"] > span {
+  background: var(--journal-line);
+}
+.mastery-chart-note {
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--journal-rule);
+}
+
 /* Local experiment: an editorial field journal, with the atlas as its main surface. */
 .journal-ui {
   --journal-paper: #fbf8f0;
@@ -71,6 +153,22 @@
 }
 .journal-ui .sidebar-sena span {
   color: var(--journal-accent);
+  justify-content: center;
+}
+.journal-ui .sidebar-sena > .sena-character {
+  display: block;
+  margin: -12px auto 8px;
+}
+.journal-ui .sidebar-sena p {
+  text-align: center;
+}
+.journal-ui .topbar-mascot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.journal-ui .topbar-mascot .sena-character {
+  display: block;
 }
 .journal-ui .sidebar-sena p {
   color: var(--journal-secondary);

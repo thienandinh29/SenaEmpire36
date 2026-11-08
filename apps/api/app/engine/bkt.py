@@ -79,6 +79,92 @@ def is_mastered(p_known: float, threshold: float = MASTERY_THRESHOLD) -> bool:
     return p_known >= threshold
 
 
+def mcq_params(
+    difficulty: float,
+    option_count: int,
+    *,
+    correct: bool,
+    hints_used: int = 0,
+    previous_attempts: int = 0,
+) -> BKTParams:
+    """Conservative initial parameters for the EXISTING BKT update.
+
+    Non-mastery includes partial understanding, so guess can exceed 1/n. Easy
+    items have more non-mastery successes; hard items have more knowledgeable
+    slips. These are starting priors, not parameters fitted to learner data.
+    """
+    _check_probability(difficulty)
+    if option_count < 2 or hints_used < 0 or previous_attempts < 0:
+        raise ValueError("invalid question context")
+    chance = 1 / option_count
+    guess = chance + (1 - chance) * 0.8 * (1 - difficulty)
+    known_correct = 1 - (DEFAULT_PARAMS["mcq"].p_slip / 2 + 0.25 * difficulty)
+    # Shrink uncalibrated item success rates toward a common rate. Hints and
+    # repeated exposure further reduce their separation, within standard BKT.
+    reliability = 0.5 / (1 + 2 * hints_used + previous_attempts)
+    midpoint = (known_correct + guess) / 2
+    half_gap = (known_correct - guess) * reliability / 2
+    return BKTParams(
+        p_init=DEFAULT_PARAMS["mcq"].p_init,
+        p_transit=0.01 * difficulty if correct and not hints_used and not previous_attempts else 0,
+        p_slip=1 - (midpoint + half_gap),
+        p_guess=midpoint - half_gap,
+    )
+
+
+def update_item_traced(
+    p_known: float,
+    correct: bool,
+    *,
+    difficulty: float,
+    option_count: int,
+    concept_slug: str,
+    now: datetime,
+    hints_used: int = 0,
+    previous_attempts: int = 0,
+    item_id: str | None = None,
+    misconception: str | None = None,
+) -> tuple[float, DecisionTrace]:
+    """Pass item context into the existing Bayesian formula, with a replay guard."""
+    params = mcq_params(
+        difficulty,
+        option_count,
+        correct=correct,
+        hints_used=hints_used,
+        previous_attempts=previous_attempts,
+    )
+    new_p, trace = update_traced(
+        p_known,
+        correct,
+        params,
+        concept_slug=concept_slug,
+        now=now,
+        item_id=item_id,
+        misconception=misconception,
+    )
+    if correct and previous_attempts:
+        # Seeing the same answer again is not independent mastery evidence.
+        return p_known, trace.model_copy(
+            update={
+                "posterior": p_known,
+                "rule": "bkt.repeated_correct",
+                "rule_vi": (
+                    "Trả lời đúng câu đã làm: giữ mức hiểu hiện tại; "
+                    "cần câu mới để xác nhận tiến bộ."
+                ),
+            }
+        )
+    band = "dễ" if difficulty < 0.375 else "vừa" if difficulty < 0.625 else "khó"
+    context = (
+        f" Câu {band} (độ khó {difficulty:.2f}); xác suất học thêm {100 * params.p_transit:.2f}%."
+    )
+    if hints_used:
+        context += " Đã dùng gợi ý nên bằng chứng được tính nhẹ hơn."
+    if previous_attempts:
+        context += " Câu lặp lại nên giảm trọng số bằng chứng."
+    return new_p, trace.model_copy(update={"rule_vi": trace.rule_vi + context})
+
+
 def update_traced(
     p_known: float,
     correct: bool,

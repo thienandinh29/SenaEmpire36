@@ -9,3 +9,9 @@ No destructive migration or rewrite of historical attempts. Preserve wrong first
 Adaptive review reads current graph mastery, checks transitive prerequisites and
 returns to weak foundations before revisiting the originating concept. Review
 updates mastery and scheduling without changing first-answer assessment counts.
+
+The content runtime now surveys three direct levels per concept (easy, medium,
+hard), using difficulty-aware initial Elo estimates instead of the legacy
+six-question graph walk. See `specs/multilevel-survey/`. Review refills can append
+independently verified questions from the same concept's material. Presentation
+shuffles options and translates selections back to canonical indices for grading.

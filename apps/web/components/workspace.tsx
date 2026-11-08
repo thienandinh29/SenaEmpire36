@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Dialog } from "radix-ui";
 import {
   ArrowRight,
@@ -8,8 +8,6 @@ import {
   Check,
   Compass,
   GitBranch,
-  Layers3,
-  Leaf,
   Lightbulb,
   Map,
   Plus,
@@ -24,6 +22,7 @@ import { JournalOverview } from "./journal-overview";
 import { KnowledgeMap } from "./knowledge-map";
 import { SourceLink } from "./source-link";
 import { AssessmentReview } from "./assessment-review";
+import { MasteryChart } from "./mastery-chart";
 import { AdaptiveReview } from "./adaptive-review";
 import { TracePanel } from "./trace-panel";
 import { ErrorState, Loading } from "./async-state";
@@ -31,13 +30,12 @@ import { useLearning } from "./use-learning";
 import type { WebConfig } from "@/lib/config";
 import { vi as t } from "@/messages/vi";
 
-type Screen = "overview" | "map" | "learn" | "reviews" | "sources" | "research";
+type Screen = "overview" | "map" | "learn" | "reviews" | "research";
 const navigation = [
   { id: "overview", icon: Compass, label: t.nav.overview },
   { id: "map", icon: Map, label: t.nav.map },
   { id: "learn", icon: BookOpen, label: t.nav.learn },
   { id: "reviews", icon: RotateCcw, label: t.nav.reviews },
-  { id: "sources", icon: Layers3, label: t.sources },
 ] as const;
 
 export function Workspace({ config }: { config: WebConfig }) {
@@ -52,51 +50,10 @@ export function Workspace({ config }: { config: WebConfig }) {
   const [consent, setConsent] = useState(false);
   const uploaded = useRef<{ file: File; id: string } | null>(null);
   const creating = useRef(false);
-  const [mode, setMode] = useState<"quick" | "deep">("deep");
-  const [health, setHealth] = useState<"checking" | "ok" | "error">("checking");
-  const [healthVersion, setHealthVersion] = useState(0);
-  const [embeddingUnavailable, setEmbeddingUnavailable] = useState<
-    string | null
-  >(null);
   const mainRef = useRef<HTMLElement>(null);
   const concept = learning.concepts.find((value) => value.slug === selected);
-  const sources = snapshot?.sources || [];
   const inFlight = Object.values(busy).some(Boolean);
-  const tier = mode === "deep" ? "pro" : "free";
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/backend/health", {
-      cache: "no-store",
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("unavailable");
-        const state: unknown = await response.json();
-        setEmbeddingUnavailable(
-          state &&
-            typeof state === "object" &&
-            "embedding" in state &&
-            state.embedding !== "ready"
-            ? String(state.embedding)
-            : null,
-        );
-        if (
-          state &&
-          typeof state === "object" &&
-          "db" in state &&
-          state.db === "ok" &&
-          "status" in state &&
-          state.status === "ok"
-        ) {
-          if (!controller.signal.aborted) setHealth("ok");
-        } else throw new Error("unavailable");
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setHealth("error");
-      });
-    return () => controller.abort();
-  }, [healthVersion]);
+  const tier = "pro";
 
   function navigate(next: Screen) {
     if (next === "learn" && !confirmed) next = "map";
@@ -123,7 +80,7 @@ export function Workspace({ config }: { config: WebConfig }) {
       const created = await learning.createTopic({
         goal_vi: goal.trim() ? goal.trim().normalize("NFC") : undefined,
         upload_id: file ? uploaded.current?.id : undefined,
-        mode,
+        mode: "deep",
         tier,
       });
       if (created) {
@@ -180,10 +137,8 @@ export function Workspace({ config }: { config: WebConfig }) {
         </Button>
         <div className="sidebar-bottom">
           <div className="sidebar-sena">
-            <span>
-              <Leaf size={18} />
-              {t.tagline}
-            </span>
+            <Sena size={128} mood="hello" />
+            <span>{t.sena}</span>
             <p>{t.senaTag}</p>
           </div>
           <div className="profile">
@@ -208,7 +163,12 @@ export function Workspace({ config }: { config: WebConfig }) {
           </div>
           <div className="topbar-right">
             <ThemeToggle />
-            <span className="pill">{t.live.badge}</span>
+            <span className="topbar-mascot" title={t.sena}>
+              <Sena
+                size={52}
+                mood={busy.lesson || busy.create ? "think" : "hello"}
+              />
+            </span>
             <Button variant="secondary" onClick={() => setTopicOpen(true)}>
               <Plus size={16} />
               {t.newTopic}
@@ -223,33 +183,6 @@ export function Workspace({ config }: { config: WebConfig }) {
               </button>
             ))}
           </nav>
-          <div
-            className={health === "error" ? "error-state" : "mode-notice"}
-            role="status"
-          >
-            <p>
-              {health === "checking"
-                ? t.live.checking
-                : health === "ok"
-                  ? t.live.connected
-                  : embeddingUnavailable
-                    ? embeddingUnavailable === "loading"
-                      ? t.live.embeddingUnavailable
-                      : embeddingUnavailable === "model_mismatch"
-                        ? t.live.embeddingMismatch
-                        : t.live.embeddingError
-                    : t.live.unavailable}
-            </p>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setHealth("checking");
-                setHealthVersion((v) => v + 1);
-              }}
-            >
-              {t.live.checkConnection}
-            </Button>
-          </div>
           {learning.topicId && (
             <button
               className="text-button"
@@ -402,15 +335,22 @@ export function Workspace({ config }: { config: WebConfig }) {
                 }
                 description={
                   learning.completed && learning.reviewMode
-                    ? "Các kiến thức đã đạt ngưỡng nắm vững. Bạn có thể ôn tiếp khi đến hạn."
+                    ? t.live.reviewFinishedHelp
                     : learning.completed
                       ? t.live.assessmentHelp
                       : lesson?.reason || t.live.noQuestion
                 }
               />
+              {((learning.assessment?.answered ?? 0) > 0 ||
+                learning.placementDone ||
+                learning.completed) && (
+                <MasteryChart graph={graph} assessment={learning.assessment} />
+              )}
               <div className="learning-grid">
                 <section className="panel lesson-panel">
-                  {busy.lesson && <Loading />}
+                  {busy.lesson && (
+                    <Loading label="Đang chọn hoặc tạo câu hỏi từ tài liệu và kiểm chứng đáp án…" />
+                  )}
                   <ErrorState
                     error={errors.lesson}
                     onRetry={() => void learning.loadLesson()}
@@ -428,11 +368,6 @@ export function Workspace({ config }: { config: WebConfig }) {
                           concepts={learning.concepts}
                         />
                       )}
-                      {learning.graph.nodes.map((node) => (
-                        <p key={node.slug}>
-                          {node.name_vi}: {Math.round(node.p_known * 100)}%
-                        </p>
-                      ))}
                       <Button onClick={() => navigate("reviews")}>
                         {t.live.reviewNext}
                       </Button>
@@ -476,6 +411,7 @@ export function Workspace({ config }: { config: WebConfig }) {
                           !!lesson.result ||
                           lesson.answerCommitted ||
                           busy.attempt ||
+                          busy.hint ||
                           busy.lesson
                         }
                       >
@@ -489,7 +425,7 @@ export function Workspace({ config }: { config: WebConfig }) {
                               type="radio"
                               name={lesson.item.id}
                               checked={lesson.answer === index}
-                              onChange={() => learning.setAnswer(index)}
+                              onChange={() => void learning.attempt(index)}
                             />
                             <span className="answer-letter">
                               {String.fromCharCode(65 + index)}
@@ -501,25 +437,16 @@ export function Workspace({ config }: { config: WebConfig }) {
                       <div className="question-actions">
                         <Button
                           disabled={
-                            lesson.answer === null ||
-                            !!lesson.result ||
+                            !lesson.result ||
                             busy.attempt ||
                             busy.lesson ||
                             busy.hint
                           }
-                          onClick={() => void learning.attempt()}
+                          onClick={() => void learning.loadLesson()}
                         >
-                          {busy.attempt ? t.flow.saving : t.check}
+                          {busy.attempt ? t.flow.saving : t.live.next}
+                          <ArrowRight size={16} />
                         </Button>
-                        {lesson.result && (
-                          <Button
-                            disabled={busy.lesson || busy.attempt}
-                            onClick={() => void learning.loadLesson()}
-                          >
-                            {t.live.next}
-                            <ArrowRight size={16} />
-                          </Button>
-                        )}
                       </div>
                       {lesson.result && (
                         <div
@@ -576,6 +503,8 @@ export function Workspace({ config }: { config: WebConfig }) {
                       busy.hint ||
                       busy.lesson ||
                       busy.attempt ||
+                      !!lesson.result ||
+                      lesson.answerCommitted ||
                       lesson.hints.length >= 3
                     }
                     onClick={() => void learning.hint(tier)}
@@ -618,23 +547,6 @@ export function Workspace({ config }: { config: WebConfig }) {
               />
             </>
           )}
-
-          {screen === "sources" && (
-            <>
-              <PageHeading title={t.sources} description={t.live.sources} />
-              <section className="panel">
-                {!sources.length && <p>{t.live.sourcesEmpty}</p>}
-                {sources.map((source) => (
-                  <article key={source.url}>
-                    <SourceLink title={source.title} url={source.url} />
-                    <p>
-                      {source.publisher} · {source.license}
-                    </p>
-                  </article>
-                ))}
-              </section>
-            </>
-          )}
         </main>
       </div>
 
@@ -664,30 +576,9 @@ export function Workspace({ config }: { config: WebConfig }) {
                 placeholder={t.placeholder}
                 disabled={busy.create}
               />
-              <div className="mode-options">
-                <button
-                  type="button"
-                  aria-pressed={mode === "quick"}
-                  className={mode === "quick" ? "selected-mode" : ""}
-                  onClick={() => setMode("quick")}
-                >
-                  <strong>{t.quick}</strong>
-                  <small>
-                    {t.live.quick} · {t.live.standard}
-                  </small>
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={mode === "deep"}
-                  className={mode === "deep" ? "selected-mode" : ""}
-                  onClick={() => setMode("deep")}
-                >
-                  <strong>{t.deep}</strong>
-                  <small>
-                    {t.live.deep} · {t.live.advanced}
-                  </small>
-                </button>
-              </div>
+              <p className="fine-print">
+                <strong>{t.deep}</strong> · {t.live.deep}
+              </p>
               <label className="field-label" htmlFor="lesson-file">
                 {t.flow.uploadChoose}
               </label>
@@ -741,8 +632,7 @@ export function Workspace({ config }: { config: WebConfig }) {
                   disabled={
                     (!goal.trim() && !file) ||
                     inFlight ||
-                    (Boolean(file) && !consent) ||
-                    health !== "ok"
+                    (Boolean(file) && !consent)
                   }
                 >
                   {busy.create ? t.live.creating : t.live.newTopic}

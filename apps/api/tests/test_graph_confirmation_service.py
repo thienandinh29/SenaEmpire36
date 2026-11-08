@@ -177,7 +177,8 @@ def test_p2_factory_uses_durable_confirmation_without_bypassing_content_gate(
         assert client.post("/placement/next", json=request).status_code == 503
         _, chunks, _, items = topic()
         checked = []
-        for item in items:
+        for index, item in enumerate(items):
+            item = item.model_copy(update={"difficulty": (0.25, 0.5, 0.75)[index % 3]})
             gateway = FakeGateway()
             gateway.item = item
             gateway.chunks = [chunk for chunk in chunks if chunk.chunk_id in item.chunk_ids]

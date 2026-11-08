@@ -45,6 +45,28 @@ def test_transient_verifier_error_rechecks_hint_without_releasing_failed_draft()
     assert result is not None and result.citations
 
 
+def test_rejected_hint_gets_one_new_independently_verified_draft() -> None:
+    class Repair(FakeGateway):
+        checks = 0
+        drafts = 0
+
+        async def generate(self, **kwargs):
+            if kwargs["task"] == "generate_hint":
+                self.drafts += 1
+                self.overrides = {}
+            if kwargs["task"] == "verify_hint":
+                self.checks += 1
+                self.overrides = {"level_appropriate": self.checks > 1}
+            return await super().generate(**kwargs)
+
+    fake = Repair()
+    item = asyncio.run(verify_item(fake.item, fake.chunks, fake))
+    sources, _, _, _ = topic()
+    result = asyncio.run(hint(item, 1, None, fake.chunks, "pro", gateway=fake, sources=sources))
+    assert result is not None and result.citations
+    assert fake.drafts == 2 and fake.checks == 2
+
+
 def test_verified_hint_payload_has_citations_and_no_internal_metadata() -> None:
     fake, item = prepared()
     sources, _, _, _ = topic()

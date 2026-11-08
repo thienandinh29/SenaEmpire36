@@ -90,13 +90,13 @@ def read_file(filename: str, body: bytes, source_uri: str, *, query: str | None 
             pages: list[Page] = []
             size = 0
             for index in selected:
-                text = extracted.get(index)
-                if text is None:
-                    text = reader.pages[index].extract_text() or ""
-                size += len(text)
+                page_text = extracted.get(index)
+                if page_text is None:
+                    page_text = reader.pages[index].extract_text() or ""
+                size += len(page_text)
                 if size > MAX_TEXT:
                     raise SourceError("Văn bản vượt giới hạn xử lý.")
-                pages.append(Page(index + 1, text))
+                pages.append(Page(index + 1, page_text))
             return _document(source_uri, pages, "application/pdf")
         if suffix == ".docx":
             with ZipFile(BytesIO(body)) as archive:

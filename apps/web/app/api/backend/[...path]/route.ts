@@ -20,11 +20,16 @@ async function proxy(
     return new Response(null, { status: 404 });
   const path = segments.join("/");
   if (!allowed.test(path)) return new Response(null, { status: 404 });
-  if (
-    request.method === "POST" &&
-    request.headers.get("origin") !== request.nextUrl.origin
-  )
-    return new Response(null, { status: 403 });
+  if (request.method === "POST") {
+    // Next normalizes loopback URLs to localhost; Host preserves the browser's
+    // actual destination so 127.0.0.1 remains a valid same-origin local URL.
+    const host = request.headers.get("host");
+    const requestOrigin = host
+      ? `${request.nextUrl.protocol}//${host}`
+      : request.nextUrl.origin;
+    if (request.headers.get("origin") !== requestOrigin)
+      return new Response(null, { status: 403 });
+  }
   const origin = process.env.NODETRAIL_API_URL;
   const key = process.env.NODETRAIL_API_KEY;
   const keyHeader = process.env.NODETRAIL_API_KEY_HEADER || "X-API-Key";
@@ -69,7 +74,11 @@ async function proxy(
       headers.set("X-Demo-Upload-Consent", "demo-v1");
     const signals = AbortSignal.any([
       request.signal,
-      AbortSignal.timeout(path === "tutor/hint" ? 100000 : 25000),
+      AbortSignal.timeout(
+        ["tutor/hint", "placement/next", "next-item"].includes(path)
+          ? 180000
+          : 25000,
+      ),
     ]);
     let body: Uint8Array | undefined;
     if (request.method === "POST") {

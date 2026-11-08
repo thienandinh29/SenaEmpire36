@@ -55,7 +55,7 @@ def learning_data(database_url: str) -> tuple[str, str, str]:
     return str(learner[0]), subject, item_id
 
 
-def test_real_routes_update_mastery_review_and_audit(
+def test_real_routes_do_not_promote_repeated_answers_to_mastery(
     database_url: str,
     learning_data: tuple[str, str, str],
 ) -> None:
@@ -93,11 +93,10 @@ def test_real_routes_update_mastery_review_and_audit(
             response = client.post("/attempts", json={**body, "answer": 0})
             assert response.status_code == 200, response.text
             actual = response.json()
-            prior = bkt.update(prior, True, bkt.DEFAULT_PARAMS["mcq"])
             assert actual["p_known"] == pytest.approx(prior)
-        assert actual["mastered"]
-        assert any(t["kind"] == "review" for t in actual["traces"])
-        assert client.get("/graph", params=query).json()["nodes"][0]["mastered"]
+        assert not actual["mastered"]
+        assert not any(t["kind"] == "review" for t in actual["traces"])
+        assert not client.get("/graph", params=query).json()["nodes"][0]["mastered"]
         assert client.get("/reviews/due", params={"learner_id": learner}).status_code == 200
         assert (
             client.post(
@@ -112,7 +111,7 @@ def test_real_routes_update_mastery_review_and_audit(
         ).fetchone() == (9,)
         assert conn.execute(
             "select count(*) from review_cards where learner_id=%s", (learner,)
-        ).fetchone() == (1,)
+        ).fetchone() == (0,)
         count = conn.execute(
             "select count(*) from decision_traces where learner_id=%s and attempt_id is not null",
             (learner,),
@@ -159,7 +158,7 @@ def test_placement_records_answers_and_finishes_without_reset(
             == 200
         )
         learned = client.get("/graph", params=body).json()
-        assert learned != before
+        assert learned == before
         assert client.post("/placement/next", json=body).json()["done"]
         assert client.get("/graph", params=body).json() == learned
     with psycopg.connect(database_url) as conn:
@@ -197,7 +196,7 @@ def test_attempt_transaction_rolls_back_on_trace_failure(
             ).fetchone() == (0,)
 
 
-def test_concurrent_attempts_preserve_both_updates(
+def test_concurrent_attempts_preserve_answers_without_counting_repeated_evidence(
     database_url: str,
     learning_data: tuple[str, str, str],
 ) -> None:
@@ -217,10 +216,11 @@ def test_concurrent_attempts_preserve_both_updates(
         actual = conn.execute(
             "select p_known from mastery where learner_id=%s", (learner,)
         ).fetchone()
-        expected = bkt.update(
-            bkt.update(0.2, True, bkt.DEFAULT_PARAMS["mcq"]), True, bkt.DEFAULT_PARAMS["mcq"]
-        )
+        expected = bkt.update(0.2, True, bkt.mcq_params(0.5, 2, correct=True))
         assert actual and actual[0] == pytest.approx(expected)
+        assert conn.execute(
+            "select count(*) from attempts where learner_id=%s", (learner,)
+        ).fetchone() == (2,)
 
 
 @pytest.mark.parametrize("answer", [True, -1, 2, "Đúng", None])

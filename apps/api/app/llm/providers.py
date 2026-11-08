@@ -26,19 +26,25 @@ from app.llm.gateway import (
     schema_instruction,
 )
 
-_diagnostic_timeout: ContextVar[float] = ContextVar("diagnostic_http_timeout", default=30)
+_transport_timeout: ContextVar[float] = ContextVar("provider_http_timeout", default=30)
+# Existing diagnostic tooling inspects this context directly.
+_diagnostic_timeout = _transport_timeout
 
 
 @contextmanager
-def diagnostic_transport_timeout(seconds: float) -> Iterator[None]:
-    """Explicit diagnostic scope; ordinary API requests keep their 30s timeout."""
+def provider_transport_timeout(seconds: float) -> Iterator[None]:
+    """Bound a worker or diagnostic call without changing interactive API deadlines."""
     if seconds < 1 or seconds > 90:
-        raise ValueError("Diagnostic timeout must be 1..90 seconds")
-    token = _diagnostic_timeout.set(seconds)
+        raise ValueError("Provider timeout must be 1..90 seconds")
+    token = _transport_timeout.set(seconds)
     try:
         yield
     finally:
-        _diagnostic_timeout.reset(token)
+        _transport_timeout.reset(token)
+
+
+# Keep the existing diagnostic callers compatible with the shared timeout scope.
+diagnostic_transport_timeout = provider_transport_timeout
 
 
 class HTTPProviderError(ProviderError):
@@ -140,7 +146,7 @@ async def _post(
     url: str, token: str, payload: dict[str, Any], *, api_key: bool = False
 ) -> dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=_diagnostic_timeout.get(), trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=_transport_timeout.get(), trust_env=False) as client:
             headers = {"x-goog-api-key": token} if api_key else {"Authorization": f"Bearer {token}"}
             response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
@@ -151,16 +157,16 @@ async def _post(
     except httpx.HTTPStatusError as exc:
         raise http_failure(exc.response) from None
     except httpx.RequestError as exc:
-        error = ProviderError("transport_or_json_error", retryable=True)
+        error = ProviderError(f"transport_{type(exc).__name__}", retryable=True)
         error.transport_diagnostic = {  # type: ignore[attr-defined]
             "exception_type": type(exc).__name__,
             "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else None,
-            "timeout_seconds": _diagnostic_timeout.get(),
+            "timeout_seconds": _transport_timeout.get(),
             "trust_env": False,
         }
         raise error from None
     except ValueError:
-        raise ProviderError("transport_or_json_error", retryable=True) from None
+        raise ProviderError("invalid_json_response", retryable=True) from None
 
 
 def _gemini_payload(
@@ -446,7 +452,7 @@ class DeepSeekAdapter:
             raise ProviderError("deepseek_invalid_response", retryable=True) from None
 
 
-def default_gateway() -> Gateway:
+def default_gateway(*, request_timeout: float = 35, total_timeout: float = 100) -> Gateway:
     return Gateway(
         load_routing(),
         {
@@ -456,4 +462,6 @@ def default_gateway() -> Gateway:
             "deepseek": DeepSeekAdapter(),
             "gemini": GeminiAdapter(),
         },
+        request_timeout=request_timeout,
+        total_timeout=total_timeout,
     )

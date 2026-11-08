@@ -13,10 +13,11 @@ from app.content.gateway import Gateway
 from app.content.integration import contract_item, tutor_text
 from app.content.learning import GraphConfirmation, attempt_review, graph_confirmed
 from app.content.pipeline import require_model_permission
+from app.content.refill import NeedQuestions, QuestionRefiller
 from app.content.repository import Connection, Repository, StoredItem
-from app.engine import bkt, path, placement, remediation
+from app.engine import bkt, path, remediation, survey
 from app.engine.graph import Graph as EngineGraph
-from app.engine.trace import DecisionTrace
+from app.engine.trace import DecisionTrace, Evidence
 from app.graders.mcq import Grade, grade
 from app.graders.mcq import Item as GraderItem
 from app.jobs.queue import enqueue
@@ -42,10 +43,14 @@ def trace_dto(trace: DecisionTrace) -> learn.DecisionTrace:
 
 class LearningBackend:
     def __init__(
-        self, repository: Repository, confirmation: GraphConfirmation | None = None
+        self,
+        repository: Repository,
+        confirmation: GraphConfirmation | None = None,
+        gateway: Gateway | None = None,
     ) -> None:
         self.repo = repository
         self.confirmation = confirmation
+        self.refiller = QuestionRefiller(repository, gateway)
 
     def _state(
         self, conn: Connection, learner: str, subject: str, *, require_confirmation: bool = True
@@ -110,6 +115,7 @@ class LearningBackend:
         difficulty: float,
         *,
         allow_attempted: bool = False,
+        difficulty_level: int | None = None,
     ) -> StoredItem | None:
         candidates = []
         attempted = dict(
@@ -124,6 +130,10 @@ class LearningBackend:
                 bundle
                 and bundle.item.concept == slug
                 and (allow_attempted or bundle.db_id not in attempted)
+                and (
+                    difficulty_level is None
+                    or survey.level(bundle.item.difficulty) == difficulty_level
+                )
             ):
                 candidates.append(bundle)
         return min(
@@ -162,41 +172,26 @@ class LearningBackend:
 
         return await asyncio.to_thread(run)
 
+    def _survey_answers(
+        self, conn: Connection, learner: UUID, subject: UUID
+    ) -> list[survey.Answer]:
+        rows = conn.execute(
+            "select c.slug,a.is_correct,i.external_id,"
+            "coalesce((a.answer->>'difficulty')::double precision,i.difficulty) "
+            "from attempts a join items i on i.id=a.item_id "
+            "join concepts c on c.id=i.concept_id "
+            "where a.learner_id=%s and c.subject_id=%s and a.answer->>'phase'='placement' "
+            "order by a.created_at,a.id",
+            (learner, subject),
+        ).fetchall()
+        return [survey.Answer(slug=r[0], correct=r[1], item_id=r[2], difficulty=r[3]) for r in rows]
+
     async def placement(self, request: learn.LearnerSubject) -> learn.PlacementSelection:
-        def run() -> learn.PlacementSelection:
+        def run(can_refill: bool) -> learn.PlacementSelection:
             with self.repo.transaction() as conn:
                 lid, sid, graph, _ = self._state(conn, request.learner_id, request.subject)
-                rows = conn.execute(
-                    "select c.slug,a.is_correct,i.external_id from attempts a "
-                    "join items i on i.id=a.item_id join concepts c on c.id=i.concept_id "
-                    "where a.learner_id=%s and c.subject_id=%s and a.answer->>'phase'='placement' "
-                    "order by a.created_at,a.id",
-                    (lid, sid),
-                ).fetchall()
-                answers = [placement.Answer(slug=r[0], correct=r[1], item_id=r[2]) for r in rows]
-                slug, trace = placement.next_question(graph, answers)
-                if slug is None and len(answers) < placement.MAX_QUESTIONS:
-                    asked = {answer.slug for answer in answers}
-                    slug = next(
-                        (
-                            candidate
-                            for candidate in graph.order
-                            if candidate not in asked
-                            and self._pick(conn, request.subject, candidate, lid, 0.5)
-                        ),
-                        None,
-                    )
-                    if slug is not None:
-                        trace = trace.model_copy(
-                            update={
-                                "concept_slug": slug,
-                                "rule": "placement.direct_coverage",
-                                "rule_vi": (
-                                    "Kiểm tra trực tiếp phần chưa được hỏi để xác định lỗ hổng, "
-                                    "không chỉ suy ra từ một câu đúng hoặc sai."
-                                ),
-                            }
-                        )
+                answers = self._survey_answers(conn, lid, sid)
+                slug, difficulty, trace = survey.next_question(graph, answers)
                 if slug is None:
                     complete = conn.execute(
                         "select placement_complete from p4_learning_sessions "
@@ -204,7 +199,7 @@ class LearningBackend:
                         (lid, sid),
                     ).fetchone()
                     if complete and not complete[0]:
-                        for concept, p in placement.seed_mastery(graph, answers).items():
+                        for concept, p in survey.seed_mastery(graph, answers).items():
                             cid = conn.execute(
                                 "select id from concepts where subject_id=%s and slug=%s",
                                 (sid, concept),
@@ -220,14 +215,31 @@ class LearningBackend:
                     return learn.PlacementSelection(
                         item=None,
                         done=True,
-                        gap_slug=placement.gap(graph, answers),
+                        gap_slug=next(
+                            (s for s, p in survey.seed_mastery(graph, answers).items() if p < 0.5),
+                            None,
+                        ),
                         trace=trace_dto(trace),
                     )
-                bundle = self._pick(conn, request.subject, slug, lid, 0.5)
+                bundle = self._pick(
+                    conn,
+                    request.subject,
+                    slug,
+                    lid,
+                    difficulty,
+                    difficulty_level=survey.level(difficulty),
+                )
                 if not bundle:
-                    raise HTTPException(503, "Chưa có câu hỏi đã kiểm chứng cho khái niệm này.")
+                    if can_refill:
+                        raise NeedQuestions(request.subject, slug, difficulty, assessment=True)
+                    raise HTTPException(
+                        503,
+                        "Chưa đủ câu hỏi đúng mức độ khó từ tài liệu và đạt kiểm chứng. "
+                        "Hãy thử lại; kết quả đã trả lời được giữ nguyên.",
+                    )
                 conn.execute(
-                    "update p4_learning_sessions set phase='placement',pending_item=%s "
+                    "update p4_learning_sessions set phase='placement',placement_complete=false,"
+                    "pending_item=%s "
                     "where learner_id=%s and subject_id=%s",
                     (bundle.db_id, lid, sid),
                 )
@@ -238,12 +250,16 @@ class LearningBackend:
                     trace=trace_dto(trace),
                 )
 
-        return await asyncio.to_thread(run)
+        try:
+            return await asyncio.to_thread(run, True)
+        except NeedQuestions as refill:
+            await self.refiller.ensure(refill, uid(request.learner_id))
+            return await asyncio.to_thread(run, False)
 
     async def next_item(
         self, learner_id: str, subject: str, *, review: bool = False
     ) -> learn.NextSelection | None:
-        def run() -> learn.NextSelection | None:
+        def run(can_refill: bool) -> learn.NextSelection | None:
             with self.repo.transaction() as conn:
                 lid, sid, graph, mastery = self._state(conn, learner_id, subject)
                 session = conn.execute(
@@ -259,18 +275,33 @@ class LearningBackend:
                         (lid, sid),
                     ).fetchall()
                 )
+                attempted = {
+                    row[0]
+                    for row in conn.execute(
+                        "select item_id from attempts where learner_id=%s", (lid,)
+                    )
+                }
                 available = {
                     bundle.item.concept
                     for key in self.repo.item_ids(conn, subject)
                     if (bundle := self.repo.servable(conn, key)) is not None
+                    and bundle.db_id not in attempted
+                    and bundle.item.concept in graph
                 }
+                if not available and not review:
+                    conn.execute(
+                        "update p4_learning_sessions set pending_item=null "
+                        "where learner_id=%s and subject_id=%s",
+                        (lid, sid),
+                    )
+                    return None
                 step, trace = path.next_step(
                     graph,
                     mastery,
                     now=datetime.now(UTC),
                     resume_origin=session[0] if session else None,
                     due_reviews=due,
-                    available_concepts=available,
+                    available_concepts=None if review and self.refiller.gateway else available,
                 )
                 if step.resume_origin is not None:
                     conn.execute(
@@ -297,8 +328,15 @@ class LearningBackend:
                     step.concept_slug,
                     lid,
                     step.target_difficulty,
-                    allow_attempted=review,
+                    allow_attempted=False,
                 )
+                if bundle is None and review:
+                    if can_refill:
+                        raise NeedQuestions(
+                            subject, step.concept_slug, step.target_difficulty, assessment=False
+                        )
+                    # Review uses new, verified questions too; never replay a wrong answer.
+                    return None
                 if bundle is None:
                     raise HTTPException(503, "Chưa có câu hỏi đã kiểm chứng phù hợp.")
                 conn.execute(
@@ -313,7 +351,11 @@ class LearningBackend:
                     concept_slug=step.concept_slug,
                 )
 
-        return await asyncio.to_thread(run)
+        try:
+            return await asyncio.to_thread(run, True)
+        except NeedQuestions as refill:
+            await self.refiller.ensure(refill, uid(learner_id))
+            return await asyncio.to_thread(run, False)
 
     async def get_item(self, item_id: str) -> GraderItem | None:
         def run() -> GraderItem | None:
@@ -372,10 +414,12 @@ class LearningBackend:
                     "and subject_id=%s",
                     (lid, sid),
                 ).fetchone()
-                if conn.execute(
-                    "select 1 from attempts where learner_id=%s and item_id=%s limit 1",
+                previous_row = conn.execute(
+                    "select count(*) from attempts where learner_id=%s and item_id=%s",
                     (lid, bundle.db_id),
-                ).fetchone() and (
+                ).fetchone()
+                previous_attempts = previous_row[0] if previous_row else 0
+                if previous_attempts and (
                     not session or session[0] != "review" or session[1] != bundle.db_id
                 ):
                     raise HTTPException(
@@ -410,15 +454,42 @@ class LearningBackend:
                     else None
                 )
                 now = datetime.now(UTC)
-                p, trace = bkt.update_traced(
+                p, trace = bkt.update_item_traced(
                     mastery.get(item_concept := bundle.item.concept, 0.2),
                     result.correct,
-                    bkt.DEFAULT_PARAMS["mcq"],
+                    difficulty=bundle.item.difficulty,
+                    option_count=len(item.options),
+                    hints_used=request.hints_used,
+                    previous_attempts=previous_attempts,
                     concept_slug=item_concept,
                     now=now,
                     item_id=item.id,
                     misconception=result.misconception,
                 )
+                if session[0] == "placement":
+                    answers = self._survey_answers(conn, lid, sid)
+                    prior = mastery.get(item_concept, 0.2)
+                    answers.append(
+                        survey.Answer(item_concept, result.correct, bundle.item.difficulty, item.id)
+                    )
+                    p = survey.seed_mastery(graph, answers)[item_concept]
+                    trace = DecisionTrace(
+                        kind="placement_step",
+                        concept_slug=item_concept,
+                        at=now,
+                        prior=prior,
+                        posterior=p,
+                        evidence=Evidence(
+                            item_id=item.id,
+                            correct=result.correct,
+                            misconception=result.misconception,
+                        ),
+                        rule="survey.elo_update",
+                        rule_vi=(
+                            "Cập nhật mức hiểu theo kết quả và độ khó câu khảo sát "
+                            f"(Elo {round(survey.item_rating(bundle.item.difficulty))})."
+                        ),
+                    )
                 aid = save_attempt(
                     conn,
                     learner_id=lid,
@@ -427,6 +498,10 @@ class LearningBackend:
                         "option_index": request.answer,
                         "hints_used": request.hints_used,
                         "phase": session[0],
+                        "difficulty": bundle.item.difficulty,
+                        "mastery_model": "survey-elo-v1"
+                        if session[0] == "placement"
+                        else "bkt-item-v1",
                         "question": item.prompt_vi,
                         "chosen_answer": item.options[request.answer].label,
                     },

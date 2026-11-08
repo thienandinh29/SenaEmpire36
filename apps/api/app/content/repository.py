@@ -407,7 +407,9 @@ class Repository:
                 return None
         return bundle
 
-    def save_items(self, subject: str, items: list[Item]) -> None:
+    def save_items(
+        self, subject: str, items: list[Item], *, preserve_publication: bool = False
+    ) -> None:
         with self.transaction() as conn:
             graph = self.graph(conn, subject)
             ids = list(
@@ -420,6 +422,27 @@ class Repository:
             sources, chunks = self.material(conn, ids)
             validate_items(items, chunks, sources, graph)
             sid = self._subject(conn, subject)
+            published = (
+                conn.execute(
+                    "select id,step_vi from topic_jobs where subject_slug=%s "
+                    "and status='ready' and graph_ready=true and items_ready=true for update",
+                    (subject,),
+                ).fetchall()
+                if preserve_publication
+                else []
+            )
+            baseline = (
+                dict(
+                    conn.execute(
+                        "select i.id,i.p4_revision from items i "
+                        "join concepts c on c.id=i.concept_id "
+                        "where c.subject_id=%s",
+                        (sid,),
+                    ).fetchall()
+                )
+                if published
+                else {}
+            )
             for item in items:
                 cid = conn.execute(
                     "select id from concepts where subject_id=%s and slug=%s", (sid, item.concept)
@@ -444,6 +467,8 @@ class Repository:
                     (item.id,),
                 ).fetchone()
                 if existing:
+                    if preserve_publication:
+                        raise ContentUnavailable("A refill must use new question identifiers")
                     dbid = existing[0]
                     owner = conn.execute(
                         "select c.subject_id from items i join concepts c on c.id=i.concept_id "
@@ -533,6 +558,24 @@ class Repository:
                     "update items set status=%s where id=%s",
                     ("verified" if valid else "needs_review", dbid),
                 )
+            if published:
+                current = dict(
+                    conn.execute(
+                        "select id,p4_revision from items where id=any(%s)",
+                        (list(baseline),),
+                    ).fetchall()
+                )
+                if current != baseline or self.graph(conn, subject) != graph:
+                    raise ContentUnavailable("Existing content changed during question refill")
+                # Draft option inserts trigger topic invalidation. For append-only
+                # refills, keep the old published bank available atomically; new
+                # drafts still pass the per-item verification gate before release.
+                for job, step_vi in published:
+                    conn.execute(
+                        "update topic_jobs set status='ready',items_ready=true,step_vi=%s "
+                        "where id=%s",
+                        (step_vi, job),
+                    )
 
     def item_ids(self, conn: Connection, subject: str) -> list[str]:
         return [

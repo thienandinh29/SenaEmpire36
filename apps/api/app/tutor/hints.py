@@ -317,6 +317,7 @@ async def generate_hint_attempt(
     sources: list[Source],
     history: list[str] | None = None,
     timeout_seconds: float = 30,
+    repair_feedback: str | None = None,
 ) -> HintAttempt | None:
     """Internal result for durable audit/cache; never return this object to learners."""
     history = history or []
@@ -330,6 +331,8 @@ async def generate_hint_attempt(
         payload.update(
             {"level_instruction": LEVELS[level], "last_answer": last_answer, "history": history}
         )
+        if repair_feedback:
+            payload["repair_feedback"] = repair_feedback
         reply = await asyncio.wait_for(
             gateway.generate(
                 task="generate_hint",
@@ -369,6 +372,27 @@ async def generate_hint_attempt(
                 history=history,
                 tier=tier,
                 timeout_seconds=timeout_seconds,
+            )
+        if repair_feedback is None and attempt.verification.reason in {
+            "hint_rubric_failed",
+            "invalid_or_missing_hint_evidence",
+            "hint_verification_error:ValueError",
+        }:
+            return await generate_hint_attempt(
+                item,
+                level,
+                last_answer,
+                chunks,
+                tier,
+                gateway=gateway,
+                sources=sources,
+                history=history,
+                timeout_seconds=timeout_seconds,
+                repair_feedback=(
+                    "The previous draft was withheld. Write a different, shorter conceptual "
+                    "question grounded only in the supplied chunks. Do not state a solution, "
+                    "option ID, answer text or elimination. Cite only supplied chunk IDs."
+                ),
             )
         return attempt
     except Exception:

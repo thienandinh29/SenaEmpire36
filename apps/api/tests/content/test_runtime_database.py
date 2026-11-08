@@ -87,7 +87,8 @@ def store(database_url: str) -> Iterator[Repository]:
         repo.save_material("python-conditions", sources, chunks)
         repo.save_graph("python-conditions", graph)
         checked = []
-        for item in items:
+        for index, item in enumerate(items):
+            item = item.model_copy(update={"difficulty": (0.25, 0.5, 0.75)[index % 3]})
             fake = FakeGateway()
             fake.item = item
             fake.chunks = [c for c in chunks if c.chunk_id in item.chunk_ids]
@@ -274,7 +275,7 @@ def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
         assert denied.status_code == 503
 
 
-def test_practice_exhaustion_requires_an_explicit_review_to_reuse_items(
+def test_practice_exhaustion_finishes_without_repeating_wrong_questions(
     store: Repository, database_url: str, confirmed_graphs: ConfirmedGraphs
 ) -> None:
     _, chunks, graph, items = topic()
@@ -318,7 +319,7 @@ def test_practice_exhaustion_requires_an_explicit_review_to_reuse_items(
             client.get(
                 "/next-item", params={"learner_id": learner, "subject": "python-conditions"}
             ).status_code
-            == 503
+            == 204
         )
         response = client.get(
             "/next-item",
@@ -328,23 +329,8 @@ def test_practice_exhaustion_requires_an_explicit_review_to_reuse_items(
                 "mode": "review",
             },
         )
-        assert response.status_code == 200, response.text
-        assert response.json()["concept_slug"] == graph.concepts[0].slug
-        key = response.json()["item"]["id"]
-        assert key == served[0]
-        item = next(i for i in checked if i.id == key)
-        correct = next(n for n, option in enumerate(item.options) if option.correct)
-        result = client.post(
-            "/attempts",
-            json={
-                "learner_id": learner,
-                "item_id": key,
-                "answer": correct,
-                "client_attempt_id": str(uuid4()),
-            },
-        )
-        assert result.status_code == 200 and result.json()["correct"] is True
-        # A new review updates mastery but preserves first-answer assessment evidence.
+        assert response.status_code == 204, response.text
+        # Exhaustion preserves first-answer evidence without replaying any wrong item.
         with store.transaction() as conn:
             assessment = summarize(
                 conn,
@@ -354,18 +340,6 @@ def test_practice_exhaustion_requires_an_explicit_review_to_reuse_items(
             )
         assert assessment.answered == 2 and assessment.incorrect == 2
         assert assessment.correct == 0
-        assert (
-            client.post(
-                "/attempts",
-                json={
-                    "learner_id": learner,
-                    "item_id": key,
-                    "answer": correct,
-                    "client_attempt_id": str(uuid4()),
-                },
-            ).status_code
-            == 422
-        )
 
 
 def test_practice_skips_a_concept_without_usable_items(

@@ -26,22 +26,12 @@ export const vi = {
     completedHelp:
       "Các khái niệm đã đạt ngưỡng nắm vững theo kết quả trả lời. Hãy xem mức hiểu từng phần và tiếp tục ôn tập để củng cố.",
     masterySummary: "Mức hiểu sau đánh giá",
+    reviewFinishedHelp:
+      "Đã hoàn thành các câu hỏi mới hiện có. Biểu đồ giữ lại mức hiểu và phần kiến thức cần củng cố; câu đã trả lời sai không bị chạy lại.",
     reviewNext: "Xem lịch ôn tập",
-    badge: "Dữ liệu thật",
     title: "Học từ nguồn thật, theo mục tiêu của bạn",
     intro:
       "Nhập điều bạn muốn học. Sena tìm nguồn, xây bản đồ kiến thức và chỉ đưa ra câu hỏi đã qua kiểm chứng.",
-    checking: "Đang kiểm tra kết nối…",
-    connected: "Đã kết nối dịch vụ học tập",
-    embeddingMismatch:
-      "Dịch vụ embedding đang chạy sai model. Chưa nhận yêu cầu tạo bài; cần kiểm tra cấu hình.",
-    embeddingError:
-      "Chưa kết nối được dịch vụ embedding hoặc dịch vụ đang báo lỗi. Chưa nhận yêu cầu tạo bài; vui lòng kiểm tra lại.",
-    embeddingUnavailable:
-      "Model embedding chưa sẵn sàng hoặc đang tải. Chưa nhận yêu cầu tạo bài; hãy kiểm tra lại khi model sẵn sàng.",
-    unavailable:
-      "Dịch vụ học tập chưa sẵn sàng. Vui lòng khởi động backend và cơ sở dữ liệu, rồi kiểm tra lại.",
-    checkConnection: "Kiểm tra kết nối",
     newTopic: "Tạo lộ trình học",
     noTopic: "Chưa có lộ trình học. Hãy nhập mục tiêu để bắt đầu.",
     research: "Đang xây dựng lộ trình",
@@ -53,14 +43,13 @@ export const vi = {
     approved: "Đã xác nhận lộ trình",
     approveFirst: "Xem và xác nhận bản đồ trước khi bắt đầu học.",
     stale: "Bản đồ đã thay đổi. Hãy tải lại, xem và xác nhận phiên bản mới.",
-    start: "Bắt đầu đánh giá đầu vào",
+    start: "Khảo sát 3 mức độ cho từng kiến thức",
     practice: "Luyện tập theo lộ trình",
-    next: "Câu hỏi tiếp theo",
+    next: "Tiếp tục",
     noQuestion: "Chưa có câu hỏi đang mở.",
     noReview: "Chưa có nội dung đến hạn ôn tập.",
     reviewsHelp:
       "Ôn theo mức hiểu trên bản đồ: củng cố phần yếu, quay về kiến thức nền khi cần, rồi tiến tới kiến thức mới.",
-    sourcesEmpty: "Chưa có nguồn học liệu cho lộ trình này.",
     traceEmpty: "Trả lời câu hỏi để xem cách hệ thống điều chỉnh lộ trình.",
     standard: "Model tiêu chuẩn",
     advanced: "Model nâng cao",
@@ -91,7 +80,6 @@ export const vi = {
     reviews: "Ôn tập",
   },
   library: "TÀI NGUYÊN",
-  sources: "Nguồn học liệu",
   settings: "Về bản trải nghiệm",
   learner: "Bạn học",
   learnerSub: "Hành trình tự học của bạn",
@@ -150,7 +138,7 @@ export const vi = {
   upload: "Đính kèm đề cương",
   uploadDemoNotice:
     "Tệp bạn tải lên sẽ được gửi tới dịch vụ AI bên thứ ba (DeepSeek, Gemini) để tạo lộ trình. Chỉ tải tài liệu công khai hoặc không chứa thông tin cá nhân. Dữ liệu demo sẽ được xóa sau buổi trình bày.",
-  uploadDemoConsent: "Tôi đã đọc và đồng ý tải tài liệu lên cho bản demo.",
+  uploadDemoConsent: "Tôi đã đọc và đồng ý tải tài liệu lên.",
   uploadHint: "PDF, DOCX · tối đa 10 MB · chỉ chọn tệp cục bộ",
   removeFile: "Bỏ tệp",
   uploadError: "Chọn tệp PDF hoặc DOCX không quá 10 MB.",
@@ -280,7 +268,7 @@ export const vi = {
     retry: "Thử lại",
     requestFailed:
       "Không thể hoàn thành yêu cầu. Dữ liệu hiện có được giữ lại.",
-    networkError: "Không kết nối được máy chủ. Kiểm tra kết nối rồi thử lại.",
+    networkError: "Không kết nối được máy chủ. Vui lòng thử lại.",
     contractError:
       "Dữ liệu trả về chưa đúng schema đã thống nhất. Cần nhóm backend kiểm tra.",
     configError: "Tính năng chưa được cấu hình theo xác nhận của nhóm backend.",
