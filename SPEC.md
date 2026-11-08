@@ -90,6 +90,13 @@ Deep Research quality bar: ≥ 3 sources from ≥ 2 publishers; prerequisites fo
 learning objectives; every concept and item cited; every item passes an answerability check; licence recorded per
 source, no "ND" licences. All generated content is labelled "Bản nháp tự động — chưa được giáo viên duyệt".
 
+**Uploaded documents (agreed by the team 2026-11-07, as implemented by P4 on branch `mtri`; not yet on `ptest2`):** a learner's
+uploaded document that explains the topic well enough for a small lesson is used as the source, and no external search runs, in
+either mode. If it misses topics, an outline names them and they are filled from outside (Quick: the curated library; Deep: web
+research). The three-sources-from-two-publishers bar applies only to external research. Everything generated is still cited to
+chunks (page numbers kept for PDFs), verified, and labelled "Bản nháp tự động — chưa được giáo viên duyệt"; the demo-only upload
+notice and purge above still apply. An uploaded file is recorded as "uploaded by the learner" with no licence claim.
+
 Demo scope cuts: MCQ only (no code grading), one demo learner, no login. Kept: uploads, both modes, Free/Pro switch,
 observability dashboard. Organizer expectations (Spec Kit, architecture, demo, novelty, post-contest path) are
 answered in the team doc "NodeTrail — 5 định hướng theo yêu cầu Ban Tổ chức".
