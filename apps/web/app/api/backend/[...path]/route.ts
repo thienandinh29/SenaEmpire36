@@ -52,7 +52,7 @@ async function proxy(
       `${base.pathname.replace(/\/$/, "")}/${path}`,
       base.origin,
     );
-    for (const name of ["learner_id", "subject", "goal"]) {
+    for (const name of ["learner_id", "subject", "goal", "mode"]) {
       const value = request.nextUrl.searchParams.get(name);
       if (value) target.searchParams.set(name, value);
     }
@@ -69,7 +69,7 @@ async function proxy(
       headers.set("X-Demo-Upload-Consent", "demo-v1");
     const signals = AbortSignal.any([
       request.signal,
-      AbortSignal.timeout(25000),
+      AbortSignal.timeout(path === "tutor/hint" ? 100000 : 25000),
     ]);
     let body: Uint8Array | undefined;
     if (request.method === "POST") {

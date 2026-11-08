@@ -8,6 +8,25 @@ export const vi = {
     "Nghỉ một chút nhé",
   ],
   live: {
+    assessmentTitle: "Tổng hợp đánh giá và ôn tập trọng tâm",
+    assessmentHelp:
+      "Mỗi câu chỉ ghi nhận lần nộp đầu tiên. Phần chưa được hỏi trực tiếp chưa đủ bằng chứng để kết luận đã hiểu. Ôn phần làm sai và kiến thức nền trước, sau đó củng cố phần làm đúng.",
+    answered: "Đã trả lời",
+    correctCount: "Đúng",
+    incorrectCount: "Sai",
+    gap: "Ưu tiên ôn: đã làm sai",
+    foundation: "Kiến thức nền của phần làm sai",
+    unassessed: "Chưa được kiểm tra trực tiếp",
+    maintenance: "Đã trả lời đúng: cần củng cố",
+    important: "Kiến thức nền quan trọng",
+    chosenAnswer: "Bạn đã chọn",
+    reviewContent: "Nội dung cần ôn từ tài liệu",
+    misconceptionNote: "Dấu hiệu cần kiểm tra lại",
+    completed: "Bạn đã hoàn thành lượt học này",
+    completedHelp:
+      "Các khái niệm đã đạt ngưỡng nắm vững theo kết quả trả lời. Hãy xem mức hiểu từng phần và tiếp tục ôn tập để củng cố.",
+    masterySummary: "Mức hiểu sau đánh giá",
+    reviewNext: "Xem lịch ôn tập",
     badge: "Dữ liệu thật",
     title: "Học từ nguồn thật, theo mục tiêu của bạn",
     intro:
@@ -39,7 +58,8 @@ export const vi = {
     next: "Câu hỏi tiếp theo",
     noQuestion: "Chưa có câu hỏi đang mở.",
     noReview: "Chưa có nội dung đến hạn ôn tập.",
-    reviewsHelp: "Lịch ôn tập được lưu theo kết quả học của bạn.",
+    reviewsHelp:
+      "Ôn theo mức hiểu trên bản đồ: củng cố phần yếu, quay về kiến thức nền khi cần, rồi tiến tới kiến thức mới.",
     sourcesEmpty: "Chưa có nguồn học liệu cho lộ trình này.",
     traceEmpty: "Trả lời câu hỏi để xem cách hệ thống điều chỉnh lộ trình.",
     standard: "Model tiêu chuẩn",

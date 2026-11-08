@@ -81,6 +81,10 @@ class GatewayError(Exception):
     pass
 
 
+class QuotaError(GatewayError):
+    """An eligible provider exhausted its declared quota; immediate retries cannot help."""
+
+
 class Adapter(Protocol):
     async def generate(
         self,
@@ -180,6 +184,7 @@ class Gateway:
             raise GatewayError("Messages must start with a user turn")
         started = monotonic()
         failures: list[str] = []
+        quota_exhausted = False
         try:
             async with asyncio.timeout(self.total_timeout):
                 for configured in routes:
@@ -237,6 +242,7 @@ class Gateway:
                             if isinstance(exc, ProviderError):
                                 reply = exc.reply or reply
                                 error_code = str(exc)
+                                quota_exhausted |= getattr(exc, "failure_kind", None) == "quota"
                             failures.append(
                                 f"{route.provider}:{type(exc).__name__}"
                                 + (f":{error_code}" if error_code else "")
@@ -265,6 +271,8 @@ class Gateway:
                         return result
         except TimeoutError:
             raise GatewayError("LLM request exceeded total deadline") from None
+        if quota_exhausted:
+            raise QuotaError("Configured model quota exhausted; no eligible fallback succeeded")
         raise GatewayError("No eligible model succeeded: " + ", ".join(failures))
 
     async def complete(

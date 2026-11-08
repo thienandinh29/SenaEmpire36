@@ -8,12 +8,21 @@ from fastapi import HTTPException
 
 from app.content.learning import graph_revision
 from app.content.models import Graph
+from app.engine.graph import Graph as EngineGraph
+from app.schemas import KnowledgeGraph
+from app.services.assessment import Assessment, summarize
 from app.services.topic_readiness import require_published_topic
 
 
 class GraphConfirmations:
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
+
+    def assessment(self, learner: str, subject: str) -> Assessment:
+        with psycopg.connect(self.database_url, connect_timeout=3) as conn:
+            sid, graph = self._current(conn, learner, subject)
+            engine = EngineGraph.from_contract(KnowledgeGraph.model_validate(graph.team_payload()))
+            return summarize(conn, UUID(learner), sid, engine)
 
     def require_schema(self) -> None:
         with psycopg.connect(self.database_url, connect_timeout=3) as conn:

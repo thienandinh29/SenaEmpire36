@@ -23,6 +23,8 @@ import { ThemeToggle } from "./theme-toggle";
 import { JournalOverview } from "./journal-overview";
 import { KnowledgeMap } from "./knowledge-map";
 import { SourceLink } from "./source-link";
+import { AssessmentReview } from "./assessment-review";
+import { AdaptiveReview } from "./adaptive-review";
 import { TracePanel } from "./trace-panel";
 import { ErrorState, Loading } from "./async-state";
 import { useLearning } from "./use-learning";
@@ -286,7 +288,7 @@ export function Workspace({ config }: { config: WebConfig }) {
             <>
               <PageHeading
                 title={t.nav.map}
-                description={learning.subject || t.live.noTopic}
+                description={`${learning.subject || t.live.noTopic} · ${graph.nodes.length} ${t.conceptCount}`}
               />
               {approval}
               <div className="map-page-grid">
@@ -307,6 +309,9 @@ export function Workspace({ config }: { config: WebConfig }) {
                 <aside className="panel concept-detail">
                   <h2>{concept?.name_vi || t.live.noTopic}</h2>
                   <p>{concept?.description_vi}</p>
+                  {!!concept?.pages.length && (
+                    <p>Trang {concept.pages.join(", ")}</p>
+                  )}
                   {concept?.sources.map((url) => (
                     <SourceLink key={url} url={url} title={t.live.sources} />
                   ))}
@@ -386,8 +391,22 @@ export function Workspace({ config }: { config: WebConfig }) {
           {screen === "learn" && (
             <>
               <PageHeading
-                title={learning.placementDone ? t.live.practice : t.live.start}
-                description={lesson?.reason || t.live.noQuestion}
+                title={
+                  learning.reviewMode
+                    ? "Ôn tập thích ứng"
+                    : learning.completed
+                      ? t.live.assessmentTitle
+                      : learning.placementDone
+                        ? t.live.practice
+                        : t.live.start
+                }
+                description={
+                  learning.completed && learning.reviewMode
+                    ? "Các kiến thức đã đạt ngưỡng nắm vững. Bạn có thể ôn tiếp khi đến hạn."
+                    : learning.completed
+                      ? t.live.assessmentHelp
+                      : lesson?.reason || t.live.noQuestion
+                }
               />
               <div className="learning-grid">
                 <section className="panel lesson-panel">
@@ -396,7 +415,30 @@ export function Workspace({ config }: { config: WebConfig }) {
                     error={errors.lesson}
                     onRetry={() => void learning.loadLesson()}
                   />
-                  {!lesson && (
+                  {learning.completed && (
+                    <section role="status">
+                      <h2>
+                        {learning.reviewMode
+                          ? "Mức hiểu sau ôn tập"
+                          : t.live.masterySummary}
+                      </h2>
+                      {!learning.reviewMode && (
+                        <AssessmentReview
+                          assessment={learning.assessment}
+                          concepts={learning.concepts}
+                        />
+                      )}
+                      {learning.graph.nodes.map((node) => (
+                        <p key={node.slug}>
+                          {node.name_vi}: {Math.round(node.p_known * 100)}%
+                        </p>
+                      ))}
+                      <Button onClick={() => navigate("reviews")}>
+                        {t.live.reviewNext}
+                      </Button>
+                    </section>
+                  )}
+                  {!lesson && !learning.completed && (
                     <Button
                       disabled={!confirmed || busy.lesson}
                       onClick={() => void learning.loadLesson()}
@@ -406,6 +448,28 @@ export function Workspace({ config }: { config: WebConfig }) {
                   )}
                   {lesson && (
                     <div className="question">
+                      {learning.reviewMode && concept && (
+                        <section className="review-concept">
+                          <h3>{concept.name_vi}</h3>
+                          <p>
+                            Mức hiểu hiện tại:{" "}
+                            {Math.round(
+                              (graph.nodes.find(
+                                (node) => node.slug === concept.slug,
+                              )?.p_known ?? 0) * 100,
+                            )}
+                            %
+                          </p>
+                          <p>{concept.description_vi}</p>
+                          {concept.sources.map((url) => (
+                            <SourceLink
+                              key={url}
+                              title="Đọc lại kiến thức từ giáo trình"
+                              url={url}
+                            />
+                          ))}
+                        </section>
+                      )}
                       <h2>{lesson.item.prompt_vi}</h2>
                       <fieldset
                         disabled={
@@ -534,32 +598,24 @@ export function Workspace({ config }: { config: WebConfig }) {
                 title={t.nav.reviews}
                 description={t.live.reviewsHelp}
               />
-              <section className="panel">
-                {busy.reviews && <Loading />}
-                <ErrorState
-                  error={errors.reviews}
-                  onRetry={() => void learning.loadReviews()}
-                />
-                {!busy.reviews && !learning.reviews.length && (
-                  <p>{t.live.noReview}</p>
-                )}
-                {learning.reviews.map((card) => (
-                  <div key={card.concept_slug}>
-                    <strong>
-                      {learning.concepts.find(
-                        (c) => c.slug === card.concept_slug,
-                      )?.name_vi || card.concept_slug}
-                    </strong>
-                    <p>{new Date(card.due_at).toLocaleString("vi-VN")}</p>
-                    <Button
-                      disabled={!confirmed}
-                      onClick={() => navigate("learn")}
-                    >
-                      {t.continue}
-                    </Button>
-                  </div>
-                ))}
-              </section>
+              <AdaptiveReview
+                graph={graph}
+                disabled={!confirmed || inFlight}
+                onStart={() => {
+                  setScreen("learn");
+                  mainRef.current?.focus();
+                  void learning.startReview();
+                }}
+              />
+              <AssessmentReview
+                assessment={learning.assessment}
+                concepts={learning.concepts}
+              />
+              {busy.reviews && <Loading />}
+              <ErrorState
+                error={errors.reviews}
+                onRetry={() => void learning.loadReviews()}
+              />
             </>
           )}
 

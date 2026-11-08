@@ -49,7 +49,7 @@ def test_library_metadata_bridge_rejects_unreviewed_source() -> None:
         indexed_library_source("id", "Unknown", None, "https://evil.example", "CC BY 4.0", "v1")
 
 
-def test_sql_library_retrieval_preserves_page_urls_and_bounds_graph_context(
+def test_sql_library_retrieval_preserves_page_urls_and_uses_complete_graph_context(
     database_url: str,
 ) -> None:
     install_schema(database_url)
@@ -96,7 +96,7 @@ def test_sql_library_retrieval_preserves_page_urls_and_bounds_graph_context(
             goal: str | None = None,
             max_concepts: int | None = None,
         ) -> Graph:
-            assert len(chunks) == 12
+            assert len(chunks) == 15
             return Graph.model_validate(
                 {
                     "concepts": [
@@ -128,7 +128,10 @@ def test_sql_library_retrieval_preserves_page_urls_and_bounds_graph_context(
             ]
             with patch("app.content.ports.generate_graph", generate):
                 graph = await ports.build_graph("Python", selected, "free")
-            assert graph.supported and len(ports.chunks) == 12
+            assert graph.supported and len(ports.chunks) == 15
+            assert {str(cid) for cid in ports.graph.source_chunk_ids} == {
+                str(chunk.chunk_id) for chunk in ports.chunks
+            }
 
         try:
             asyncio.run(run())

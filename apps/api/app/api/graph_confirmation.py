@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas import KnowledgeGraph
+from app.services.assessment import Assessment
 from app.services.graph_confirmation import GraphConfirmations
 from app.services.learner_sessions import COOKIE_NAME, LearnerSessions
 
@@ -26,6 +27,7 @@ class GraphReview(BaseModel):
     graph_revision: str
     graph: KnowledgeGraph
     confirmed: bool
+    assessment: Assessment | None = None
 
 
 class GraphConfirmed(BaseModel):
@@ -74,6 +76,9 @@ def create_router() -> APIRouter:
             graph_revision=revision,
             graph=KnowledgeGraph.model_validate(graph.team_payload()),
             confirmed=confirmed,
+            assessment=await asyncio.to_thread(backend.assessment, str(identity), subject)
+            if hasattr(backend, "assessment")
+            else None,
         )
 
     @router.post("/graph/confirm", response_model=GraphConfirmed)

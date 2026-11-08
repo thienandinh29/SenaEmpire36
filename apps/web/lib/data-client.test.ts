@@ -124,21 +124,50 @@ describe("live data boundary", () => {
       .fn()
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify({ item, reason_vi: "Do bộ máy học tập chọn" }),
+          JSON.stringify({
+            item,
+            reason_vi: "Do bộ máy học tập chọn",
+            concept_slug: "cell",
+          }),
         ),
       )
       .mockResolvedValueOnce(new Response(null, { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);
     const client = createLearningClient(config);
     const next = await client.nextItem("learner", "biology");
-    expect(next.item.id).toBe(item.id);
-    expect(next.item).not.toHaveProperty("answer");
+    expect(next?.item.id).toBe(item.id);
+    expect(next?.concept_slug).toBe("cell");
+    expect(next?.item).not.toHaveProperty("answer");
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/api/backend/next-item?learner_id=learner&subject=biology",
     );
     await expect(client.nextItem("learner", "biology")).rejects.toMatchObject({
       status: 404,
     });
+  });
+  it("treats completed learning as an empty success rather than a missing question", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(null, { status: 204 })),
+    );
+    await expect(
+      createLearningClient(config).nextItem("learner", "biology"),
+    ).resolves.toBeNull();
+  });
+  it("requests an explicit review session for adaptive revision", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createLearningClient(config).nextItem(
+      "learner",
+      "biology",
+      undefined,
+      "review",
+    );
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/backend/next-item?learner_id=learner&subject=biology&mode=review",
+    );
   });
   it("accepts real tutor citations with optional sections and PDF pages", () => {
     expect(

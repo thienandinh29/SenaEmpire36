@@ -191,7 +191,9 @@ class LearningService:
                 trace=learn.DecisionTrace.model_validate(trace.model_dump()),
             )
 
-    async def next_item(self, learner_id: str, subject: str) -> learn.NextSelection | None:
+    async def next_item(
+        self, learner_id: str, subject: str, *, review: bool = False
+    ) -> learn.NextSelection | None:
         return await asyncio.to_thread(self._next_item, learner_id, subject)
 
     def _next_item(self, learner_id: str, subject: str) -> learn.NextSelection | None:
@@ -244,7 +246,9 @@ class LearningService:
                 else min(items, key=lambda i: (answered[i.id], i.id))
             )
             save_trace(conn, learner, subject_id, trace)
-            return learn.NextSelection(item=item, reason_vi=step.reason_vi)
+            return learn.NextSelection(
+                item=item, reason_vi=step.reason_vi, concept_slug=step.concept_slug
+            )
 
     async def replay_attempt(self, request: learn.AttemptInput) -> learn.AttemptResponse | None:
         if request.client_attempt_id is None:

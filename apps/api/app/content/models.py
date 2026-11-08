@@ -51,6 +51,7 @@ class Concept(Record):
     description_vi: str
     sources: list[str] = Field(min_length=1)
     chunk_ids: list[UUID] = Field(min_length=1)
+    pages: list[int] = Field(default_factory=list, exclude_if=lambda value: not value)
 
 
 class Edge(Record):
@@ -64,6 +65,8 @@ class Edge(Record):
 class Graph(Record):
     concepts: list[Concept] = Field(min_length=1)
     edges: list[Edge]
+    source_chunk_ids: list[UUID] = Field(default_factory=list, exclude_if=lambda value: not value)
+    extraction_version: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def valid_dag(self) -> "Graph":

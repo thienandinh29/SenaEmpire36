@@ -43,6 +43,9 @@ export function useLearning(config: WebConfig) {
   const [revision, setRevision] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [placementDone, setPlacementDone] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [assessment, setAssessment] = useState<GraphReview["assessment"]>(null);
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [traces, setTraces] = useState<DecisionTrace[]>([]);
   const [reviews, setReviews] = useState<ReviewCard[]>([]);
@@ -109,6 +112,7 @@ export function useLearning(config: WebConfig) {
     }
   }
   const applyReview = useCallback((review: GraphReview) => {
+    setAssessment(review.assessment);
     setGraph(review.graph);
     setConcepts(review.concepts);
     setRevision(review.revision);
@@ -135,6 +139,9 @@ export function useLearning(config: WebConfig) {
       setRevision("");
       setConfirmed(false);
       setPlacementDone(false);
+      setCompleted(false);
+      setReviewMode(false);
+      setAssessment(null);
       setLesson(null);
       setTraces([]);
       setReviews([]);
@@ -218,7 +225,7 @@ export function useLearning(config: WebConfig) {
     });
     await reloadGraph();
   }
-  async function loadLesson() {
+  async function loadLesson(adaptive = reviewMode) {
     if (
       !confirmed ||
       !learner ||
@@ -229,6 +236,7 @@ export function useLearning(config: WebConfig) {
       return;
     await run("lesson", async () => {
       const version = epoch.current;
+      setReviewMode(adaptive);
       let done = placementDone;
       if (!done) {
         const step = await client.placement(learner, subject, selected);
@@ -251,17 +259,35 @@ export function useLearning(config: WebConfig) {
         }
       }
       if (done) {
-        const next = await client.nextItem(learner, subject);
-        if (version === epoch.current)
-          setLesson({
-            item: next.item,
-            answer: null,
-            answerCommitted: false,
-            result: null,
-            hints: [],
-            reason: next.reason_vi,
-            concept: null,
-          });
+        if (adaptive) {
+          setCompleted(false);
+          const next = await client.nextItem(
+            learner,
+            subject,
+            undefined,
+            "review",
+          );
+          if (version !== epoch.current) return;
+          if (next) {
+            if (!next.concept_slug) throw new DataError("contract");
+            setSelected(next.concept_slug);
+            setLesson({
+              item: next.item,
+              answer: null,
+              answerCommitted: false,
+              result: null,
+              hints: [],
+              reason: next.reason_vi,
+              concept: next.concept_slug,
+            });
+            return;
+          }
+        }
+        setCompleted(true);
+        setLesson(null);
+        error("hint");
+        await reloadGraph();
+        await loadReviews();
       }
     });
   }
@@ -330,6 +356,7 @@ export function useLearning(config: WebConfig) {
       const cards = await client.reviews(learner);
       if (version === epoch.current) setReviews(cards);
     });
+    await reloadGraph();
   }
   return {
     graph,
@@ -341,6 +368,9 @@ export function useLearning(config: WebConfig) {
     snapshot,
     confirmed,
     placementDone,
+    completed,
+    reviewMode,
+    assessment,
     lesson,
     traces,
     reviews,
@@ -352,6 +382,12 @@ export function useLearning(config: WebConfig) {
     reloadGraph,
     confirmGraph,
     loadLesson,
+    startReview: () => {
+      setReviewMode(true);
+      setCompleted(false);
+      if (lesson && !lesson.result) return;
+      return loadLesson(true);
+    },
     setAnswer,
     attempt,
     hint,

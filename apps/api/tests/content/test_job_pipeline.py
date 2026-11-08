@@ -14,6 +14,7 @@ from app.content.models import Graph, Item, ModelIdentity
 from app.content.ports import process_claimed_job
 from app.content.repository import ContentUnavailable, Repository, StoredItem
 from app.guardrails.answerability import is_currently_verified
+from app.llm.gateway import QuotaError
 from app.research.reader import SourceError
 from app.schemas import Citation
 from tests.content.fakes import FakeGateway, topic
@@ -250,6 +251,61 @@ def test_auto_library_selection_validates_catalog_and_never_falls_back(chosen: s
         assert ports.library_subject == "auto"
 
 
+def test_verifier_quota_stops_without_regenerating_or_repeated_verification() -> None:
+    class QuotaModel(Model):
+        verification_calls = 0
+
+        async def generate(self, **kwargs: Any) -> ModelReply:
+            if kwargs["task"] == "verify_item":
+                self.verification_calls += 1
+                raise QuotaError("daily quota exhausted")
+            return await super().generate(**kwargs)
+
+    repo, models = MemoryRepository(), QuotaModel()
+    with pytest.raises(SourceError, match="hết hạn mức"):
+        asyncio.run(
+            process_claimed_job(
+                repo,
+                models,
+                {"id": uuid4(), "goal_vi": "Python", "tier": "free", "mode": "quick"},
+                retriever=Retrieval(repo),
+                retrieval_subject="python",
+            )
+        )
+    assert models.generate_count == 1
+    assert models.verification_calls == 6
+    assert not any(is_currently_verified(i, repo.chunks) for i in repo.saved.values())
+    assert repo.progress[-1][0] == "failed"
+
+
+def test_readiness_counts_only_items_still_verified_after_relational_save() -> None:
+    class ChangedAfterSave(MemoryRepository):
+        changed = False
+
+        def save_items(self, subject, items):
+            super().save_items(subject, items)
+            if not self.changed:
+                self.changed = True
+                first = items[0]
+                self.saved[first.id] = first.model_copy(
+                    update={"status": "needs_review", "prompt_vi": "Changed after verification"}
+                )
+
+    repo, models = ChangedAfterSave(), Model()
+    asyncio.run(
+        process_claimed_job(
+            repo,
+            models,
+            {"id": uuid4(), "goal_vi": "Python", "tier": "free", "mode": "quick"},
+            retriever=Retrieval(repo),
+            retrieval_subject="python",
+        )
+    )
+    assert models.generate_count == 2
+    assert repo.progress[-1][0] == "ready"
+    assert sum(is_currently_verified(i, repo.chunks) for i in repo.saved.values()) >= 6
+
+
 def test_transient_verifier_failure_uses_remaining_repair_and_preserves_verified_items() -> None:
     class TransientModel(Model):
         failed_once = False
@@ -274,11 +330,12 @@ def test_transient_verifier_failure_uses_remaining_repair_and_preserves_verified
             retrieval_subject="python",
         )
     )
-    assert models.generate_count == 2
+    assert models.generate_count == 1
     assert repo.progress[-1][0] == "ready"
     assert sum(is_currently_verified(i, repo.chunks) for i in repo.saved.values()) >= 6
     assert any(
-        i.verification.reason == "verification_error:GatewayError" for i in repo.saved.values()
+        any(a.reason == "verification_error:GatewayError" for a in i.verification_history)
+        for i in repo.saved.values()
     )
 
 
@@ -372,7 +429,7 @@ def test_provenance_failure_uses_only_one_repair_and_never_publishes_invalid_ite
 
 
 @pytest.mark.parametrize("checkpoint", [False, True])
-def test_limited_first_lesson_keeps_six_verified_questions_for_three_concepts(
+def test_complete_source_graph_keeps_first_lesson_question_batch_bounded(
     checkpoint: bool,
 ) -> None:
     class SmallLesson(Model):
@@ -400,10 +457,9 @@ def test_limited_first_lesson_keeps_six_verified_questions_for_three_concepts(
             {"id": uuid4(), "goal_vi": "Python", "tier": "free", "mode": "quick"},
             retriever=Retrieval(repo),
             retrieval_subject="python",
-            max_concepts=3,
         )
     )
-    assert repo.progress[-1][0] == "ready" and len(repo.kg.concepts) == 3
+    assert repo.progress[-1][0] == "ready" and len(repo.kg.concepts) == 5
     assert len(repo.saved) == 6
-    assert {i.concept for i in repo.saved.values()} == {c.slug for c in repo.kg.concepts}
+    assert {i.concept for i in repo.saved.values()} <= {c.slug for c in repo.kg.concepts}
     assert all(is_currently_verified(i, repo.chunks) for i in repo.saved.values())

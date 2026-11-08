@@ -12,9 +12,20 @@ from fastapi import HTTPException
 from app.api.tutor import HintInput
 from app.content.backends import LearningBackend, TutorBackend
 from app.content.learning import graph_confirmed, graph_revision
-from app.content.models import Graph
+from app.content.models import Graph, digest
 from app.content.repository import StoredItem
 from tests.content.fakes import FakeGateway, topic
+
+
+def test_new_extraction_metadata_preserves_existing_graph_confirmations() -> None:
+    _, _, graph, _ = topic()
+    legacy = graph.model_dump(mode="json", by_alias=True)
+    legacy.pop("source_chunk_ids", None)
+    legacy.pop("extraction_version", None)
+    for concept in legacy["concepts"]:
+        concept.pop("pages", None)
+    restored = Graph.model_validate(legacy)
+    assert graph_revision(restored) == digest(legacy)
 
 
 @pytest.mark.parametrize("mismatch", ["none", "learner", "topic", "version"])

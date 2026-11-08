@@ -46,6 +46,7 @@ class Concept(_Contract):
     name_en: str = Field(min_length=1)
     description_vi: str = ""
     sources: list[str] = Field(min_length=1)  # source_uri of the pages the concept comes from
+    pages: list[int] = Field(default_factory=list)
 
 
 class Edge(_Contract):
@@ -355,6 +356,7 @@ class PlacementStep(_Contract):
 class NextItem(_Contract):
     item: PublicItem
     reason_vi: str
+    concept_slug: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 # POST /attempts

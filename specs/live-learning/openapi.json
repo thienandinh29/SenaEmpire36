@@ -130,6 +130,20 @@
               "maxLength": 200,
               "title": "Subject"
             }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "practice",
+                "review"
+              ],
+              "type": "string",
+              "default": "practice",
+              "title": "Mode"
+            }
           }
         ],
         "responses": {
@@ -1604,6 +1618,17 @@
           "reason_vi": {
             "type": "string",
             "title": "Reason Vi"
+          },
+          "concept_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Slug"
           }
         },
         "additionalProperties": false,

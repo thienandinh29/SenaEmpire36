@@ -18,13 +18,11 @@ describe("same-origin API proxy", () => {
     configure();
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue(
-          new Response('{"status":"ready"}', {
-            headers: { "X-Data-Fixture": "true" },
-          }),
-        ),
+      vi.fn().mockResolvedValue(
+        new Response('{"status":"ready"}', {
+          headers: { "X-Data-Fixture": "true" },
+        }),
+      ),
     );
     const response = await GET(
       new NextRequest("http://localhost:3000/api/backend/topics/test"),
@@ -51,6 +49,20 @@ describe("same-origin API proxy", () => {
       ).toBe(200);
     expect(fetchMock.mock.calls[0][0].toString()).toBe(
       "https://backend.example/v1/next-item?learner_id=l&subject=s",
+    );
+  });
+  it("preserves adaptive review mode when forwarding to the shared API", async () => {
+    configure();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}"));
+    vi.stubGlobal("fetch", fetchMock);
+    await GET(
+      new NextRequest(
+        "http://localhost:3000/api/backend/next-item?learner_id=l&subject=s&mode=review",
+      ),
+      context(["next-item"]),
+    );
+    expect(fetchMock.mock.calls[0][0].toString()).toBe(
+      "https://backend.example/v1/next-item?learner_id=l&subject=s&mode=review",
     );
   });
   it.each([null, "other", "demo-v1"])(

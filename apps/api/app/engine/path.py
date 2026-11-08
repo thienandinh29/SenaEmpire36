@@ -11,8 +11,9 @@ wins):
   4 confirm   a ready concept is probably known (CONFIRM_BELOW <= p < MASTERY)
   5 done      everything is mastered
 
-*Ready* = not mastered and every direct prerequisite at least WEAK. The shallowest unmastered
-concept always has mastered prerequisites, so while anything is unmastered some concept is ready.
+*Ready* = not mastered and every prerequisite (including ancestors) at least WEAK.
+The shallowest unmastered concept always has mastered prerequisites, so while anything is
+unmastered some concept is ready.
 
 Why `confirm` comes last: placement marks the concepts it found known at 0.85. If those came before
 the gap, the learner would be asked again about what placement just showed they know.
@@ -24,7 +25,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from app.engine.bkt import MASTERY_THRESHOLD
-from app.engine.graph import UNSEEN_P_KNOWN, WEAK_THRESHOLD, Graph
+from app.engine.graph import UNSEEN_P_KNOWN, WEAK_THRESHOLD, Graph, root_cause
 from app.engine.remediation import resume
 from app.engine.trace import Alternative, DecisionTrace, Evidence, fmt_p
 
@@ -43,6 +44,7 @@ class NextStep:
     kind: StepKind
     target_difficulty: float  # for P3 to pick an item of about this difficulty (0-1)
     reason_vi: str
+    resume_origin: str | None = None
 
 
 def target_difficulty(p_known: float) -> float:
@@ -74,7 +76,7 @@ def next_step(
         return (
             available(slug)
             and not mastered(slug)
-            and all(p(a) >= WEAK_THRESHOLD for a in graph.parents[slug])
+            and all(p(a) >= WEAK_THRESHOLD for a in graph.ancestors(slug))
         )
 
     def available(slug: str) -> bool:
@@ -98,6 +100,24 @@ def next_step(
     )
     if overdue:
         due, slug = overdue[0]
+        target, trace = root_cause(graph, mastery, slug, now=now)
+        if target != slug:
+            reason = (
+                f"Trước khi ôn «{graph.name_vi(slug)}», củng cố kiến thức nền "
+                f"«{graph.name_vi(target)}» đang ở {round(p(target) * 100)}%. "
+                "Khi nền đủ vững, bạn sẽ quay lại bài này."
+            )
+            return (
+                NextStep(target, "resume", target_difficulty(p(target)), reason, slug),
+                trace.model_copy(
+                    update={
+                        "kind": "next_item",
+                        "rule": "next_item.review_prerequisite",
+                        "rule_vi": reason,
+                        "evidence": Evidence(),
+                    }
+                ),
+            )
         days = (now - due).total_seconds() / 86400
         late = "hôm nay" if days < 1 else f"{round(days)} ngày trước"
         reason = f"Ôn lại «{graph.name_vi(slug)}»: đã đến hạn ôn ({late}) để không quên"
@@ -169,11 +189,11 @@ def _step(
     blocked = [
         s
         for s in graph.order
-        if not mastered(s) and any(p(a) < WEAK_THRESHOLD for a in graph.parents[s])
+        if not mastered(s) and any(p(a) < WEAK_THRESHOLD for a in graph.ancestors(s))
     ]
     for s in sorted(blocked, key=lambda s: (graph.depth[s], s))[:MAX_BLOCKED]:
         weakest = min(
-            (a for a in graph.parents[s] if p(a) < WEAK_THRESHOLD), key=lambda a: (p(a), a)
+            (a for a in graph.ancestors(s) if p(a) < WEAK_THRESHOLD), key=lambda a: (p(a), a)
         )
         alternatives.append(
             Alternative(

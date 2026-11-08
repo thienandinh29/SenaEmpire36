@@ -195,6 +195,25 @@ def test_target_difficulty_rises_with_mastery_and_stays_in_range() -> None:
     assert step(CHAIN, {})[0].target_difficulty == 0.32
 
 
+def test_overdue_advanced_review_returns_to_its_weakest_foundation() -> None:
+    mastery = {"a": 0.2, "b": 0.4, "c": 0.96, "d": 0.8}
+    result, trace = step(CHAIN, mastery, due_reviews={"d": NOW - timedelta(days=2)})
+    assert result.concept_slug == "a" and result.resume_origin == "d"
+    assert result.kind == "resume" and "20%" in result.reason_vi
+    assert trace.kind == "next_item" and trace.rule == "next_item.review_prerequisite"
+    mastery["a"] = 0.7
+    result, _ = step(CHAIN, mastery, resume_origin="d")
+    assert result.concept_slug == "b"
+    mastery["b"] = 0.7
+    result, _ = step(CHAIN, mastery, resume_origin="d")
+    assert result.concept_slug == "d"
+
+
+def test_new_knowledge_cannot_skip_a_weak_transitive_foundation() -> None:
+    result, _ = step(CHAIN, {"a": 0.1, "b": 0.96, "c": 0.96, "d": 0.6})
+    assert result.concept_slug == "a"
+
+
 # --- properties on many shapes -----------------------------------------------------------------
 
 

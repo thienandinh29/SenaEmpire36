@@ -1,6 +1,7 @@
 """Blind MCQ verification. A fresh whitelisted request contains no answer metadata."""
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -72,6 +73,31 @@ def evidence_valid(evidence: list[Evidence], chunks: list[Chunk]) -> bool:
     )
 
 
+def source_evidence(evidence: list[Evidence], chunks: list[Chunk]) -> list[Evidence]:
+    """Extract unique raw passages when a model changed only whitespace in a quote.
+
+    Words, case, punctuation and chunk identity must match. Missing or ambiguous matches
+    remain invalid. The final evidence gate still checks exact raw source substrings.
+    """
+    lookup = {chunk.chunk_id: chunk.content for chunk in chunks}
+    resolved = []
+    for entry in evidence:
+        content = lookup.get(entry.chunk_id, "")
+        if entry.quote and entry.quote in content:
+            resolved.append(entry)
+            continue
+        words = entry.quote.split()
+        matches = (
+            list(re.finditer(r"\s+".join(re.escape(word) for word in words), content))
+            if words
+            else []
+        )
+        resolved.append(
+            entry.model_copy(update={"quote": matches[0].group(0)}) if len(matches) == 1 else entry
+        )
+    return resolved
+
+
 async def verify_item(
     item: Item,
     chunks: list[Chunk],
@@ -113,7 +139,7 @@ async def verify_item(
                 )
                 identity = reply.identity
                 verdict = parse_reply(reply, Verdict)
-                evidence = verdict.evidence
+                evidence = source_evidence(verdict.evidence, cited_chunks(item, chunks))
                 if (
                     check == 0
                     and independent(item.generator, identity)

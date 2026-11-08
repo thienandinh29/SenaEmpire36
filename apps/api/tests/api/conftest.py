@@ -72,7 +72,9 @@ class FakeBackend:
             trace=self.trace(),
         )
 
-    async def next_item(self, learner_id: str, subject: str) -> learn.NextSelection | None:
+    async def next_item(
+        self, learner_id: str, subject: str, *, review: bool = False
+    ) -> learn.NextSelection | None:
         if self.item is None:
             return None
         return learn.NextSelection(item=self.item, reason_vi="Ôn lại kiến thức nền tảng.")

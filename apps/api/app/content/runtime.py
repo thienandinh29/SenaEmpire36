@@ -6,12 +6,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.content.backends import LearningBackend, TopicsBackend, TutorBackend
 from app.content.gateway import Gateway, P3Gateway
 from app.content.learning import GraphConfirmation
 from app.content.repository import Repository
 from app.main import create_app as platform_app
+from app.main import create_content_app
 
 
 def create_app(
@@ -21,8 +22,12 @@ def create_app(
     gateway: Gateway | None = None,
     confirmation: GraphConfirmation | None = None,
 ) -> FastAPI:
-    """uvicorn app.content.runtime:create_app --factory (process env only; no .env read)."""
-    settings = settings or Settings(_env_file=None)
+    """Legacy P4 entry point using the same repository settings as API and worker."""
+    settings = settings or get_settings()
+    if repository is None and gateway is None and confirmation is None:
+        # Normal launches use the complete P1-P5 composition, including durable
+        # confirmations, learner credentials and platform upload storage.
+        return create_content_app(settings)
     app: FastAPI
     store = repository or Repository(lambda: app.state.pool)
     models = gateway or P3Gateway()

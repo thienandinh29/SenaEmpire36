@@ -248,18 +248,18 @@ class TopicPipeline:
                         *summaries,
                     )
                 await progress(Progress("indexing", "Đang chuẩn bị nguồn trích dẫn…", 25))
-                chunks = list(await self.ports.index(sources, upload))
-                if not chunks or len({c.id for c in chunks}) != len(chunks):
+                indexed_chunks = list(await self.ports.index(sources, upload))
+                if not indexed_chunks or len({c.id for c in indexed_chunks}) != len(indexed_chunks):
                     raise SourceError("Chưa có đoạn nguồn hợp lệ để xây lộ trình.")
-                chunks = await retrieve_chunks(
-                    self.retriever, goal, self.retrieval_subject, chunks, self.retrieval_k
+                lesson_chunks = await retrieve_chunks(
+                    self.retriever, goal, self.retrieval_subject, indexed_chunks, self.retrieval_k
                 )
-                graph = await self.ports.build_graph(goal, chunks, request.tier)
+                graph = await self.ports.build_graph(goal, indexed_chunks, request.tier)
                 if not graph.supported or not graph.graph:
                     raise SourceError("Sơ đồ kiến thức chưa được xác minh từ nguồn.")
                 canonical_graph = KnowledgeGraph.model_validate(graph.graph)
-                source_uris = {chunk.source_uri for chunk in chunks} | {
-                    chunk.source_url for chunk in chunks if chunk.source_url
+                source_uris = {chunk.source_uri for chunk in indexed_chunks} | {
+                    chunk.source_url for chunk in indexed_chunks if chunk.source_url
                 }
                 if any(
                     not set(concept.sources) <= source_uris for concept in canonical_graph.concepts
@@ -278,9 +278,9 @@ class TopicPipeline:
                     )
                 )
                 generated = await self.ports.build_items(
-                    graph, chunks, request.tier, self.first_items
+                    graph, lesson_chunks, request.tier, self.first_items
                 )
-                chunk_ids = {chunk.id for chunk in chunks}
+                chunk_ids = {chunk.id for chunk in lesson_chunks}
                 verified: list[Item] = []
                 seen: set[str] = set()
                 for item in generated:
@@ -296,7 +296,7 @@ class TopicPipeline:
                         or item.source
                         not in {
                             uri
-                            for chunk in chunks
+                            for chunk in lesson_chunks
                             if chunk.id in item.chunk_ids
                             for uri in (chunk.source_uri, chunk.source_url)
                             if uri
@@ -308,7 +308,11 @@ class TopicPipeline:
                     seen.add(item.id)
                     verified.append(item)
                 if len(verified) < self.first_items:
-                    raise SourceError("Chưa đủ câu hỏi đã kiểm chứng để bắt đầu đánh giá.")
+                    raise SourceError(
+                        f"Đã có {len(verified)}/{self.first_items} câu hỏi đạt kiểm chứng. "
+                        "Các câu còn lại chưa đạt điều kiện phát hành; "
+                        "dữ liệu đã được giữ để thử lại."
+                    )
                 await self.ports.save_items(subject_slug, verified)
                 graph_ready = items_ready = True
                 await progress(

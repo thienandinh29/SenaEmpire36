@@ -473,9 +473,24 @@
 }
 
 /* Stamps give concepts a clear state and identity without enclosing every node in a card. */
+.review-concepts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.review-concept {
+  padding: 16px;
+  border: 1px solid var(--journal-rule);
+  border-radius: 8px;
+}
+.review-concept progress {
+  width: 100%;
+  accent-color: var(--journal-accent);
+}
 .journal-ui .concept-node {
   width: 200px;
-  height: 96px;
+  min-height: 96px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -526,9 +541,8 @@
   line-height: 1.2;
   color: var(--journal-ink);
   -webkit-line-clamp: unset;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .journal-ui .concept-node-top {
   display: block;

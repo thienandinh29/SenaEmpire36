@@ -51,7 +51,7 @@ describe("dagre map layout", () => {
       Math.abs(positions.get("b")!.y - positions.get("c")!.y),
     ).toBeGreaterThanOrEqual(NODE_HEIGHT);
   });
-  it("handles empty graphs and long Vietnamese labels without changing node geometry", () => {
+  it("reserves more height for long Vietnamese labels", () => {
     expect(layoutGraph({ nodes: [], edges: [] })).toEqual([]);
     const nodes = layoutGraph({
       nodes: [
@@ -66,5 +66,25 @@ describe("dagre map layout", () => {
     });
     expect(Number.isFinite(nodes[0].position.x)).toBe(true);
     expect(Number.isFinite(nodes[0].position.y)).toBe(true);
+    expect(nodes[0].height).toBeGreaterThan(NODE_HEIGHT);
+  });
+  it("keeps long labels from overlapping in a large unconnected curriculum", () => {
+    const nodes = layoutGraph({
+      nodes: Array.from({ length: 40 }, (_, i) => ({
+        slug: `rule-${i}`,
+        name_vi:
+          "Phương pháp quy đồng mẫu số và cộng các phân số khác mẫu ".repeat(3),
+        p_known: 0,
+        mastered: false,
+      })),
+      edges: [],
+    });
+    expect(nodes).toHaveLength(40);
+    const sorted = [...nodes].sort((a, b) => a.position.y - b.position.y);
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i].position.y).toBeGreaterThanOrEqual(
+        sorted[i - 1].position.y + sorted[i - 1].height,
+      );
+    }
   });
 });

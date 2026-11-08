@@ -14,7 +14,13 @@ export function layoutGraph(graph: KnowledgeGraph) {
   });
   layout.setDefaultEdgeLabel(() => ({}));
   graph.nodes.forEach((node) =>
-    layout.setNode(node.slug, { width: NODE_WIDTH, height: NODE_HEIGHT }),
+    layout.setNode(node.slug, {
+      width: NODE_WIDTH,
+      height: Math.max(
+        NODE_HEIGHT,
+        80 + Math.ceil((node.name_vi || node.slug).length / 22) * 16,
+      ),
+    }),
   );
   graph.edges.forEach((edge) => layout.setEdge(edge.from, edge.to));
   dagre.layout(layout);
@@ -22,9 +28,10 @@ export function layoutGraph(graph: KnowledgeGraph) {
     const position = layout.node(node.slug);
     return {
       ...node,
+      height: position.height,
       position: {
         x: position.x - NODE_WIDTH / 2,
-        y: position.y - NODE_HEIGHT / 2,
+        y: position.y - position.height / 2,
       },
     };
   });

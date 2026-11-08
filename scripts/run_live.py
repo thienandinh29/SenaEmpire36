@@ -22,6 +22,7 @@ def main() -> int:
     parser.add_argument("--service", choices=["check", "web", "api", "worker"], default="check")
     parser.add_argument("--api-url", default="http://127.0.0.1:8000")
     parser.add_argument("--web-port", type=int, default=3000)
+    parser.add_argument("--reload", action="store_true", help="Reload API code during development")
     parser.add_argument(
         "--local-uploads",
         action="store_true",
@@ -34,6 +35,7 @@ def main() -> int:
 
     from pydantic import ValidationError
 
+    # isort: split
     from app.config import Settings
 
     try:
@@ -101,22 +103,17 @@ def main() -> int:
         import httpx
         import psycopg
 
+        # isort: split
+        from app.database_status import inspect_database
+
         try:
             with psycopg.connect(settings.database_url, connect_timeout=3) as connection:
-                required = [
-                    "topic_jobs",
-                    "p4_learning_sessions",
-                    "learner_graph_confirmations",
-                    "learner_api_sessions",
-                ]
-                missing = []
-                for name in required:
-                    row = connection.execute("select to_regclass(%s)", (name,)).fetchone()
-                    if row is None or row[0] is None:
-                        missing.append(name)
-                if missing:
-                    print("Missing database tables:", ", ".join(missing))
+                status = inspect_database(connection)
+                if not status.ready:
+                    print("Shared database schema is incomplete for one or more teams.")
+                    print("Run: cd apps/api && .venv/Scripts/python -m app.database_status")
                     return 1
+                print(f"Shared database: {status.host}:{status.port}/{status.database}")
             headers = {}
             if settings.tei_api_key.get_secret_value():
                 headers["Authorization"] = "Bearer " + settings.tei_api_key.get_secret_value()
@@ -138,6 +135,7 @@ def main() -> int:
             "uvicorn",
             "app.main:create_content_app",
             "--factory",
+            *(["--reload", "--reload-dir", str(API / "app")] if args.reload else []),
             "--host",
             "127.0.0.1",
             "--port",
@@ -146,7 +144,10 @@ def main() -> int:
         if args.service == "api"
         else [sys.executable, "-m", "app.jobs.worker", "--pipeline"]
     )
-    return subprocess.call(command, cwd=API)
+    environment = os.environ.copy()
+    # Pin both child processes to the database that passed the shared preflight.
+    environment["DATABASE_URL"] = settings.database_url
+    return subprocess.call(command, cwd=API, env=environment)
 
 
 if __name__ == "__main__":

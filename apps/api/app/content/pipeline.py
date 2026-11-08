@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import Field, StrictBool
 
 from app.content.gateway import Gateway, parse_reply
-from app.content.learning import first_lesson_graph, teaching_chunks
+from app.content.learning import teaching_chunks
 from app.content.models import (
     Chunk,
     Graph,
@@ -18,7 +18,7 @@ from app.content.models import (
     cited_chunks,
     validate_references,
 )
-from app.content.prompts import GRAPH_SYSTEM, ITEM_SYSTEM, marked_chunks
+from app.content.prompts import GRAPH_SYSTEM, GRAPH_VERSION, ITEM_SYSTEM, marked_chunks
 from app.guardrails.answerability import verify_item
 
 
@@ -69,15 +69,15 @@ class GoalGraph(Record):
     reason_vi: str
 
 
-async def generate_graph(
+async def _extract_graph(
     chunks: list[Chunk],
     sources: list[Source],
     gateway: Gateway,
     *,
     tier: str = "pro",
     goal: str | None = None,
-    max_concepts: int | None = None,
-) -> Graph:
+    previous: Graph | None = None,
+) -> Graph | None:
     validate_references(chunks, sources)
     require_model_permission(sources)
     reply = await gateway.generate(
@@ -85,9 +85,16 @@ async def generate_graph(
         tier=tier,
         system=GRAPH_SYSTEM
         + (
-            "\nBuild only the part of the source that teaches learning_goal. "
-            f"Use at most {max_concepts or 6} closely related concepts for ONE small first lesson. "
-            "Do not expand the lesson to cover the entire learning goal. "
+            "\nExtract every distinct concept taught in this source batch. existing_graph is "
+            "the map from earlier batches, supplied as data. Reuse its slugs for the same "
+            "knowledge and include those concepts when adding prerequisite edges to new ones. "
+            "Keep separate rules and methods as separate named concepts. Do not compress "
+            "a chapter into three broad steps. Do not invent knowledge to meet a node count. "
+            "A batch containing only an outline need not add concepts."
+        )
+        + (
+            "\nMap the distinct concepts actually explained in all supplied chunks. "
+            "The graph represents all supplied learning material, not only the first lesson. "
             "Include only concepts explicitly explained in the supplied chunks, with examples "
             "sufficient to write assessment questions. Titles and outlines alone are insufficient. "
             "If the source does not teach the requested subject, return relevant_to_goal=false "
@@ -98,6 +105,11 @@ async def generate_graph(
         payload={
             "source_data": marked_chunks(chunks),
             "sources": [s.model_dump(mode="json") for s in sources],
+            **(
+                {"existing_graph": previous.model_dump(mode="json", by_alias=True)}
+                if previous
+                else {}
+            ),
             **({"learning_goal": goal} if goal else {}),
         },
         schema=GoalGraph if goal else Graph,
@@ -105,16 +117,107 @@ async def generate_graph(
     if goal:
         scoped = parse_reply(reply, GoalGraph)
         if not scoped.relevant_to_goal or scoped.graph is None:
-            from app.research.reader import SourceError
-
-            raise SourceError("Nguồn hiện có không đủ để xây bản đồ đúng mục tiêu học này.")
+            return None
         graph = scoped.graph
     else:
         graph = parse_reply(reply, Graph)
-    validate_references(chunks, sources, graph)
-    if max_concepts is not None:
-        graph = first_lesson_graph(graph, max_concepts)
     return graph
+
+
+# Bound each extraction's new material so later chapters do not disappear in one
+# large-context summary. This is an input budget, never a limit on concept count.
+GRAPH_BATCH_CHARS = 16_000
+
+
+def _merge_graphs(previous: Graph | None, incoming: Graph) -> Graph:
+    if previous is None:
+        return incoming
+    concepts = {concept.slug: concept for concept in previous.concepts}
+    names = {concept.name_vi.casefold().strip(): concept.slug for concept in previous.concepts}
+    aliases: dict[str, str] = {}
+    for concept in incoming.concepts:
+        name = concept.name_vi.casefold().strip()
+        slug = concept.slug if concept.slug in concepts else names.get(name, concept.slug)
+        aliases[concept.slug] = slug
+        if slug in concepts:
+            old = concepts[slug]
+            concept = old.model_copy(
+                update={
+                    "chunk_ids": list(dict.fromkeys([*old.chunk_ids, *concept.chunk_ids])),
+                    "sources": list(dict.fromkeys([*old.sources, *concept.sources])),
+                    "pages": sorted(set(old.pages) | set(concept.pages)),
+                }
+            )
+        concepts[slug] = concept
+        names[name] = slug
+    edges = {(edge.prerequisite, edge.to): edge for edge in previous.edges}
+    for edge in incoming.edges:
+        start, end = aliases[edge.prerequisite], aliases[edge.to]
+        if start == end:
+            continue
+        old_edge = edges.get((start, end))
+        edges[start, end] = edge.model_copy(
+            update={
+                "prerequisite": start,
+                "to": end,
+                "chunk_ids": list(
+                    dict.fromkeys(
+                        [
+                            *(old_edge.chunk_ids if old_edge else []),
+                            *edge.chunk_ids,
+                        ]
+                    )
+                ),
+            }
+        )
+    # Validate the merged DAG too: valid partial graphs may form a cycle together.
+    return Graph(concepts=list(concepts.values()), edges=list(edges.values()))
+
+
+async def generate_graph(
+    chunks: list[Chunk],
+    sources: list[Source],
+    gateway: Gateway,
+    *,
+    tier: str = "pro",
+    goal: str | None = None,
+) -> Graph:
+    validate_references(chunks, sources)
+    require_model_permission(sources)
+    batches: list[list[Chunk]] = []
+    size = 0
+    for chunk in chunks:
+        if not batches or (size and size + len(chunk.content) > GRAPH_BATCH_CHARS):
+            batches.append([])
+            size = 0
+        batches[-1].append(chunk)
+        size += len(chunk.content)
+    graph = None
+    processed: list[Chunk] = []
+    for batch in batches:
+        incoming = await _extract_graph(
+            batch,
+            sources,
+            gateway,
+            tier=tier,
+            goal=goal,
+            previous=graph,
+        )
+        processed.extend(batch)
+        if incoming is not None:
+            validate_references(processed, sources, incoming)
+            graph = _merge_graphs(graph, incoming)
+    if graph is None:
+        from app.research.reader import SourceError
+
+        raise SourceError("Nguồn hiện có không đủ để xây bản đồ đúng mục tiêu học này.")
+    validate_references(chunks, sources, graph)
+    return graph.model_copy(
+        update={
+            "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "extraction_version": GRAPH_VERSION,
+        }
+    )
 
 
 async def generate_items(
@@ -196,6 +299,16 @@ async def generate_items(
 
     async def checked(item: Item) -> Item:
         async with limit:
-            return await verify_item(item, chunks, gateway, tier=tier)
+            checked_item = item
+            for attempt in range(3):
+                checked_item = await verify_item(checked_item, chunks, gateway, tier=tier)
+                if not checked_item.verification or checked_item.verification.reason not in {
+                    "verification_error:GatewayError",
+                    "verification_error:TimeoutError",
+                }:
+                    break
+                if attempt < 2:
+                    await asyncio.sleep(2**attempt)
+            return checked_item
 
     return list(await asyncio.gather(*(checked(item) for item in items)))

@@ -55,7 +55,12 @@ export interface LearningClient {
     learner: string,
     subject: string,
     signal?: AbortSignal,
-  ): Promise<{ item: PublicItem; reason_vi: string }>;
+    mode?: "practice" | "review",
+  ): Promise<{
+    item: PublicItem;
+    reason_vi: string;
+    concept_slug?: string;
+  } | null>;
   graph(
     learner: string,
     subject: string,
@@ -93,7 +98,9 @@ export function createLearningClient(config: WebConfig): LearningClient {
     init: RequestInit = {},
   ): Promise<unknown> {
     try {
-      const timeout = AbortSignal.timeout(25000);
+      const timeout = AbortSignal.timeout(
+        path === "tutor/hint" ? 100000 : 25000,
+      );
       const response = await fetch(`/api/backend/${path}`, {
         ...init,
         cache: "no-store",
@@ -118,6 +125,7 @@ export function createLearningClient(config: WebConfig): LearningClient {
           detail,
         );
       }
+      if (response.status === 204) return null;
       return await response.json();
     } catch (error) {
       if (
@@ -195,16 +203,18 @@ export function createLearningClient(config: WebConfig): LearningClient {
       )
         throw new DataError("contract");
     },
-    async nextItem(learner_id, subject, signal) {
-      const value = record(
-        await request(
-          `next-item?${new URLSearchParams({ learner_id, subject })}`,
-          { signal },
-        ),
+    async nextItem(learner_id, subject, signal, mode) {
+      const raw = await request(
+        `next-item?${new URLSearchParams({ learner_id, subject, ...(mode ? { mode } : {}) })}`,
+        { signal },
       );
+      if (raw === null) return null;
+      const value = record(raw);
       return {
         item: parseItem(value.item),
         reason_vi: string(value.reason_vi),
+        concept_slug:
+          value.concept_slug == null ? undefined : string(value.concept_slug),
       };
     },
     async placement(learner_id, subject, _slug, signal) {

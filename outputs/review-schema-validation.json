@@ -1,0 +1,73 @@
+{
+  "running_api_fields": [
+    "item",
+    "reason_vi",
+    "concept_slug"
+  ],
+  "running_api_parameters": [
+    "learner_id",
+    "subject",
+    "mode"
+  ],
+  "confirmation_diagnostic": {
+    "stored_graph_keys": [
+      "edges",
+      "concepts"
+    ],
+    "has_confirmation": true,
+    "matches_raw": true,
+    "matches_current_model": true,
+    "serialized_keys": [
+      "concepts",
+      "edges"
+    ],
+    "first_concept_raw_keys": [
+      "slug",
+      "name_en",
+      "name_vi",
+      "sources",
+      "chunk_ids",
+      "description_vi"
+    ],
+    "first_concept_model_keys": [
+      "slug",
+      "name_vi",
+      "name_en",
+      "description_vi",
+      "sources",
+      "chunk_ids"
+    ]
+  },
+  "api": {
+    "status": 200,
+    "schema_valid": true,
+    "concept_present": true,
+    "response_fields": [
+      "item",
+      "reason_vi",
+      "concept_slug"
+    ],
+    "item_fields": [
+      "id",
+      "kind",
+      "prompt_vi",
+      "options"
+    ]
+  },
+  "web_proxy": {
+    "status": 200,
+    "schema_valid": true,
+    "concept_present": true,
+    "response_fields": [
+      "item",
+      "reason_vi",
+      "concept_slug"
+    ],
+    "item_fields": [
+      "id",
+      "kind",
+      "prompt_vi",
+      "options"
+    ]
+  }
+}

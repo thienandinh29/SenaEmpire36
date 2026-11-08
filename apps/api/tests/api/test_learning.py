@@ -33,6 +33,25 @@ def test_placement_completion_keeps_null_item(harness: Harness) -> None:
     assert response.json()["gap_slug"] == "photosynthesis"
 
 
+def test_completed_path_returns_empty_success_not_missing_question(
+    harness: Harness, monkeypatch
+) -> None:
+    harness.backend.item = None
+    original = harness.backend.graph
+
+    async def mastered_graph(*args):
+        result = await original(*args)
+        for node in result.nodes:
+            node.mastered = True
+            node.p_known = 0.99
+        return result
+
+    monkeypatch.setattr(harness.backend, "graph", mastered_graph)
+    response = harness.client.get("/next-item", params={"learner_id": "u1", "subject": "biology"})
+    assert response.status_code == 204
+    assert response.content == b""
+
+
 @pytest.mark.parametrize("path", ["/placement/next", "/next-item", "/attempts"])
 def test_unverified_items_never_served_or_persisted(harness: Harness, path: str) -> None:
     assert harness.backend.item is not None

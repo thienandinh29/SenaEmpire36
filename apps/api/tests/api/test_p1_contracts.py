@@ -172,7 +172,9 @@ def test_routes_with_actual_p1_engine_and_memory_storage(
                 }
             )
 
-        async def next_item(self, learner_id: str, subject: str) -> learn.NextSelection:
+        async def next_item(
+            self, learner_id: str, subject: str, *, review: bool = False
+        ) -> learn.NextSelection:
             step, _ = engines["path"].next_step(
                 graph, mastery, now=now, resume_origin="photosynthesis"
             )

@@ -396,6 +396,8 @@ export interface components {
       description_vi: string;
       /** Sources */
       sources: string[];
+      /** Pages */
+      pages: number[];
     };
     /** ConfirmationInput */
     ConfirmationInput: {
@@ -618,6 +620,8 @@ export interface components {
       item: components["schemas"]["PublicItem"];
       /** Reason Vi */
       reason_vi: string;
+      /** Concept Slug */
+      concept_slug?: string | null;
     };
     /** PlacementStep */
     PlacementStep: {
@@ -842,6 +846,7 @@ export interface operations {
       query: {
         learner_id: string;
         subject: string;
+        mode?: "practice" | "review";
       };
       header?: never;
       path?: never;

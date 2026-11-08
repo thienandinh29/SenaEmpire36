@@ -1,6 +1,6 @@
 """P4 adapter over P2's pool/tables. No second database, queue or ORM.
 
-Requires P2 to review/apply content/sql/0008_p4_runtime.sql after 0007.
+Uses the canonical schema under supabase/migrations, shared with all other components.
 All publishing reloads current relational rows and rechecks the independent audit.
 """
 
@@ -251,7 +251,12 @@ class Repository:
             ).fetchone()
             if old and old[0] == value:
                 return
-            ids = list(dict.fromkeys(cid for c in graph.concepts for cid in c.chunk_ids))
+            ids = list(
+                dict.fromkeys(
+                    [cid for concept in graph.concepts for cid in concept.chunk_ids]
+                    + [cid for edge in graph.edges for cid in edge.chunk_ids]
+                )
+            )
             sources, chunks = self.material(conn, ids)
             validate_references(chunks, sources, graph)
             for concept in graph.concepts:
@@ -408,6 +413,7 @@ class Repository:
             ids = list(
                 dict.fromkeys(
                     [cid for c in graph.concepts for cid in c.chunk_ids]
+                    + [cid for edge in graph.edges for cid in edge.chunk_ids]
                     + [cid for item in items for cid in item.chunk_ids]
                 )
             )

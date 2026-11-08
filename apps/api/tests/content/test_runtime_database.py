@@ -7,7 +7,7 @@ import asyncio
 import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -17,10 +17,12 @@ from psycopg import sql
 from app.config import Settings
 from app.content.demo import install_schema, local_only
 from app.content.learning import graph_revision
-from app.content.repository import Repository
+from app.content.repository import ContentUnavailable, Repository
 from app.content.runtime import create_app
 from app.db import create_pool
+from app.engine.graph import Graph as EngineGraph
 from app.guardrails.answerability import verify_item
+from app.services.assessment import summarize
 from app.services.topics import TopicsService
 from app.uploads.reader import Document, Page
 from tests.content.fakes import FakeGateway, topic
@@ -39,6 +41,35 @@ class ConfirmedGraphs:
         with store.transaction() as conn:
             revision = graph_revision(store.graph(conn, subject))
         self.approved.add((learner, subject, revision))
+
+
+@pytest.mark.parametrize("edge_source_exists", [True, False])
+def test_graph_persistence_loads_edge_only_evidence_and_rejects_missing_chunks(
+    store: Repository,
+    edge_source_exists: bool,
+) -> None:
+    sources, chunks, graph, _ = topic()
+    edge_chunk = chunks[0].model_copy(update={"chunk_id": uuid4()})
+    if edge_source_exists:
+        store.save_material("python-conditions", sources, [*chunks, edge_chunk])
+    graph = graph.model_copy(
+        update={
+            "edges": [
+                edge.model_copy(update={"chunk_ids": [edge_chunk.chunk_id]}) for edge in graph.edges
+            ]
+        }
+    )
+    assert graph.edges
+    assert edge_chunk.chunk_id not in {cid for c in graph.concepts for cid in c.chunk_ids}
+    if not edge_source_exists:
+        with pytest.raises((ValueError, ContentUnavailable)):
+            store.save_graph("python-conditions", graph)
+        return
+    store.save_graph("python-conditions", graph)
+    _, _, _, items = topic()
+    store.save_items("python-conditions", items[:1])
+    with store.transaction() as conn:
+        assert store.graph(conn, "python-conditions") == graph
 
 
 @pytest.fixture
@@ -211,6 +242,17 @@ def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
             json={"learner_id": learner, "item_id": public["id"], "answer": wrong, "hints_used": 0},
         )
         assert attempt.status_code == 200 and attempt.json()["correct"] is False
+        repeated = client.post(
+            "/attempts",
+            json={
+                "learner_id": learner,
+                "item_id": public["id"],
+                "answer": next(i for i, o in enumerate(bundle.item.options) if o.correct),
+                "hints_used": 0,
+                "client_attempt_id": str(uuid4()),
+            },
+        )
+        assert repeated.status_code == 422
         assert attempt.json()["traces"]
         assert "remediation" not in attempt.json()
         with store.transaction() as conn:
@@ -232,7 +274,7 @@ def test_http_learning_and_verified_hint_use_real_repository_with_fake_models(
         assert denied.status_code == 503
 
 
-def test_practice_exhaustion_reuses_oldest_answered_item(
+def test_practice_exhaustion_requires_an_explicit_review_to_reuse_items(
     store: Repository, database_url: str, confirmed_graphs: ConfirmedGraphs
 ) -> None:
     _, chunks, graph, items = topic()
@@ -258,7 +300,7 @@ def test_practice_exhaustion_reuses_oldest_answered_item(
         learner = client.post("/learners", json={"display_name": "Exhaustion"}).json()["learner_id"]
         confirmed_graphs.confirm(store, learner, "python-conditions")
         served = []
-        for _ in range(4):
+        for _ in range(2):
             response = client.get(
                 "/next-item", params={"learner_id": learner, "subject": "python-conditions"}
             )
@@ -271,7 +313,59 @@ def test_practice_exhaustion_reuses_oldest_answered_item(
                 "/attempts", json={"learner_id": learner, "item_id": key, "answer": wrong}
             )
             assert result.status_code == 200, result.text
-        assert served == [checked[0].id, checked[1].id, checked[0].id, checked[1].id]
+        assert served == [checked[0].id, checked[1].id]
+        assert (
+            client.get(
+                "/next-item", params={"learner_id": learner, "subject": "python-conditions"}
+            ).status_code
+            == 503
+        )
+        response = client.get(
+            "/next-item",
+            params={
+                "learner_id": learner,
+                "subject": "python-conditions",
+                "mode": "review",
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["concept_slug"] == graph.concepts[0].slug
+        key = response.json()["item"]["id"]
+        assert key == served[0]
+        item = next(i for i in checked if i.id == key)
+        correct = next(n for n, option in enumerate(item.options) if option.correct)
+        result = client.post(
+            "/attempts",
+            json={
+                "learner_id": learner,
+                "item_id": key,
+                "answer": correct,
+                "client_attempt_id": str(uuid4()),
+            },
+        )
+        assert result.status_code == 200 and result.json()["correct"] is True
+        # A new review updates mastery but preserves first-answer assessment evidence.
+        with store.transaction() as conn:
+            assessment = summarize(
+                conn,
+                UUID(learner),
+                store._subject(conn, "python-conditions"),
+                EngineGraph.from_edges([graph.concepts[0].slug], []),
+            )
+        assert assessment.answered == 2 and assessment.incorrect == 2
+        assert assessment.correct == 0
+        assert (
+            client.post(
+                "/attempts",
+                json={
+                    "learner_id": learner,
+                    "item_id": key,
+                    "answer": correct,
+                    "client_attempt_id": str(uuid4()),
+                },
+            ).status_code
+            == 422
+        )
 
 
 def test_practice_skips_a_concept_without_usable_items(

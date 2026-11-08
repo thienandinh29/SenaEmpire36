@@ -5,6 +5,8 @@ import {
   ReactFlow,
   Background,
   Controls,
+  MiniMap,
+  Panel,
   Handle,
   Position,
   type NodeProps,
@@ -15,7 +17,7 @@ import {
   useStore,
 } from "@xyflow/react";
 import { Check, LockKeyhole } from "lucide-react";
-import { layoutGraph, NODE_WIDTH, NODE_HEIGHT } from "@/lib/layout";
+import { layoutGraph, NODE_WIDTH } from "@/lib/layout";
 import type { KnowledgeGraph } from "@/lib/contracts";
 import { vi } from "@/messages/vi";
 import { journal as j } from "@/messages/journal";
@@ -27,6 +29,7 @@ type ConceptNode = Node<
     mastered: boolean;
     active: boolean;
     order: number;
+    height: number;
   },
   "concept"
 >;
@@ -37,6 +40,8 @@ function Concept({ data }: NodeProps<ConceptNode>) {
       style={
         {
           "--node-progress": `${Math.round(data.mastery * 100)}%`,
+          height: data.height,
+          width: NODE_WIDTH,
         } as CSSProperties
       }
     >
@@ -79,6 +84,7 @@ export function KnowledgeMap({
   onSelect: (slug: string) => void;
   variant?: "default" | "atlas";
 }) {
+  const [whole, setWhole] = useState(true);
   const nodes = useMemo<ConceptNode[]>(
     () =>
       layoutGraph(graph).map((node, index) => ({
@@ -86,7 +92,7 @@ export function KnowledgeMap({
         type: "concept",
         position: node.position,
         width: NODE_WIDTH,
-        height: NODE_HEIGHT,
+        height: node.height,
         selected: node.slug === selected,
         domAttributes: { "aria-roledescription": vi.graph.nodeDescription },
         data: {
@@ -95,6 +101,7 @@ export function KnowledgeMap({
           mastered: node.mastered,
           active: node.slug === selected,
           order: index + 1,
+          height: node.height,
         },
         ariaLabel: `${node.name_vi}, ${Math.round(node.p_known * 100)}%`,
       })),
@@ -145,11 +152,14 @@ export function KnowledgeMap({
         nodeTypes={nodeTypes}
         fitView={variant !== "atlas"}
         fitViewOptions={{ padding: 0.13 }}
-        minZoom={0.25}
+        minZoom={0.02}
         maxZoom={1.5}
         nodesDraggable={false}
         nodesConnectable={false}
-        onNodeClick={(_, node) => onSelect(node.id)}
+        onNodeClick={(_, node) => {
+          setWhole(false);
+          onSelect(node.id);
+        }}
         onKeyDown={(event) => {
           if (
             (event.key === "Enter" || event.key === " ") &&
@@ -160,6 +170,7 @@ export function KnowledgeMap({
               ?.getAttribute("data-id");
             if (id) {
               event.preventDefault();
+              setWhole(false);
               onSelect(id);
             }
           }
@@ -179,7 +190,36 @@ export function KnowledgeMap({
       >
         <Background color="var(--atlas-grid-dot, #d9d0c0)" gap={24} size={1} />
         <Controls showInteractive={false} />
-        {variant === "atlas" && <AtlasLens graph={graph} selected={selected} />}
+        <Panel position="top-left" style={{ marginTop: 56 }}>
+          <select
+            aria-label="Chọn kiến thức trong giáo trình"
+            value={selected}
+            onChange={(event) => {
+              setWhole(false);
+              onSelect(event.target.value);
+            }}
+            style={{ maxWidth: "min(280px, 60vw)", padding: "6px 8px" }}
+          >
+            {!graph.nodes.some((node) => node.slug === selected) && (
+              <option value="">Chọn kiến thức</option>
+            )}
+            {graph.nodes.map((node, index) => (
+              <option key={node.slug} value={node.slug}>
+                {index + 1}. {node.name_vi || node.slug}
+              </option>
+            ))}
+          </select>
+          <span style={{ display: "block", fontSize: 11, marginTop: 4 }}>
+            {graph.nodes.length} {j.total}
+          </span>
+        </Panel>
+        {graph.nodes.length > 8 && <MiniMap pannable zoomable />}
+        <AtlasLens
+          graph={graph}
+          selected={selected}
+          whole={whole}
+          onWholeChange={setWhole}
+        />
       </ReactFlow>
     </div>
   );
@@ -188,11 +228,14 @@ export function KnowledgeMap({
 function AtlasLens({
   graph,
   selected,
+  whole,
+  onWholeChange,
 }: {
   graph: KnowledgeGraph;
   selected: string;
+  whole: boolean;
+  onWholeChange: (whole: boolean) => void;
 }) {
-  const [whole, setWhole] = useState(false);
   const { fitView } = useReactFlow();
   const ready = useNodesInitialized();
   const width = useStore((state) => state.width);
@@ -228,14 +271,14 @@ function AtlasLens({
       <button
         aria-pressed={!whole}
         className={!whole ? "active" : ""}
-        onClick={() => setWhole(false)}
+        onClick={() => onWholeChange(false)}
       >
         {j.focus}
       </button>
       <button
         aria-pressed={whole}
         className={whole ? "active" : ""}
-        onClick={() => setWhole(true)}
+        onClick={() => onWholeChange(true)}
       >
         {j.fullMap}
       </button>

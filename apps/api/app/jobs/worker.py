@@ -136,7 +136,6 @@ def main() -> None:
                         retriever=retriever,
                         retrieval_subject=retrieval_subject,
                         retrieval_k=min(retrieval_k, 6),
-                        max_concepts=3,
                     )
                 )
 

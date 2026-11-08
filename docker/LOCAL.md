@@ -37,14 +37,17 @@ shared database.
 docker info --format '{{.OSType}}' # must print linux
 docker compose up -d --wait db
 Set-Location apps/api
-$env:DATABASE_URL = 'postgresql://postgres:postgres@localhost:54322/nodetrail'
+# Set DATABASE_URL once in the repository-root .env; API and worker share it.
 uv sync --locked --python 3.12
 uv run python -m app.migrate
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn app.main:create_content_app --factory --reload --host 127.0.0.1 --port 8000
 ```
 
 In a second terminal, check `Invoke-RestMethod http://localhost:8000/health`
 (`status=ok`, `db=ok`) and open <http://localhost:8000/docs>.
+
+For the full P1–P5 application, use the [common database and startup guide](DATABASE.md).
+It includes a read-only check of every team's tables and canonical migrations.
 
 ## Stop, restart and logs
 

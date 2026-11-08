@@ -175,6 +175,28 @@ class LearningBackend:
                 ).fetchall()
                 answers = [placement.Answer(slug=r[0], correct=r[1], item_id=r[2]) for r in rows]
                 slug, trace = placement.next_question(graph, answers)
+                if slug is None and len(answers) < placement.MAX_QUESTIONS:
+                    asked = {answer.slug for answer in answers}
+                    slug = next(
+                        (
+                            candidate
+                            for candidate in graph.order
+                            if candidate not in asked
+                            and self._pick(conn, request.subject, candidate, lid, 0.5)
+                        ),
+                        None,
+                    )
+                    if slug is not None:
+                        trace = trace.model_copy(
+                            update={
+                                "concept_slug": slug,
+                                "rule": "placement.direct_coverage",
+                                "rule_vi": (
+                                    "Kiểm tra trực tiếp phần chưa được hỏi để xác định lỗ hổng, "
+                                    "không chỉ suy ra từ một câu đúng hoặc sai."
+                                ),
+                            }
+                        )
                 if slug is None:
                     complete = conn.execute(
                         "select placement_complete from p4_learning_sessions "
@@ -218,7 +240,9 @@ class LearningBackend:
 
         return await asyncio.to_thread(run)
 
-    async def next_item(self, learner_id: str, subject: str) -> learn.NextSelection | None:
+    async def next_item(
+        self, learner_id: str, subject: str, *, review: bool = False
+    ) -> learn.NextSelection | None:
         def run() -> learn.NextSelection | None:
             with self.repo.transaction() as conn:
                 lid, sid, graph, mastery = self._state(conn, learner_id, subject)
@@ -248,7 +272,24 @@ class LearningBackend:
                     due_reviews=due,
                     available_concepts=available,
                 )
+                if step.resume_origin is not None:
+                    conn.execute(
+                        "update p4_learning_sessions set remediation_origin=%s "
+                        "where learner_id=%s and subject_id=%s",
+                        (step.resume_origin, lid, sid),
+                    )
+                elif session and session[0] and bkt.is_mastered(mastery.get(session[0], 0.2)):
+                    conn.execute(
+                        "update p4_learning_sessions set remediation_origin=null "
+                        "where learner_id=%s and subject_id=%s",
+                        (lid, sid),
+                    )
                 if step.concept_slug is None:
+                    if any(not bkt.is_mastered(mastery.get(slug, 0.2)) for slug in graph.order):
+                        raise HTTPException(
+                            503, "Chưa có câu hỏi đã kiểm chứng cho phần kiến thức còn cần củng cố."
+                        )
+                    self._trace(conn, lid, sid, trace)
                     return None
                 bundle = self._pick(
                     conn,
@@ -256,19 +297,20 @@ class LearningBackend:
                     step.concept_slug,
                     lid,
                     step.target_difficulty,
-                    allow_attempted=True,
+                    allow_attempted=review,
                 )
                 if bundle is None:
                     raise HTTPException(503, "Chưa có câu hỏi đã kiểm chứng phù hợp.")
                 conn.execute(
-                    "update p4_learning_sessions set phase='practice',pending_item=%s "
+                    "update p4_learning_sessions set phase=%s,pending_item=%s "
                     "where learner_id=%s and subject_id=%s",
-                    (bundle.db_id, lid, sid),
+                    ("review" if review else "practice", bundle.db_id, lid, sid),
                 )
                 self._trace(conn, lid, sid, trace)
                 return learn.NextSelection(
                     item=GraderItem.model_validate(contract_item(bundle.item).model_dump()),
                     reason_vi=step.reason_vi,
+                    concept_slug=step.concept_slug,
                 )
 
         return await asyncio.to_thread(run)
@@ -330,6 +372,17 @@ class LearningBackend:
                     "and subject_id=%s",
                     (lid, sid),
                 ).fetchone()
+                if conn.execute(
+                    "select 1 from attempts where learner_id=%s and item_id=%s limit 1",
+                    (lid, bundle.db_id),
+                ).fetchone() and (
+                    not session or session[0] != "review" or session[1] != bundle.db_id
+                ):
+                    raise HTTPException(
+                        422,
+                        "Câu này đã được nộp. Kết quả lần đầu được giữ để đánh giá; "
+                        "không thể đổi đáp án.",
+                    )
                 if not session or session[1] != bundle.db_id:
                     raise HTTPException(409, "Câu trả lời không thuộc bước học hiện tại.")
                 if grade(item, request.answer) != result:
@@ -374,6 +427,8 @@ class LearningBackend:
                         "option_index": request.answer,
                         "hints_used": request.hints_used,
                         "phase": session[0],
+                        "question": item.prompt_vi,
+                        "chosen_answer": item.options[request.answer].label,
                     },
                     correct=result.correct,
                     misconception_id=mid[0] if mid else None,
@@ -396,7 +451,8 @@ class LearningBackend:
                     plan = decision.to_contract()
                     traces.append(rtrace)
                     conn.execute(
-                        "update p4_learning_sessions set remediation_origin=%s where learn"
+                        "update p4_learning_sessions set remediation_origin="
+                        "coalesce(remediation_origin,%s) where learn"
                         "er_id=%s "
                         "and subject_id=%s",
                         (item_concept, lid, sid),
@@ -647,6 +703,18 @@ class TutorBackend:
                 )
             # Commit the failure audit too; withholding a hint must not roll it back.
             if result is None:
+                if attempt.verification.reason == "hint_verification_error:QuotaError":
+                    raise HTTPException(
+                        503,
+                        "Dịch vụ kiểm chứng gợi ý đã hết hạn mức. Dữ liệu bài học được giữ lại.",
+                    )
+                if attempt.verification.reason in {
+                    "hint_verification_error:GatewayError",
+                    "hint_verification_error:TimeoutError",
+                }:
+                    raise HTTPException(
+                        503, "Dịch vụ kiểm chứng gợi ý tạm thời chưa khả dụng; hãy thử lại sau."
+                    )
                 raise HTTPException(503, "Gợi ý chưa vượt qua kiểm chứng.")
             return tutor_text(result)
 

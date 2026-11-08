@@ -6,14 +6,34 @@ from uuid import UUID
 import pytest
 
 from app.content.gateway import ModelReply, P3Gateway
-from app.content.models import ModelIdentity
+from app.content.models import Evidence, ModelIdentity
 from app.guardrails.answerability import (
     blind_request,
     invalidate_stale,
     learner_item,
+    source_evidence,
     verify_item,
 )
 from tests.content.fakes import FakeGateway, topic
+
+
+def test_verifier_quote_line_wrap_resolves_to_exact_source_without_changing_words():
+    fake = FakeGateway()
+    raw = "Training finds weights\nand a bias to reduce error."
+    chunk = fake.chunks[0].model_copy(update={"content": raw})
+    entry = Evidence(
+        chunk_id=chunk.chunk_id, quote="Training finds weights and a bias to reduce error."
+    )
+    resolved = source_evidence([entry], [chunk])
+    assert resolved[0].quote == raw and resolved[0].chunk_id == entry.chunk_id
+    changed = entry.model_copy(
+        update={"quote": "Training finds different weights and a bias to reduce error."}
+    )
+    assert source_evidence([changed], [chunk]) == [changed]
+    missing = entry.model_copy(update={"chunk_id": UUID(int=0)})
+    assert source_evidence([missing], [chunk]) == [missing]
+    repeated = chunk.model_copy(update={"content": raw + "\n" + raw})
+    assert source_evidence([entry], [repeated]) == [entry]
 
 
 def test_blind_request_whitelists_fields_and_omits_key_and_metadata() -> None:

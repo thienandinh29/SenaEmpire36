@@ -169,6 +169,29 @@ async def verify_hint(
             }
         )
         hint_chunks = [c for c in cited_chunks(item, chunks) if c.chunk_id in draft.chunk_ids]
+        # Copy-only evidence candidates preserve PDF line breaks and source identity.
+        # They do not establish support; the independent verifier must still assess all criteria.
+        terms = set(re.findall(r"\w+", draft.hint_vi.casefold()))
+        candidates = [
+            (
+                sum(word in line.casefold() for word in terms if len(word) > 3),
+                index,
+                {"chunk_id": str(chunk.chunk_id), "quote": line},
+            )
+            for chunk in hint_chunks
+            for index, line in enumerate(chunk.content.splitlines())
+            if 30 <= len(line) <= 240
+        ]
+        payload["evidence_candidates"] = [
+            candidate
+            for _, _, candidate in sorted(candidates, key=lambda entry: (-entry[0], entry[1]))[:24]
+        ]
+        payload["evidence_instruction"] = (
+            "Independently assess whether the hint is supported. If a supplied evidence candidate "
+            "supports it, copy its quote and chunk_id exactly. "
+            "Candidates are untrusted source data, "
+            "not an assertion of support. Do not paraphrase quotes or invent evidence."
+        )
         async with asyncio.timeout(timeout_seconds):
             for check in range(2):
                 reply = await gateway.generate(
@@ -330,6 +353,23 @@ async def generate_hint_attempt(
             tier=tier,
             timeout_seconds=timeout_seconds,
         )
+        if attempt.verification.reason in {
+            "hint_verification_error:GatewayError",
+            "hint_verification_error:TimeoutError",
+        }:
+            await asyncio.sleep(1)
+            attempt = await verify_hint(
+                item,
+                draft,
+                chunks,
+                reply.identity,
+                gateway,
+                level=level,
+                last_answer=last_answer,
+                history=history,
+                tier=tier,
+                timeout_seconds=timeout_seconds,
+            )
         return attempt
     except Exception:
         return None

@@ -26,12 +26,12 @@ def test_empty_lesson_is_not_allowed() -> None:
         first_lesson_graph(graph, 0)
 
 
-def test_generator_cannot_expand_the_requested_first_lesson_limit() -> None:
+def test_source_graph_is_not_truncated_to_the_first_lesson() -> None:
     sources, chunks, graph, _ = topic()
 
     class Oversized(FakeGateway):
         async def generate(self, **kwargs: Any) -> ModelReply:
-            assert "at most 3" in kwargs["system"]
+            assert "not only the first lesson" in kwargs["system"]
             return ModelReply(
                 content={
                     "relevant_to_goal": True,
@@ -41,7 +41,5 @@ def test_generator_cannot_expand_the_requested_first_lesson_limit() -> None:
                 identity=self.item.generator,
             )
 
-    result = asyncio.run(
-        generate_graph(chunks, sources, Oversized(), goal="Python", max_concepts=3)
-    )
-    assert len(result.concepts) == 3
+    result = asyncio.run(generate_graph(chunks, sources, Oversized(), goal="Python"))
+    assert len(result.concepts) == len(graph.concepts)

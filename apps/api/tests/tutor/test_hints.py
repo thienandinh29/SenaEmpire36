@@ -3,7 +3,7 @@ from typing import Any, cast
 
 import pytest
 
-from app.content.gateway import ModelReply
+from app.content.gateway import GatewayError, ModelReply
 from app.content.models import Item, ModelIdentity
 from app.guardrails.answerability import verify_item
 from app.tutor.hints import HintDraft, hint, release_hint, verify_hint
@@ -26,6 +26,25 @@ def test_unverified_question_never_gets_hint() -> None:
     assert fake.calls == []
 
 
+def test_transient_verifier_error_rechecks_hint_without_releasing_failed_draft() -> None:
+    class Transient(FakeGateway):
+        checks = 0
+
+        async def generate(self, **kwargs):
+            if kwargs["task"] == "verify_hint":
+                self.checks += 1
+                if self.checks == 1:
+                    raise GatewayError("temporary verifier outage")
+            return await super().generate(**kwargs)
+
+    fake = Transient()
+    item = asyncio.run(verify_item(fake.item, fake.chunks, fake))
+    sources, _, _, _ = topic()
+    result = asyncio.run(hint(item, 1, None, fake.chunks, "pro", gateway=fake, sources=sources))
+    assert fake.checks == 2
+    assert result is not None and result.citations
+
+
 def test_verified_hint_payload_has_citations_and_no_internal_metadata() -> None:
     fake, item = prepared()
     sources, _, _, _ = topic()
@@ -45,6 +64,22 @@ def test_verified_hint_payload_has_citations_and_no_internal_metadata() -> None:
     assert set(result.model_dump()) == {"hint_vi", "citations"}
     assert result.citations[0].chunk_id == item.chunk_ids[0]
     assert result.citations[0].source_id in item.source_ids
+
+
+def test_hint_evidence_candidates_are_exact_source_substrings() -> None:
+    fake = FakeGateway()
+    sentence = "This is an exact source sentence preserved for independent verification."
+    fake.chunks[0] = fake.chunks[0].model_copy(
+        update={"content": fake.chunks[0].content + "\n" + sentence}
+    )
+    item = asyncio.run(verify_item(fake.item, fake.chunks, fake))
+    sources, _, _, _ = topic()
+    asyncio.run(hint(item, 1, None, fake.chunks, "pro", gateway=fake, sources=sources))
+    request = next(c for c in fake.calls if c["task"] == "verify_hint")
+    candidates = request["payload"]["evidence_candidates"]
+    assert any(c["quote"] == sentence for c in candidates)
+    lookup = {str(c.chunk_id): c.content for c in fake.chunks}
+    assert all(c["quote"] in lookup[c["chunk_id"]] for c in candidates)
 
 
 @pytest.mark.parametrize(

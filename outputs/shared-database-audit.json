@@ -1,0 +1,41 @@
+{
+  "ready": true,
+  "host": "127.0.0.1",
+  "port": 54322,
+  "database": "nodetrail",
+  "missing_tables": {
+    "P1_learning_retrieval": [],
+    "P2_platform": [],
+    "P3_research": [],
+    "P4_content": [],
+    "P5_sessions": []
+  },
+  "missing_migrations": [],
+  "embedding_type": "halfvec(1024)",
+  "unvalidated_foreign_keys": [],
+  "row_counts": {
+    "attempt_replays": 73,
+    "attempts": 73,
+    "chunks": 145,
+    "concept_edges": 51,
+    "concept_sources": 79,
+    "concepts": 78,
+    "decision_traces": 231,
+    "item_options": 1018,
+    "items": 272,
+    "learner_api_sessions": 5,
+    "learner_graph_confirmations": 16,
+    "learners": 5,
+    "llm_calls": 0,
+    "mastery": 36,
+    "misconceptions": 702,
+    "p4_hint_cache": 6,
+    "p4_learning_sessions": 19,
+    "p4_verification_history": 295,
+    "review_cards": 30,
+    "sources": 30,
+    "subjects": 30,
+    "topic_jobs": 42,
+    "uploads": 31
+  }
+}

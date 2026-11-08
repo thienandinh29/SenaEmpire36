@@ -4,10 +4,11 @@ HTTP responses reuse app.schemas; strict request subclasses preserve existing va
 Backend protocols describe P3's needs; they do not redefine another lane's API.
 """
 
-from typing import Protocol
+from typing import Literal, Protocol
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.responses import Response
 
 from app.engine.trace import Alternative as Alternative
 from app.engine.trace import Evidence as Evidence
@@ -107,6 +108,7 @@ class PlacementSelection(Output):
 class NextSelection(Output):
     item: Item
     reason_vi: str
+    concept_slug: str | None = None
 
 
 class AttemptInput(AttemptCreate):
@@ -140,7 +142,9 @@ class LearningBackend(Protocol):
 
     async def graph(self, learner_id: str, subject: str) -> GraphResponse: ...
     async def placement(self, request: LearnerSubject) -> PlacementSelection: ...
-    async def next_item(self, learner_id: str, subject: str) -> NextSelection | None: ...
+    async def next_item(
+        self, learner_id: str, subject: str, *, review: bool = False
+    ) -> NextSelection | None: ...
     async def get_item(self, item_id: str) -> Item | None: ...
     async def apply_attempt(
         self,
@@ -190,11 +194,25 @@ def create_router(backend: LearningBackend | None = None) -> APIRouter:
     async def next_route(
         learner_id: str = Query(min_length=1, max_length=200),
         subject: str = Query(min_length=1, max_length=200),
-    ) -> NextResponse:
-        selection = await service().next_item(learner_id, subject)
+        mode: Literal["practice", "review"] = "practice",
+    ) -> NextResponse | Response:
+        selection = (
+            await service().next_item(learner_id, subject, review=True)
+            if mode == "review"
+            else await service().next_item(learner_id, subject)
+        )
         if selection is None:
-            raise HTTPException(404, "Chưa có câu hỏi phù hợp.")
-        return NextResponse(item=_safe_item(selection.item), reason_vi=selection.reason_vi)
+            graph = await service().graph(learner_id, subject)
+            if not graph.nodes or not all(node.mastered for node in graph.nodes):
+                raise HTTPException(
+                    404, "Chưa có câu hỏi đã kiểm chứng phù hợp cho phần kiến thức cần củng cố."
+                )
+            return Response(status_code=204)
+        return NextResponse(
+            item=_safe_item(selection.item),
+            reason_vi=selection.reason_vi,
+            concept_slug=selection.concept_slug,
+        )
 
     @router.post("/attempts", response_model=AttemptResponse, response_model_exclude_none=True)
     async def attempts_route(request: AttemptInput) -> AttemptResponse:

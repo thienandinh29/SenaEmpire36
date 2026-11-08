@@ -8,9 +8,9 @@ from uuid import UUID
 from app.api.topics import TopicInput
 from app.content.gateway import Gateway, parse_reply
 from app.content.integration import pipeline_graph, pipeline_items
-from app.content.learning import first_lesson_graph
 from app.content.models import Chunk, Graph, Item, Record, Source
 from app.content.pipeline import generate_graph, generate_items, require_model_permission
+from app.content.prompts import GRAPH_VERSION
 from app.content.repository import ContentUnavailable, Repository, stable_id
 from app.graders.mcq import Item as GraderItem
 from app.rag.embed import EMBEDDING_DIM, AsyncEmbedder, EmbeddingError, to_pgvector
@@ -36,13 +36,11 @@ class ContentPorts:
         upload_model_permission: bool = False,
         library_subject: str | None = None,
         embedder: AsyncEmbedder | None = None,
-        max_concepts: int | None = None,
     ) -> None:
         self.repository, self.gateway, self.subject = repository, gateway, subject
         self.upload_model_permission = upload_model_permission
         self.library_subject = library_subject
         self.embedder = embedder
-        self.max_concepts = max_concepts
         self.sources: list[Source] = []
         self.chunks: list[Chunk] = []
         self.graph: Graph | None = None
@@ -368,29 +366,51 @@ class ContentPorts:
     async def build_graph(
         self, goal: str, chunks: Sequence[PreparedChunk], tier: str
     ) -> GraphDraft:
-        # IDs must be exactly the durable IDs returned by index, never model-invented IDs.
-        selected = {c.id for c in chunks}
-        if not selected or not selected <= {str(c.chunk_id) for c in self.chunks}:
+        # The graph uses the complete indexed source; retrieved lesson chunks are a separate scope.
+        supplied = {c.id for c in chunks}
+        all_ids = {str(c.chunk_id) for c in self.chunks}
+        if not supplied or not supplied <= all_ids:
             raise ContentUnavailable("Prepared chunk IDs changed")
-        # Models and verification must see only the selected retrieval context.
-        self.chunks = [c for c in self.chunks if str(c.chunk_id) in selected]
-        source_ids = {c.source_id for c in self.chunks}
-        self.sources = [s for s in self.sources if s.source_id in source_ids]
+        graph_chunk_ids = {c.chunk_id for c in self.chunks}
         try:
             with self.repository.transaction() as conn:
-                self.graph = self.repository.graph(conn, self.subject)
-            if self.max_concepts is not None:
-                self.graph = first_lesson_graph(self.graph, self.max_concepts)
+                cached = self.repository.graph(conn, self.subject)
+            if (
+                set(cached.source_chunk_ids) == graph_chunk_ids
+                and cached.extraction_version == GRAPH_VERSION
+            ):
+                self.graph = cached
+            else:
+                raise ContentUnavailable("Graph checkpoint covers only part of the indexed source")
             return pipeline_graph(self.subject, self.graph, self.chunks, self.sources)
         except (ContentUnavailable, ValueError):
-            # A checkpoint cannot expand the lesson or cite context no longer retrieved.
+            # A legacy/retrieval-scoped checkpoint is not a complete source knowledge map.
             self.graph = await generate_graph(
                 self.chunks,
                 self.sources,
                 self.gateway,
                 tier=tier,
                 goal=goal,
-                max_concepts=self.max_concepts,
+            )
+            page_by_id = {chunk.chunk_id: chunk.page for chunk in self.chunks}
+            self.graph = self.graph.model_copy(
+                update={
+                    "source_chunk_ids": list(graph_chunk_ids),
+                    "concepts": [
+                        concept.model_copy(
+                            update={
+                                "pages": sorted(
+                                    {
+                                        page_by_id[chunk_id]
+                                        for chunk_id in concept.chunk_ids
+                                        if page_by_id.get(chunk_id) is not None
+                                    }
+                                )
+                            }
+                        )
+                        for concept in self.graph.concepts
+                    ],
+                }
             )
             return pipeline_graph(self.subject, self.graph, self.chunks, self.sources)
 
@@ -414,16 +434,30 @@ class ContentPorts:
                 ]
 
         self.generated = await asyncio.to_thread(existing)
-        all_concepts = {concept.slug for concept in self.graph.concepts}
+        lesson_chunk_ids = {UUID(chunk.id) for chunk in chunks}
+        lesson_concepts = {
+            concept.slug
+            for concept in self.graph.concepts
+            if set(concept.chunk_ids) & lesson_chunk_ids
+        }
+        if not lesson_concepts:
+            from app.research.reader import SourceError
+
+            raise SourceError("Không có kiến thức trong đoạn đã truy xuất để tạo bài đầu tiên.")
+        lesson_material = [chunk for chunk in self.chunks if chunk.chunk_id in lesson_chunk_ids]
+        lesson_source_ids = {chunk.source_id for chunk in lesson_material}
+        lesson_sources = [
+            source for source in self.sources if source.source_id in lesson_source_ids
+        ]
         repair_feedback = None
         for attempt in range(2):
             released = pipeline_items(self.generated, self.chunks)
             ids = {item.id for item in released}
             covered = {item.concept for item in self.generated if item.id in ids}
-            missing = all_concepts - covered
+            missing = lesson_concepts - covered
             if len(released) >= count and not missing:
                 break
-            targets = missing or all_concepts
+            targets = missing or lesson_concepts
             scoped_graph = self.graph.model_copy(
                 update={
                     "concepts": [c for c in self.graph.concepts if c.slug in targets],
@@ -450,8 +484,8 @@ class ContentPorts:
             try:
                 batch = await generate_items(
                     scoped_graph,
-                    self.chunks,
-                    self.sources,
+                    lesson_material,
+                    lesson_sources,
                     self.gateway,
                     tier=tier,
                     count=batch_count,
@@ -483,11 +517,24 @@ class ContentPorts:
                 ) from None
             # Save pending outcomes/audits too; P3 receives only currently verified projections.
             await asyncio.to_thread(self.repository.save_items, self.subject, batch)
-            self.generated.extend(batch)
+            # Relational storage can reject a draft whose canonical content changed.
+            # Only current durable audits count toward lesson readiness.
+            self.generated = await asyncio.to_thread(existing)
+            if any(
+                item.verification and item.verification.reason == "verification_error:QuotaError"
+                for item in batch
+            ):
+                from app.research.reader import SourceError
+
+                raise SourceError(
+                    "Dịch vụ AI kiểm chứng đã hết hạn mức sử dụng. "
+                    "Cần chờ hạn mức được cấp lại hoặc cấu hình dịch vụ kiểm chứng khả dụng. "
+                    "PDF, bản đồ và câu hỏi đã xử lý được giữ lại; thử lại ngay sẽ không khắc phục."
+                )
             verified_now = pipeline_items(self.generated, self.chunks)
             verified_ids = {item.id for item in verified_now}
             verified_concepts = {item.concept for item in self.generated if item.id in verified_ids}
-            lesson_ready = len(verified_now) >= count and all_concepts <= verified_concepts
+            lesson_ready = len(verified_now) >= count and lesson_concepts <= verified_concepts
             if (
                 attempt == 1
                 and not lesson_ready
@@ -507,7 +554,11 @@ class ContentPorts:
         released = pipeline_items(self.generated, self.chunks)
         released_ids = {item.id for item in released}
         covered = {item.concept for item in self.generated if item.id in released_ids}
-        uncovered = [c.name_vi for c in self.graph.concepts if c.slug not in covered]
+        uncovered = [
+            c.name_vi
+            for c in self.graph.concepts
+            if c.slug in lesson_concepts and c.slug not in covered
+        ]
         if uncovered:
             from app.research.reader import SourceError
 
@@ -540,7 +591,6 @@ async def process_claimed_job(
     retrieval_subject: str | None = None,
     retrieval_k: int = 12,
     embedder: AsyncEmbedder | None = None,
-    max_concepts: int | None = None,
 ) -> None:
     """Called AFTER P2 claim commits. All progress uses the existing topic_jobs row."""
     from dataclasses import asdict
@@ -569,7 +619,6 @@ async def process_claimed_job(
         library_subject=retrieval_subject,
         upload_model_permission=get_settings().demo_uploads_enabled,
         embedder=embedder if embedder is not None else WorkerEmbedder(),
-        max_concepts=max_concepts,
     )
     request = TopicInput.model_validate(
         {

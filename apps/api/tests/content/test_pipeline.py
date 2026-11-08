@@ -209,12 +209,12 @@ def test_runtime_graph_receives_goal_and_rejects_unrelated_sources(supported: bo
             )
 
     if supported:
-        assert (
-            asyncio.run(
-                generate_graph(chunks, sources, ScopedGenerator(), goal="A requested learning goal")
-            )
-            == graph
+        result = asyncio.run(
+            generate_graph(chunks, sources, ScopedGenerator(), goal="A requested learning goal")
         )
+        assert result.concepts == graph.concepts and result.edges == graph.edges
+        assert result.source_chunk_ids == [chunk.chunk_id for chunk in chunks]
+        assert result.extraction_version is not None
     else:
         with pytest.raises(SourceError):
             asyncio.run(

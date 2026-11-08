@@ -87,8 +87,26 @@ export interface ReviewedConcept {
   name_vi: string;
   description_vi: string;
   sources: string[];
+  pages: number[];
 }
 export interface GraphReview {
+  assessment?: {
+    answered: number;
+    correct: number;
+    incorrect: number;
+    concepts: {
+      slug: string;
+      correct: number;
+      incorrect: number;
+      priority: "gap" | "foundation" | "unassessed" | "maintenance";
+      important: boolean;
+      mistakes: {
+        question: string;
+        chosen_answer: string;
+        misconception_vi: string | null;
+      }[];
+    }[];
+  } | null;
   graph: KnowledgeGraph;
   concepts: ReviewedConcept[];
   revision: string;
@@ -116,6 +134,13 @@ export function parseGraphReview(
       name_vi: string(c.name_vi),
       description_vi: c.description_vi == null ? "" : string(c.description_vi),
       sources: list(c.sources, string),
+      pages: c.pages == null
+        ? []
+        : list(c.pages, (value) => {
+            const page = number(value);
+            if (!Number.isInteger(page) || page < 1) throw new DataError("contract");
+            return page;
+          }),
     };
   });
   // Mastery is read separately. Refuse to attach a revision to a different graph.
@@ -136,7 +161,50 @@ export function parseGraphReview(
     signature(concepts, edges) !== signature(graph.nodes, graph.edges)
   )
     throw new DataError("failed", 409);
-  return { graph, concepts, revision, confirmed: bool(d.confirmed) };
+  const a = d.assessment == null ? null : record(d.assessment);
+  const assessment: GraphReview["assessment"] = a
+    ? {
+        answered: number(a.answered),
+        correct: number(a.correct),
+        incorrect: number(a.incorrect),
+        concepts: list(a.concepts, (raw) => {
+          const c = record(raw);
+          const priority = string(c.priority);
+          if (
+            !["gap", "foundation", "unassessed", "maintenance"].includes(
+              priority,
+            )
+          )
+            throw new DataError("contract");
+          return {
+            slug: string(c.slug),
+            correct: number(c.correct),
+            incorrect: number(c.incorrect),
+            priority: priority as
+              "gap" | "foundation" | "unassessed" | "maintenance",
+            important: bool(c.important),
+            mistakes: list(c.mistakes, (raw) => {
+              const m = record(raw);
+              return {
+                question: string(m.question),
+                chosen_answer: string(m.chosen_answer),
+                misconception_vi:
+                  m.misconception_vi == null
+                    ? null
+                    : string(m.misconception_vi),
+              };
+            }),
+          };
+        }),
+      }
+    : null;
+  return {
+    graph,
+    concepts,
+    revision,
+    assessment,
+    confirmed: bool(d.confirmed),
+  };
 }
 export function parseTrace(value: unknown): DecisionTrace {
   const data = record(value);
