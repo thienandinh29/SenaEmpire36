@@ -221,3 +221,54 @@ def test_p1_label_audit_requires_matching_text_and_page(tmp_path: Path) -> None:
     data["questions"][0]["relevant"][0]["source_uri"] = "https://books.example/wrong"
     queries.write_text(json.dumps(data), encoding="utf-8")
     assert not audit_query_labels(tmp_path, queries)["all_snippets_present"]
+
+
+def test_pages_without_their_own_licence_inherit_the_verified_book_licence(tmp_path: Path) -> None:
+    """Cause of the "Chưa xác định được giấy phép" failures: pages that print no licence."""
+    allowlist = Allowlist(publishers=[Publisher(name="Book", domains=["books.example"])])
+
+    async def resolve(host: str) -> list[str]:
+        return ["93.184.216.34"]
+
+    body = "Educational textbook content for learning with citations and enough words."
+    pages = {
+        "/license": "<p>This book is shared under a CC BY-SA 4.0 license.</p>",
+        "/book/1": f"<p>{body}</p>" + "".join(f'<a href="/book/{n}">{n}</a>' for n in "234"),
+        "/book/2": f"<p>{body} This page is licensed CC BY 4.0.</p>",
+        "/book/3": f"<p>{body} This page is shared under a not declared license.</p>",
+        "/book/4": f"<p>{body} Licensed CC BY-ND 4.0.</p>",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, text=pages[request.url.path], headers={"content-type": "text/html"}
+        )
+
+    reader = SafeReader(
+        allowlist=allowlist, resolver=resolve, transport=httpx.MockTransport(handler)
+    )
+    book = Book(
+        slug="book",
+        title="Book",
+        publisher="Book",
+        start_url="https://books.example/book/1",
+        license_url="https://books.example/license",
+        page_prefix="https://books.example/book/",
+    )
+    report = asyncio.run(download_book(book, tmp_path, reader))
+    assert report["downloaded"] == 2
+    failures = report["failures"]
+    assert isinstance(failures, list)
+    failed = {f["url"].rsplit("/", 1)[-1] for f in failures}
+    assert failed == {"3", "4"}  # explicitly undeclared and ND are still refused
+    stored = {
+        json.loads(p.read_text(encoding="utf-8"))["url"].rsplit("/", 1)[-1]: json.loads(
+            p.read_text(encoding="utf-8")
+        )
+        for p in (tmp_path / "book").glob("*.json")
+        if p.name != "report.json"
+    }
+    assert (stored["1"]["license"], stored["1"]["license_origin"]) == ("CC BY-SA 4.0", "book")
+    assert (stored["2"]["license"], stored["2"]["license_origin"]) == ("CC BY 4.0", "page")
+    exported = export_library(Manifest(books=[book]), tmp_path)
+    assert exported[0]["accepted_pages"] == 2

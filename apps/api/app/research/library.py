@@ -51,6 +51,25 @@ class _Links(HTMLParser):
                     self.links.append(value)
 
 
+_NOT_DECLARED = re.compile(r"shared under (?:a )?not declared license")
+
+
+def page_license(text: str, book_license: str) -> tuple[str, str]:
+    """A page's licence and where it came from (`"page"` or `"book"`).
+
+    The book's licence page has already been verified and the page is inside the same book, so a
+    page that states no licence of its own (front matter, back matter, many section pages)
+    inherits the book's. A page that states a licence keeps it; ND, AI-restricted and explicitly
+    undeclared pages are still refused (`detect_license`).
+    """
+    try:
+        return detect_license(text), "page"
+    except SourceError as exc:
+        if exc.code == "license_missing" and not _NOT_DECLARED.search(text.casefold()):
+            return book_license, "book"
+        raise
+
+
 def load_manifest(path: Path) -> Manifest:
     return Manifest.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
 
@@ -332,7 +351,11 @@ def _audit_page(path: Path, *, book: Book) -> tuple[dict[str, str] | None, dict[
         raw = path.with_suffix(".html").read_bytes()
         if hashlib.sha256(raw).hexdigest() != checksum:
             raise ValueError("Source hash mismatch")
-        license_name = detect_license(html_text(raw))
+        stored = metadata.get("license")
+        if metadata.get("license_origin") == "book" and isinstance(stored, str):
+            license_name, _ = page_license(html_text(raw), stored)
+        else:
+            license_name = detect_license(html_text(raw))
         text = html_content(raw)
         if sum(char.isalnum() for char in text) < 40:
             raise ValueError("Page has insufficient book content")
@@ -413,7 +436,7 @@ async def download_book(book: Book, root: Path, reader: SafeReader) -> dict[str,
                 }:
                     raise SourceError("Trang giáo trình không phải HTML.")
                 raw = response.body
-                page_license = detect_license(html_text(raw))
+                page_licence, licence_origin = page_license(html_text(raw), license_name)
                 text = html_content(raw)
                 if sum(c.isalnum() for c in text) < 40:
                     raise SourceError("Trang không có đủ văn bản để lập chỉ mục.")
@@ -422,7 +445,8 @@ async def download_book(book: Book, root: Path, reader: SafeReader) -> dict[str,
                     "source_uri": response.url,
                     "title": book.title,
                     "publisher": book.publisher,
-                    "license": page_license,
+                    "license": page_licence,
+                    "license_origin": licence_origin,
                     "license_url": license_page.url,
                     "text": text,
                     "sha256": hashlib.sha256(raw).hexdigest(),
